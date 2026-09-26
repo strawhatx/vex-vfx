@@ -2,7 +2,7 @@
 // down through the "source" (the object's mask) for heat, bent sideways by animated noise, then
 // the heat is broken into tongues with more noise and mapped through the palette's color ramp.
 // Driven only by the mask and the frame time, so any frame renders the same every time.
-import { PALETTES } from './palettes';
+import { PALETTES } from '@/domain/effects/palettes';
 
 const VERT = `#version 300 es
 in vec2 aPos;

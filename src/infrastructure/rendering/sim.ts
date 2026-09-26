@@ -2,7 +2,7 @@
 // per-frame seeded generator and time is the frame's timestamp, so replaying, scrubbing and
 // exporting produce the same pictures. No particle lives longer than MAX_LIFE, so the state
 // at any frame can be rebuilt by simulating from MAX_LIFE seconds earlier.
-import { PALETTES, type FxSettings } from './palettes';
+import { PALETTES, type FxSettings } from '@/domain/effects/palettes';
 import { rngFor, type Rng } from './rng';
 import { bloom, drawTongue, flameSprite, ringSprite, sprite, type Ctx2D } from './sprites';
 

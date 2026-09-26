@@ -1,7 +1,7 @@
 // Turns track data for one frame into what the effects draw from: the tracked shapes'
 // combined mask, sampled outline points with normals, and a smoothed target box.
-import type { Target } from '@/effects/sim';
-import { paintRle, type TrackFrame } from '@/tracking/types';
+import type { Target } from '@/infrastructure/rendering/sim';
+import { paintRle, type TrackFrame } from '@/domain/tracking/types';
 
 const MAX_POINTS = 600, CACHE = 160;
 // smoothing weights over neighbouring frames; the whole clip is analysed, so it can look ahead
@@ -47,11 +47,12 @@ export class FrameGeometry {
     this.mctx.putImageData(this.mImg, 0, 0);
   }
 
-  // target in output pixels, smoothed over neighbouring frames; velocity in pixels/second
-  target(frames: TrackFrame[], i: number, dt: number): Target {
+  // target in output pixels, smoothed over neighbouring frames of the same shot; velocity in
+  // pixels/second. shot[i] is the index of the first frame of frame i's shot.
+  target(frames: TrackFrame[], i: number, dt: number, shot?: Int32Array): Target {
     const here = box(frames[i]);
     if (!here) return { x: 0, y: 0, rx: 0, ry: 0, vx: 0, vy: 0, active: false };
-    const cur = smoothed(frames, i)!, prev = i > 0 ? smoothed(frames, i - 1) : null, q = this.q;
+    const cur = smoothed(frames, i, shot)!, prev = i > 0 && (!shot || shot[i - 1] === shot[i]) ? smoothed(frames, i - 1, shot) : null, q = this.q;
     return {
       x: cur.cx * q, y: cur.cy * q, rx: cur.w * q / 2, ry: cur.h * q / 2,
       vx: prev ? (cur.cx - prev.cx) * q / dt : 0, vy: prev ? (cur.cy - prev.cy) * q / dt : 0, active: true,
@@ -102,11 +103,11 @@ function box(frame: TrackFrame): Box | null {
   }
   return x1 < x0 ? null : { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
 }
-function smoothed(frames: TrackFrame[], i: number): Box | null {
+function smoothed(frames: TrackFrame[], i: number, shot?: Int32Array): Box | null {
   let cx = 0, cy = 0, w = 0, h = 0, total = 0;
   for (let k = 0; k < SMOOTH.length; k++) {
     const j = i + k - (SMOOTH.length >> 1);
-    if (j < 0 || j >= frames.length) continue;
+    if (j < 0 || j >= frames.length || (shot && shot[j] !== shot[i])) continue;
     const b = box(frames[j]);
     if (!b) continue;
     const wt = SMOOTH[k]; cx += b.cx * wt; cy += b.cy * wt; w += b.w * wt; h += b.h * wt; total += wt;

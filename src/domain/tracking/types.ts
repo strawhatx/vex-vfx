@@ -20,6 +20,12 @@ export interface Shape {
   lost?: boolean;
 }
 
+// one frame of the clip: when it starts and how long it shows, in seconds
+export interface ClipFrame { t: number; dur: number }
+
+// a point in a frame, in work pixels (where the user tapped)
+export type Selection = { x: number; y: number };
+
 export interface TrackFrame {
   t: number;   // presentation timestamp, seconds
   dur: number; // frame duration, seconds
@@ -76,7 +82,7 @@ export function paintRle(rle: Rle, mask: Uint8Array, W: number, H: number, dx = 
 }
 
 // binary search for the frame shown at time t (the last frame starting at or before t)
-export function frameIndexAt(frames: TrackFrame[], t: number) {
+export function frameIndexAt(frames: readonly { t: number; dur: number }[], t: number) {
   let lo = 0, hi = frames.length - 1, ans = -1;
   const eps = 1e-4;
   while (lo <= hi) {

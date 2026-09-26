@@ -1,41 +1,35 @@
-// Editor controller: plays the clip, renders the effect for exactly the frame the video is
-// showing (from track data), and starts an analysis when the user clicks an object.
-// React drives it through its methods and gets UI state back through onUi.
-import { DEFAULT_PAL, type Effect, type FxSettings } from '@/effects/palettes';
-import { Renderer } from '@/compositor/renderer';
-import { AnalysisClient } from '@/tracking/client';
-import type { Selection as ObjectSelection } from '@/tracking/protocol';
-import { workSize, type TrackFrame, type TrackMeta } from '@/tracking/types';
-import { canRecord, startCameraCapture, startCanvasRecording, type Recording } from '@/video/recorder';
+// The page's controller and composition root: plugs the browser adapters (worker, renderer,
+// recorder) into the Editor, plays the clip, draws each frame, turns taps on the preview into
+// editing actions, and exports. React drives it through its methods and gets UI state back
+// through onUi. It is the only UI module that imports infrastructure/.
+import { Editor, type EditorState } from '@/application/editor';
+import type { Effect, FxSettings } from '@/domain/effects/palettes';
+import { workSize, type Selection } from '@/domain/tracking/types';
+import { AnalysisClient } from '@/infrastructure/analysis/client';
+import { Renderer } from '@/infrastructure/rendering/renderer';
+import { canRecord, startCameraCapture, startCanvasRecording, type Recording } from '@/infrastructure/video/recorder';
 
-// a stretch of the clip where the object was found; weak = the tracker was searching
-export interface Span { s: number; e: number; weak: boolean }
+export type { Lane } from '@/domain/project/track';
 
-export interface UiState {
+export interface UiState extends Omit<EditorState, 'hasEffects'> {
   ready: boolean;
   playing: boolean;
   time: number;
   duration: number;
   hint: string;
   status: string;
-  tapStatus: string;
-  progress: number | null; // analysis progress 0..1 while it runs
-  analyzed: boolean;
-  camera: boolean; // recording from the camera
+  selected: number | null; // selected object; taps on the preview fix it
+  adding: boolean;         // the next tap starts a new object
+  camera: boolean;
   recording: boolean;
-  tracked: boolean; // an object has been picked; clicking the video now plays/pauses
   canRecord: boolean;
   result: Recording | null;
-  src: string | null; // object URL of the loaded clip
-  coverage: Span[];
+  src: string | null;
 }
 
-const OBJECT_TAP = 'Pause on a clear frame and tap the object. It outlines it and follows it through the clip.';
-
 export const INITIAL_UI: UiState = {
-  ready: false, playing: false, time: 0, duration: 0, hint: '', status: '', tapStatus: OBJECT_TAP,
-  progress: null, analyzed: false, camera: false, recording: false, tracked: false, canRecord: false, result: null,
-  src: null, coverage: [],
+  ready: false, playing: false, time: 0, duration: 0, hint: '', status: '', scan: null, job: null,
+  cuts: [], lanes: [], selected: null, adding: false, camera: false, recording: false, canRecord: false, result: null, src: null,
 };
 
 type VideoWithFrameCallback = HTMLVideoElement & {
@@ -44,15 +38,12 @@ type VideoWithFrameCallback = HTMLVideoElement & {
 
 export class Player {
   private ui: UiState = { ...INITIAL_UI };
-  private settings: FxSettings = { effect: 'fire', pal: 0, size: 1, intensity: 1 };
   private showOutline = true;
   private renderer: Renderer;
   private analysis = new AnalysisClient();
-  private file: File | null = null;
+  private editor: Editor;
+  private workW = 0; // analysis frame width
   private srcUrl: string | null = null;
-  private meta: TrackMeta | null = null;
-  private frames: TrackFrame[] = [];
-  private objectJob: { start: number; select: ObjectSelection } | null = null;
   private lastT = 0;
   private press: { x: number; y: number } | null = null;
   private camera: Awaited<ReturnType<typeof startCameraCapture>> | null = null;
@@ -61,7 +52,20 @@ export class Player {
   private destroyed = false;
 
   constructor(private video: HTMLVideoElement, private view: HTMLCanvasElement, private onUi: (ui: UiState) => void) {
-    this.renderer = new Renderer(view, this.settings);
+    this.renderer = new Renderer(view);
+    this.editor = new Editor(this.analysis, this.renderer, {
+      changed: (s, drawn) => {
+        const { hasEffects, ...rest } = s;
+        this.set({ ...rest, canRecord: hasEffects && canRecord(this.view) });
+        if (drawn && this.video.paused) this.redraw();
+      },
+      status: m => this.say(m),
+      meta: m => {
+        this.workW = m.W;
+        const { W, H } = workSize(this.video.videoWidth, this.video.videoHeight);
+        if (m.W !== W || m.H !== H) this.renderer.setup(m.videoW, m.videoH, m.W, m.H);
+      },
+    });
     const signal = this.events.signal, v = video;
     v.addEventListener('play', () => this.set({ playing: true }), { signal });
     v.addEventListener('pause', () => this.set({ playing: false }), { signal });
@@ -74,13 +78,11 @@ export class Player {
     this.frameLoop();
   }
 
-  // ---------- public API ----------
+  // ---------- clip ----------
   loadFile(f: File) {
     this.stopCamera();
-    this.analysis.cancel();
-    this.file = f; this.meta = null; this.objectJob = null;
-    this.resetTrack();
-    this.set({ ready: false, analyzed: false, progress: null, result: null, status: 'Loading…' });
+    this.editor.load(f);
+    this.set({ ready: false, selected: null, adding: false, result: null, status: 'Loading…' });
     if (this.srcUrl) URL.revokeObjectURL(this.srcUrl);
     const v = this.video;
     v.srcObject = null; v.muted = false;
@@ -96,8 +98,8 @@ export class Player {
   async toggleCamera() {
     if (this.camera) { this.camera.stop(); return; }
     try {
-      this.analysis.cancel(); this.resetTrack(); this.file = null;
-      this.set({ ready: false, analyzed: false, progress: null, result: null });
+      this.editor.load(null);
+      this.set({ ready: false, selected: null, adding: false, result: null });
       const v = this.video;
       v.removeAttribute('src'); v.load();
       this.camera = await startCameraCapture(v);
@@ -112,29 +114,38 @@ export class Player {
     }
   }
 
-  togglePlay() { if (this.ui.ready && this.ui.progress === null) { if (this.video.paused) void this.video.play(); else this.video.pause(); } }
+  togglePlay() { if (this.ui.ready && this.ui.scan === null) { if (this.video.paused) void this.video.play(); else this.video.pause(); } }
   seek(t: number) { this.video.pause(); this.video.currentTime = t; this.set({ time: t }); }
 
-  // drops the tracked object so a different one can be clicked; settings are kept
-  clearTarget() {
-    this.analysis.cancel();
-    this.objectJob = null;
-    this.resetTrack();
-    this.set({ progress: null, analyzed: false, tapStatus: OBJECT_TAP });
-    this.redraw();
+  // ---------- objects ----------
+  select(id: number | null) { this.set({ selected: id, adding: false }); this.redraw(); }
+  // the next tap on the preview starts a new object
+  startAdding() { this.video.pause(); this.set({ adding: true, selected: null }); this.redraw(); }
+  cancelAdding() { this.set({ adding: false }); this.redraw(); }
+  deleteTrack(id: number) { this.editor.deleteTrack(id); if (this.ui.selected === id) this.select(null); }
+  removeFixHere() { if (this.ui.selected !== null) this.editor.removeFixAt(this.ui.selected, this.frameNow()); }
+  swapHere() { if (this.ui.selected !== null) this.editor.swapAt(this.ui.selected, this.frameNow()); }
+  setRange(id: number, r: { s?: number; e?: number }) { this.editor.setRange(id, r); }
+  // shows a shot where the object wasn't found and selects it, ready for a tap
+  goToShot(id: number, shot: number) {
+    const t = this.editor.shotTime(shot);
+    if (t === null) return;
+    this.set({ selected: id, adding: false });
+    this.seek(t + 1e-3);
   }
 
+  // effect settings apply to the selected object (or the only one, or the next one tapped)
+  fx(): FxSettings { return this.editor.fx(this.ui.selected); }
+  setEffect(effect: Effect) { this.editor.setEffect(this.ui.selected, effect); this.redraw(); }
+  setFx(p: Partial<FxSettings>) { this.editor.setFx(this.ui.selected, p); this.redraw(); }
+  setShowOutline(on: boolean) { this.showOutline = on; this.redraw(); }
+
+  // ---------- export ----------
   toggleRecord() {
     if (this.recorder) { this.recorder.stop(); return; }
     void this.record();
   }
   closeResult() { this.set({ result: null }); }
-
-  setEffect(fx: Effect) { this.updateSettings({ effect: fx, pal: DEFAULT_PAL[fx] }); }
-  setPalette(pal: number) { this.updateSettings({ pal }); }
-  setSize(size: number) { this.updateSettings({ size }); }
-  setIntensity(intensity: number) { this.updateSettings({ intensity }); }
-  setShowOutline(on: boolean) { this.showOutline = on; this.redraw(); }
 
   destroy() {
     this.destroyed = true; this.events.abort(); this.analysis.terminate();
@@ -144,23 +155,14 @@ export class Player {
     if (this.ui.result) URL.revokeObjectURL(this.ui.result.url);
   }
 
-  // ---------- state ----------
+  // ---------- internals ----------
   private set(p: Partial<UiState>) { Object.assign(this.ui, p); if (!this.destroyed) this.onUi({ ...this.ui }); }
   private say(status: string) { this.set({ status }); }
-
-  private updateSettings(p: Partial<FxSettings>) {
-    this.settings = { ...this.settings, ...p };
-    this.renderer.setSettings(this.settings);
-    this.redraw();
-  }
-
-  private resetTrack() {
-    this.frames = []; this.renderer.setFrames(this.frames);
-    this.set({ tracked: false, canRecord: false, coverage: [] });
-  }
+  private frameNow() { return this.editor.frameAt(this.video.currentTime); }
 
   private setupRenderer(vw: number, vh: number) {
     const { W, H } = workSize(vw, vh);
+    this.workW = W;
     this.renderer.setup(vw, vh, W, H);
   }
 
@@ -170,8 +172,8 @@ export class Player {
     this.setupRenderer(v.videoWidth, v.videoHeight);
     this.set({ ready: true, duration: v.duration || 0, status: 'Video loaded.' });
     await this.seekTo(0);
-    this.set({ tapStatus: OBJECT_TAP });
     this.redraw();
+    this.editor.scan(v.duration || 0);
   }
 
   // MediaRecorder files can report an infinite duration until the end has been seen
@@ -183,54 +185,6 @@ export class Player {
       v.addEventListener('durationchange', done);
       v.currentTime = 1e101;
     });
-  }
-
-  // ---------- analysis ----------
-  // outlines the object clicked at time `start` and follows it to the end of the clip
-  private analyzeObject(start: number, select: ObjectSelection) {
-    if (!this.file) return;
-    this.objectJob = { start, select };
-    this.analysis.cancel();
-    this.resetTrack();
-    this.video.pause();
-    this.set({ progress: 0, analyzed: false, tracked: true, tapStatus: 'Outlining…' });
-    this.analysis.start({ file: this.file, start, select }, {
-      meta: meta => {
-        this.meta = meta;
-        const { W, H } = workSize(this.video.videoWidth, this.video.videoHeight);
-        if (meta.W !== W || meta.H !== H) this.renderer.setup(meta.videoW, meta.videoH, meta.W, meta.H);
-      },
-      frames: (frames) => {
-        const prev = this.frames.length;
-        const first = prev === 0 ? frames[0] : null;
-        this.frames.push(...frames);
-        this.renderer.framesAppended(prev);
-        const last = this.frames[this.frames.length - 1], dur = this.meta?.duration || this.ui.duration || 1;
-        this.set({ coverage: this.coverage(), progress: Math.min(0.99, (last.t + last.dur - start) / Math.max(0.001, dur - start)) });
-        if (first) this.set({ tapStatus: first.shapes[0]?.mask
-          ? 'Outlined. It’s following the object through the clip; press Play to watch. Wrong object? Use Reselect and tap it again.'
-          : 'Couldn’t find an object there, so it’s following a box instead. Use Reselect and try tapping the middle of the object.' });
-        if (this.video.paused) this.redraw();
-      },
-      done: () => {
-        this.renderer.invalidate();
-        const any = this.frames.some(f => f.shapes.length);
-        this.set({ coverage: this.coverage(), progress: null, analyzed: true, canRecord: any && canRecord(this.view) });
-        this.redraw();
-      },
-      error: message => { this.set({ progress: null }); this.say(message); },
-    });
-  }
-
-  private coverage() {
-    const out: Span[] = [];
-    for (const f of this.frames) {
-      if (!f.shapes.length) continue;
-      const weak = f.shapes.every(sh => sh.lost), last = out[out.length - 1];
-      if (last && last.weak === weak && f.t - last.e < f.dur * 1.5) last.e = f.t + f.dur;
-      else out.push({ s: f.t, e: f.t + f.dur, weak });
-    }
-    return out;
   }
 
   // ---------- drawing ----------
@@ -259,27 +213,26 @@ export class Player {
   private draw(t: number) {
     if (!this.renderer.CW || this.video.readyState < 2) return;
     this.lastT = t;
-    const idx = this.renderer.render(this.video, t, { outline: this.showOutline && !this.recorder, paused: this.video.paused });
+    const idx = this.renderer.render(this.video, t, { outline: this.showOutline && !this.recorder, paused: this.video.paused, selected: this.ui.selected });
     this.updateHint(idx);
   }
 
   private updateHint(idx: number) {
+    const ed = this.editor, sel = this.ui.selected, name = sel !== null ? ed.name(sel) : '';
     let m = '';
     if (this.camera) m = 'Recording from the camera.';
-    else if (!this.ui.ready) m = '';
-    else if (!this.objectJob) m = 'Tap the object you want the effect to follow.';
-    else if (idx >= 0 && this.frames[idx].shapes.some(sh => sh.lost)) m = 'Searching for the object…';
+    else if (!this.ui.ready || this.ui.scan !== null || this.recorder) m = '';
+    else if (!ed.trackCount) m = 'Tap what the effect should follow.';
+    else if (this.ui.adding) m = 'Tap the next object to track.';
+    else if (sel !== null && this.video.paused) m = idx >= 0 && !ed.hasShapeAt(sel, idx) ? `${name} isn’t found here. Tap it to fix.` : `Wrong? Tap ${name} to fix this frame.`;
+    else if (idx >= 0 && ed.lostAt(idx)) m = 'Searching for the object…';
     if (m !== this.ui.hint) this.set({ hint: m });
   }
 
-  // ---------- clicking ----------
+  // ---------- tapping ----------
   private canvasPt(e: PointerEvent): [number, number] {
     const r = this.view.getBoundingClientRect();
     return [(e.clientX - r.left) / r.width * this.renderer.CW, (e.clientY - r.top) / r.height * this.renderer.CH];
-  }
-  private toWork(x: number, y: number) {
-    const { W } = workSize(this.video.videoWidth, this.video.videoHeight), q = this.renderer.CW / W;
-    return [x / q, y / q] as const;
   }
   private pointerDown(e: PointerEvent) {
     if (!this.ui.ready || this.camera || this.recorder) return;
@@ -287,22 +240,22 @@ export class Player {
     this.press = { x, y };
   }
   private pointerUp() {
-    const p = this.press;
-    if (!p) return;
+    const p = this.press, ed = this.editor;
     this.press = null;
-    // once something is tracked, clicking the video plays/pauses; Reset is how to pick again
-    if (this.objectJob) { this.togglePlay(); return; }
-    const [x, y] = this.toWork(p.x, p.y);
-    this.analyzeObject(this.video.currentTime, { x, y });
+    if (!p || !ed.ready) return;
+    // while playing, a tap just pauses
+    if (!this.video.paused) { this.video.pause(); return; }
+    const i = this.frameNow();
+    if (i < 0) return;
+    const q = this.renderer.CW / (this.workW || 1), at: Selection = { x: p.x / q, y: p.y / q }, sel = this.ui.selected;
+    if (this.ui.adding || !ed.trackCount) { const id = ed.addTrack(i, at); if (id !== null) this.select(id); return; }
+    if (sel !== null) { ed.fixAt(sel, i, at); return; }
+    // tapping a tracked object selects it; tapping elsewhere plays
+    const hit = ed.trackAt(i, at);
+    if (hit !== null) this.select(hit); else this.togglePlay();
   }
 
   // ---------- recording ----------
-  // where recording starts: the first frame the effect has something to follow
-  private startTime() {
-    const f = this.frames.find(fr => fr.shapes.length);
-    return f ? f.t : null;
-  }
-
   private seekTo(t: number) {
     const v = this.video;
     return new Promise<void>(res => {
@@ -313,7 +266,7 @@ export class Player {
   }
 
   private async record() {
-    const start = this.startTime();
+    const start = this.editor.firstEffectTime();
     if (start === null || !canRecord(this.view)) { this.say('This browser can’t record video. Try Chrome or Edge.'); return; }
     await this.seekTo(start);
     this.recorder = startCanvasRecording(this.view, this.video);

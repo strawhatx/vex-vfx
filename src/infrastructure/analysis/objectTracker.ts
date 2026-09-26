@@ -1,11 +1,10 @@
 // Click-an-object tracking, run once per frame by the analysis worker. An AI segmenter
 // outlines the object at a point; pyramidal Lucas-Kanade + Median Flow follows its motion
 // so each new frame is segmented at the right place. Works on analysis-resolution frames.
-import { encodeRle, type Rle, type Shape } from './types';
+import { encodeRle, type Rle, type Selection, type Shape } from '@/domain/tracking/types';
 
 type Img = { w: number; h: number; d: Float32Array };
 type Pyr = Img[];
-export type Selection = { x: number; y: number };
 // outlines the object at (x, y) in the current frame; 1 = object
 export type SegmentAt = (x: number, y: number) => Uint8Array;
 
@@ -61,6 +60,17 @@ export class ObjectTracker {
       this.lock(sel.x, sel.y, this.W * 0.16, this.W * 0.16);
     }
     return this.shape();
+  }
+
+  // outlines whatever is at (x, y) in the current frame without tracking it; null when
+  // there's nothing there or it's too small or covers most of the frame (background)
+  probe(x: number, y: number): Shape | null {
+    const b = this.outlineAt(x, y);
+    if (!b) return null;
+    const a = this.area(b);
+    if (a < this.W * this.H * 0.002 || a > this.W * this.H * 0.6) return null;
+    return { id: 1, cx: (b.bx0 + b.bx1) / 2, cy: (b.by0 + b.by1) / 2, w: b.bx1 - b.bx0 + 1, h: b.by1 - b.by0 + 1,
+      mask: encodeRle(this.mask, this.W, b.bx0, b.by0, b.bx1, b.by1) };
   }
 
   step(rgba: Uint8ClampedArray): Shape {

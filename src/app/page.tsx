@@ -1,4 +1,4 @@
-import VfxStudio from '@/ui/VfxStudio';
+import VfxStudio from '@/components/editor/VfxStudio';
 
 export default function Home() {
   return <VfxStudio />;
