@@ -1,5 +1,3 @@
-import type { Config } from "@netlify/functions";
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_HEADERS = ["Timestamp", "Email", "Source"];
 const ALLOWED_SOURCES = new Set(["waitlist", "hero", "footer"]);
@@ -115,6 +113,6 @@ export default async (req: Request) => {
     : Response.json({ ok: false, error: result.error }, { status: result.status });
 };
 
-export const config: Config = {
+export const config = {
   path: "/api/waitlist",
 };

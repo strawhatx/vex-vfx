@@ -4,11 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "netlify dev",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@netlify/functions": "^4.0.0",
     "@types/node": "^20",
     "typescript": "^5"
   }
