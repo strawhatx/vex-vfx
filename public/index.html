@@ -198,9 +198,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
   <div class="wrap">
     <p class="eyebrow">Early access</p>
     <h2>Set your videos<br>on fire first.</h2>
-    <form id="waitlist" name="waitlist" method="POST" data-netlify="true" netlify-honeypot="bot-field" novalidate>
-      <input type="hidden" name="form-name" value="waitlist">
-      <p class="hidden"><label>Leave this empty <input name="bot-field"></label></p>
+    <form id="waitlist" action="/api/waitlist" method="POST" novalidate>
+      <p class="hidden" aria-hidden="true"><label>Leave this empty <input name="website" tabindex="-1" autocomplete="off"></label></p>
       <label class="sr" for="email">Email address</label>
       <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
       <button type="submit">Get early access</button>
@@ -398,20 +397,23 @@ footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
   if (reduce) { for (let i = 0; i < 40; i++) heroFx.step(1 / 30, W, H); cards.forEach(k => { for (let i = 0; i < 30; i++) k.fx.step(1 / 30); }); }
   else requestAnimationFrame(loop);
 
-  // ---------- waitlist (Netlify Forms) ----------
+  // ---------- waitlist (Netlify Function -> Google Sheets) ----------
   const form = document.getElementById('waitlist'), note = document.getElementById('note'), done = document.getElementById('done');
+  const btn = form.querySelector('button');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = form.email.value.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { note.textContent = 'Enter a valid email address.'; note.classList.add('err'); form.email.focus(); return; }
-    note.classList.remove('err'); note.textContent = 'Saving…';
+    note.classList.remove('err'); note.textContent = 'Saving…'; btn.disabled = true;
     try {
-      const res = await fetch('/', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(new FormData(form)).toString() });
-      if (!res.ok) throw new Error(res.status);
+      const res = await fetch('/api/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, website: form.website.value, source: 'waitlist' }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Couldn’t save that. Try again in a moment.');
       form.classList.add('hidden'); note.classList.add('hidden'); done.classList.remove('hidden');
     } catch (err) {
-      note.textContent = 'Couldn’t save that. The form works once this page is live on Netlify.'; note.classList.add('err');
-    }
+      note.textContent = err.message || 'Couldn’t save that. Try again in a moment.'; note.classList.add('err');
+    } finally { btn.disabled = false; }
   });
   form.email.addEventListener('input', () => { note.classList.remove('err'); note.textContent = 'Free to start. One email when it opens. No spam.'; });
 })();
