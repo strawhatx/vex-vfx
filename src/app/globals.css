@@ -5,7 +5,7 @@
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   --bg: #ffffff; --panel: #ffffff; --ink: #111113; --muted: #6b6b73; --line: #e7e7ea; --stage: #f1f2f4;
-  --field: #ffffff; --track: #e4e4e7; --primary: #111113; --primary-ink: #ffffff;
+  --field: #ffffff; --track: #e4e4e7; --primary: #111113; --primary-ink: #ffffff; --brand: #e0312b;
   --font: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -20,6 +20,8 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .topbar { max-width: 1320px; margin: 0 auto; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .brand { display: flex; flex-direction: column; min-width: 0; }
 .brand strong { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+.wordmark { font-family: var(--font-anton), Impact, "Arial Narrow Bold", sans-serif; font-weight: 400 !important; font-size: 1.6rem !important; line-height: 1; letter-spacing: 0.01em !important; }
+.wordmark em { font-style: normal; color: var(--brand); }
 .brand span { color: var(--muted); font-size: .85rem; }
 .actions { display: flex; gap: 10px; }
 

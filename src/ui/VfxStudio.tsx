@@ -58,7 +58,7 @@ export default function VfxStudio() {
     <>
       <header className="topbar">
         <div className="brand">
-          <strong>Vex VFX</strong>
+          <strong className="wordmark" aria-label="FlareCut">FLARE<em>CUT</em></strong>
           <span>Click it. Pick an effect. Watch it follow.</span>
         </div>
         <div className="actions">
