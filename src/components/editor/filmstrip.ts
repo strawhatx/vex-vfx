@@ -1,8 +1,9 @@
 // Timeline filmstrip: grabs one thumbnail per `step` seconds from a second, hidden copy of
-// the clip so the editor's own video never seeks.
+// the clip so the editor's own video never seeks. Times are clip time; videoStart is the video
+// element's time at the clip's first frame.
 
 export async function makeFilmstrip(
-  src: string, duration: number, step: number, thumbW: number, thumbH: number,
+  src: string, duration: number, videoStart: number, step: number, thumbW: number, thumbH: number,
   signal: AbortSignal, onThumb: (i: number, url: string) => void,
 ) {
   const v = document.createElement('video');
@@ -18,7 +19,7 @@ export async function makeFilmstrip(
     if (v.readyState < 2) await wait('loadeddata');
     const count = Math.ceil(duration / step);
     for (let i = 0; i < count && !signal.aborted; i++) {
-      v.currentTime = Math.min(duration - 0.05, (i + 0.5) * step);
+      v.currentTime = videoStart + Math.min(duration - 0.05, (i + 0.5) * step);
       await wait('seeked');
       if (signal.aborted) break;
       // cover-crop the frame into the tile

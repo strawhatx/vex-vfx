@@ -62,17 +62,6 @@ export class ObjectTracker {
     return this.shape();
   }
 
-  // outlines whatever is at (x, y) in the current frame without tracking it; null when
-  // there's nothing there or it's too small or covers most of the frame (background)
-  probe(x: number, y: number): Shape | null {
-    const b = this.outlineAt(x, y);
-    if (!b) return null;
-    const a = this.area(b);
-    if (a < this.W * this.H * 0.002 || a > this.W * this.H * 0.6) return null;
-    return { id: 1, cx: (b.bx0 + b.bx1) / 2, cy: (b.by0 + b.by1) / 2, w: b.bx1 - b.bx0 + 1, h: b.by1 - b.by0 + 1,
-      mask: encodeRle(this.mask, this.W, b.bx0, b.by0, b.bx1, b.by1) };
-  }
-
   step(rgba: Uint8ClampedArray): Shape {
     this.load(rgba, this.nextPyr);
     const pcx = this.box.cx, pcy = this.box.cy;

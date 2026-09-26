@@ -1,6 +1,6 @@
 // What the editor needs from the outside world, named by what it does. The browser adapters
 // in infrastructure/ implement these; tests use in-memory fakes.
-import type { Appearance } from '@/domain/tracking/appearance';
+import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { ClipFrame, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -12,23 +12,30 @@ interface JobEvents {
 
 // Analyses the clip, one job at a time; starting a job cancels the one in progress.
 export interface Analysis {
-  // lists every frame of the clip and the frames that start a new shot
-  scan(source: Blob, on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[], cuts: number[]): void }): void;
+  // lists every frame the player can show, in clip time (0 at its first frame; playerLength: how
+  // long the player can play)
+  scan(source: Blob, playerLength: number, on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void }): void;
   // follows the object at `select` in frame times[key], forward to the end of times then back to the start
   track(source: Blob, req: { times: number[]; key: number; select: Selection },
-    on: JobEvents & { appearance(a: Appearance | null): void; shapes(shapes: { i: number; shape: Shape }[]): void }): void;
-  // the point in the frame at t whose object looks most like `want`, if any
-  find(source: Blob, req: { t: number; want: Appearance }, on: JobEvents & { found(hit: { x: number; y: number } | null): void }): void;
+    on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void }): void;
   cancel(): void;
 }
 
-// one tracked object for the renderer: its track data (one entry per clip frame), its effect and outline color
-export interface LayerSpec { id: number; frames: TrackFrame[]; settings: FxSettings; color: string }
+// one clip for the renderer: an effect (drawn continuously) or an impact (just its burst); its
+// track data (one entry per clip frame), settings, outline color, when it starts and ends (seconds;
+// outside that it draws nothing at all), and its impacts (frame of the hit and style; each plays
+// out for its style's duration; tap: where on the object it was tapped, frame and work pixels,
+// so the burst lands on that spot rather than the middle of the object)
+export interface LayerSpec {
+  id: number; kind: 'effect' | 'impact'; frames: TrackFrame[]; settings: FxSettings; color: string; range: { s: number; e: number };
+  impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
+}
 
-// Draws each tracked object's effect over the video.
+// Draws each effect over the video.
 export interface EffectLayers {
-  // every frame of the clip, and for each frame the index of the first frame of its shot
-  setClip(frames: TrackFrame[], shotStart: Int32Array): void;
+  // every frame of the clip, and for each frame the first frame of its segment (effects restart
+  // at a segment's first frame; the whole clip is one segment)
+  setClip(frames: TrackFrame[], segmentStart: Int32Array): void;
   setLayers(specs: LayerSpec[]): void;
   // a layer's track data changed in place
   changed(id: number): void;

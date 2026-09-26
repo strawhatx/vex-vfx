@@ -1,46 +1,41 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Appearance } from '@/domain/tracking/appearance';
 import type { ClipFrame, Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
 import type { Analysis, EffectLayers, LayerSpec } from './ports';
 
 // ---------- fakes ----------
 type Call =
-  | { kind: 'scan'; on: Parameters<Analysis['scan']>[1] }
-  | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] }
-  | { kind: 'find'; req: Parameters<Analysis['find']>[1]; on: Parameters<Analysis['find']>[2] };
+  | { kind: 'scan'; on: Parameters<Analysis['scan']>[2] }
+  | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] };
 
 class FakeAnalysis implements Analysis {
   calls: Call[] = [];
   cancels = 0;
-  scan: Analysis['scan'] = (_s, on) => { this.calls.push({ kind: 'scan', on }); };
+  scan: Analysis['scan'] = (_s, _l, on) => { this.calls.push({ kind: 'scan', on }); };
   track: Analysis['track'] = (_s, req, on) => { this.calls.push({ kind: 'track', req, on }); };
-  find: Analysis['find'] = (_s, req, on) => { this.calls.push({ kind: 'find', req, on }); };
   cancel() { this.cancels++; }
   get last() { return this.calls[this.calls.length - 1]; }
+  get tracks() { return this.calls.filter(c => c.kind === 'track').length; }
 }
 
 class FakeLayers implements EffectLayers {
   specs: LayerSpec[] = [];
-  changedIds: number[] = [];
   setClip() {}
   setLayers(s: LayerSpec[]) { this.specs = s; }
-  changed(id: number) { this.changedIds.push(id); }
+  changed() {}
 }
 
-// 30 frames at 10 fps, cut at frames 10 and 20: three 1-second shots
-const clip: ClipFrame[] = Array.from({ length: 30 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
-const LOOK: Appearance = { top: new Float32Array(40), bottom: new Float32Array(40), area: 0.1, aspect: 0.5 };
+// 60 frames at 10 fps: a 6-second clip
+const clip: ClipFrame[] = Array.from({ length: 60 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
+const times = (a: number, b: number) => clip.slice(a, b).map(f => f.t);
 const shape = (): Shape => ({ id: 0, cx: 50, cy: 50, w: 20, h: 40 });
 
-let analysis: FakeAnalysis, layers: FakeLayers, editor: Editor, state: EditorState, statuses: string[];
+let analysis: FakeAnalysis, editor: Editor, layers: FakeLayers, state: EditorState, statuses: string[];
 
 function trackCall() { const c = analysis.last; if (c.kind !== 'track') throw new Error(`expected a track job, got ${c.kind}`); return c; }
-function findCall() { const c = analysis.last; if (c.kind !== 'find') throw new Error(`expected a find job, got ${c.kind}`); return c; }
-// finishes the running track job: every frame found, and (optionally) how the object looked
-function finishTrack(look: Appearance | null = LOOK) {
+// finishes the running track job with the object found in every frame
+function finishTrack() {
   const c = trackCall();
-  c.on.appearance(look);
   c.on.shapes(c.req.times.map((_, i) => ({ i, shape: shape() })));
   c.on.done();
   return c;
@@ -50,138 +45,207 @@ beforeEach(() => {
   analysis = new FakeAnalysis(); layers = new FakeLayers(); statuses = [];
   editor = new Editor(analysis, layers, { changed: s => { state = s; }, status: m => statuses.push(m), meta: () => {} });
   editor.load(new Blob());
-  editor.scan(3);
+  editor.scan(6);
   const scan = analysis.last;
   if (scan.kind !== 'scan') throw new Error('expected a scan');
-  scan.on.scanned({ videoW: 100, videoH: 100, W: 100, H: 100, duration: 3, frameCount: 30 }, clip, [10, 20]);
+  scan.on.scanned({ videoW: 100, videoH: 100, W: 100, H: 100, duration: 6, frameCount: 60 }, clip);
   scan.on.done();
 });
 
-describe('scanning', () => {
-  it('reports the cuts as times and is then ready', () => {
-    expect(state.cuts).toEqual([1, 2]);
-    expect(editor.ready).toBe(true);
-    expect(statuses).toContain('Found 2 cuts: 3 shots.');
-  });
-});
-
-describe('adding an object', () => {
-  it('tracks it through its own shot only, from the tapped frame', () => {
+describe('adding an effect', () => {
+  it('lasts 3 seconds from the tapped frame, and tracks only those frames', () => {
     editor.addTrack(14, { x: 50, y: 50 });
+    expect(state.lanes[0].range).toEqual({ s: 1.4, e: 4.4 });
     const c = trackCall();
-    expect(c.req.times).toEqual(clip.slice(10, 20).map(f => f.t));
-    expect(c.req.key).toBe(4);
+    expect(c.req.times).toEqual(times(14, 44));
+    expect(c.req.key).toBe(0);
     expect(state.job?.label).toBe('Tracking Object 1');
   });
 
-  it('then looks for it in each other shot', () => {
+  it('stops at the end of the clip', () => {
+    editor.addTrack(50, { x: 50, y: 50 });
+    expect(state.lanes[0].range).toEqual({ s: 5, e: 6 });
+    expect(trackCall().req.times).toEqual(times(50, 60));
+  });
+
+  it('draws the effect only inside its range once tracked', () => {
     editor.addTrack(14, { x: 50, y: 50 });
     finishTrack();
-    expect(findCall().req.t).toBe(clip[2].t); // shot 1, a couple of frames in
+    expect(editor.hasShapeAt(1, 20)).toBe(true);
+    expect(editor.hasShapeAt(1, 50)).toBe(false);
     expect(state.hasEffects).toBe(true);
-    expect(layers.specs.map(s => s.id)).toEqual([1]);
-  });
-
-  it('tracks it in a shot where it is found again, marked as automatic', () => {
-    editor.addTrack(14, { x: 50, y: 50 });
-    finishTrack();
-    findCall().on.found({ x: 30, y: 60 }); findCall().on.done();
-    const c = trackCall();
-    expect(c.req.times).toEqual(clip.slice(0, 10).map(f => f.t));
-    expect(c.req.select).toEqual({ x: 30, y: 60 });
-    expect(state.lanes[0].keys).toEqual([{ t: 0.2, auto: true }, { t: 1.4, auto: false }]);
-  });
-
-  it('marks shots where it is not found', () => {
-    editor.addTrack(14, { x: 50, y: 50 });
-    finishTrack();
-    findCall().on.found(null); findCall().on.done();
-    findCall().on.found(null); findCall().on.done();
-    expect(state.lanes[0].missing.map(m => m.shot)).toEqual([0, 2]);
-    expect(state.job).toBeNull();
-  });
-
-  it('skips the search when only a box could be tracked (nothing to match)', () => {
-    editor.addTrack(14, { x: 50, y: 50 });
-    finishTrack(null);
-    expect(analysis.calls.filter(c => c.kind === 'find')).toHaveLength(0);
-    expect(state.lanes[0].missing.map(m => m.shot)).toEqual([0, 2]);
+    expect(editor.firstEffectTime()).toBe(1.4);
   });
 });
 
-describe('fixing', () => {
-  it('a fix jumps ahead of a search in progress, and the search runs again after', () => {
-    editor.addTrack(12, { x: 50, y: 50 });
-    finishTrack();
-    const search = findCall();
-    editor.fixAt(1, 18, { x: 70, y: 50 });
-    expect(trackCall().req.select).toEqual({ x: 70, y: 50 });
-    finishTrack();
-    expect(findCall().req).toEqual(search.req);
+describe('stacking effects', () => {
+  it('effects one after another share a row', () => {
+    editor.addTrack(0, { x: 10, y: 10 });   // 0..3
+    editor.addTrack(30, { x: 20, y: 20 });  // 3..6
+    expect(state.rows).toBe(1);
+    expect(state.lanes.map(l => l.row)).toEqual([0, 0]);
   });
 
-  it('a fix re-tracks only the frames nearer to it than to the first tap', () => {
-    editor.addTrack(12, { x: 50, y: 50 });
-    finishTrack();
-    editor.fixAt(1, 18, { x: 70, y: 50 });
-    const c = trackCall();
-    // halfway between 12 and 18 is 15, so the fix owns 16..19
-    expect(c.req.times).toEqual(clip.slice(16, 20).map(f => f.t));
-    expect(c.req.key).toBe(2);
-  });
-
-  it('a fix during tracking in the same shot cancels that job and runs it again after', () => {
-    editor.addTrack(12, { x: 50, y: 50 });
-    const first = trackCall();
-    editor.fixAt(1, 18, { x: 70, y: 50 });
-    expect(analysis.cancels).toBeGreaterThan(0);
-    expect(trackCall().req.select).toEqual({ x: 70, y: 50 });
-    finishTrack();
-    // the first tap's job again, now only up to the halfway point
-    expect(trackCall().req.select).toEqual(first.req.select);
-    expect(trackCall().req.times).toEqual(clip.slice(10, 16).map(f => f.t));
-  });
-
-  it('removing a fix clears its frames and hands them back to the other keyframe', () => {
-    editor.addTrack(12, { x: 50, y: 50 });
-    finishTrack();
-    findCall().on.found(null); findCall().on.done();
-    findCall().on.found(null); findCall().on.done();
-    editor.fixAt(1, 18, { x: 70, y: 50 });
-    finishTrack();
-    expect(editor.removeFixAt(1, 19)).toBe(true);
-    expect(editor.hasShapeAt(1, 19)).toBe(false);
-    const c = trackCall();
-    expect(c.req.select).toEqual({ x: 50, y: 50 });
-    expect(c.req.times).toEqual(clip.slice(10, 20).map(f => f.t));
-    expect(statuses).toContain('Removed the fix here.');
-  });
-});
-
-describe('effects and objects', () => {
-  it('each object keeps its own effect', () => {
-    editor.addTrack(14, { x: 50, y: 50 });
+  it('overlapping effects stack on separate rows, each with its own look', () => {
+    editor.addTrack(0, { x: 10, y: 10 });
     editor.setEffect(1, 'lightning');
-    editor.addTrack(14, { x: 10, y: 10 });
+    editor.addTrack(10, { x: 20, y: 20 });
     editor.setFx(2, { pal: 2 });
+    expect(state.rows).toBe(2);
     expect(editor.fx(1)).toMatchObject({ effect: 'lightning', pal: 1 });
     expect(editor.fx(2)).toMatchObject({ effect: 'lightning', pal: 2 });
     expect(layers.specs.map(s => s.settings.pal)).toEqual([1, 2]);
   });
+});
 
-  it('deleting an object cancels its work and drops its lane', () => {
+describe('changing where an effect starts and ends', () => {
+  it('dragging does not track; letting go tracks only the new frames', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    const before = analysis.tracks;
+    editor.setRange(1, { e: 5 });
+    editor.setRange(1, { e: 5.4 });
+    expect(analysis.tracks).toBe(before);
+    editor.commitRange(1);
+    expect(trackCall().req.times).toEqual(times(14, 54));
+  });
+
+  it('the renderer is told where the effect now ends, so it switches off right there', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.setRange(1, { e: 2.5 });
+    expect(layers.specs[0].range).toEqual({ s: 1.4, e: 2.5 });
+  });
+
+  it('shortening an effect needs no tracking', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    const before = analysis.tracks;
+    editor.setRange(1, { s: 2, e: 3 });
+    editor.commitRange(1);
+    expect(analysis.tracks).toBe(before);
+    expect(editor.hasShapeAt(1, 25)).toBe(true);
+    expect(editor.hasShapeAt(1, 15)).toBe(false);
+  });
+
+  it('never gets shorter than a tenth of a second or leaves the clip', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.setRange(1, { e: 1.45 });
+    expect(state.lanes[0].range).toEqual({ s: 1.4, e: 4.4 });
+    editor.setRange(1, { s: -1, e: 99 });
+    expect(state.lanes[0].range).toEqual({ s: 0, e: 6 });
+  });
+});
+
+describe('fixing', () => {
+  it('a fix re-tracks only the frames nearer to it than to the first tap', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    expect(editor.fixAt(1, 40, { x: 70, y: 50 })).toBe(true);
+    const c = trackCall();
+    // halfway between 14 and 40 is 27, so the fix owns 28..43
+    expect(c.req.times).toEqual(times(28, 44));
+    expect(c.req.key).toBe(12);
+  });
+
+  it('a tap outside the effect is not a fix', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    expect(editor.fixAt(1, 50, { x: 70, y: 50 })).toBe(false);
+    expect(statuses.at(-1)).toContain('outside Object 1');
+  });
+
+  it('a fix during tracking cancels it and runs it again after, up to the halfway point', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    const first = trackCall();
+    editor.fixAt(1, 40, { x: 70, y: 50 });
+    expect(analysis.cancels).toBeGreaterThan(0);
+    expect(trackCall().req.select).toEqual({ x: 70, y: 50 });
+    finishTrack();
+    expect(trackCall().req.select).toEqual(first.req.select);
+    expect(trackCall().req.times).toEqual(times(14, 28));
+  });
+
+  it('removing a fix clears its frames and hands them back', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    editor.fixAt(1, 40, { x: 70, y: 50 });
+    finishTrack();
+    expect(editor.removeFixAt(1, 41)).toBe(true);
+    expect(editor.hasShapeAt(1, 41)).toBe(false);
+    expect(trackCall().req.times).toEqual(times(14, 44));
+    expect(statuses).toContain('Removed the fix here.');
+  });
+});
+
+describe('deleting', () => {
+  it('cancels its tracking and drops its bar', () => {
     editor.addTrack(14, { x: 50, y: 50 });
     const before = analysis.cancels;
     editor.deleteTrack(1);
     expect(analysis.cancels).toBe(before + 1);
     expect(state.lanes).toEqual([]);
+    expect(state.rows).toBe(0);
     expect(layers.specs).toEqual([]);
     expect(state.job).toBeNull();
   });
+});
 
-  it('export starts at the first frame any effect follows', () => {
-    editor.addTrack(14, { x: 50, y: 50 });
+describe('impacts', () => {
+  it('an impact is its own clip, hitting at the tapped frame, drawn by the renderer as a burst', () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'slam')!;
+    const lane = state.lanes.find(l => l.id === id)!;
+    expect(lane.kind).toBe('impact');
+    expect(lane.impact).toBe('slam');
+    expect(lane.range).toEqual({ s: 2, e: 2.7 });
+    const spec = layers.specs.find(s => s.id === id)!;
+    expect(spec.kind).toBe('impact');
+    expect(spec.impacts).toEqual([{ id, i: 20, style: 'slam', tap: { i: 20, x: 50, y: 50 } }]);
+  });
+
+  it('tracks the object from a little before the hit to the end of the burst', () => {
+    editor.addImpact(20, { x: 50, y: 50 }, 'punch');
+    const c = trackCall();
+    expect(c.req.times[0]).toBe(1.8);
+    expect(c.req.times[c.req.times.length - 1]).toBe(2.4);
+    expect(c.req.times[c.req.key]).toBe(2);
+  });
+
+  it('the next impact gets the last style chosen', () => {
+    const a = editor.addImpact(20, { x: 50, y: 50 }, 'anime')!;
+    const b = editor.addImpact(40, { x: 50, y: 50 })!;
+    expect(state.lanes.find(l => l.id === b)!.impact).toBe('anime');
+    editor.setImpactStyle(a, 'blast');
+    expect(state.lanes.find(l => l.id === a)!.range).toEqual({ s: 2, e: 2.8 });
+    expect(editor.impactStyle).toBe('blast');
+  });
+
+  it('moving an impact tracks the new moment, from where the object was tapped', () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch')!;
     finishTrack();
-    expect(editor.firstEffectTime()).toBe(1);
+    editor.moveImpactTo(id, 3);
+    expect(state.lanes[0].range.s).toBe(3);
+    expect(layers.specs[0].impacts[0].i).toBe(30);
+    const c = trackCall();
+    expect(c.req.times[c.req.key]).toBe(2);
+    expect(c.req.times[c.req.times.length - 1]).toBe(3.4);
+  });
+
+  it('stretching an impact slows its burst and tells the renderer its new length', () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch')!;
+    finishTrack();
+    editor.setRange(id, { e: 2.9 });
+    editor.commitRange(id);
+    const lane = state.lanes.find(l => l.id === id)!;
+    expect(lane.speed).toBeCloseTo(0.5);
+    expect(layers.specs[0].range).toEqual({ s: 2, e: 2.9 });
+    // the new frames are tracked
+    expect(trackCall().req.times.at(-1)).toBe(2.8);
+  });
+
+  it('impacts and effects stack on rows together', () => {
+    editor.addTrack(0, { x: 10, y: 10 });            // 0..3
+    editor.addImpact(20, { x: 20, y: 20 }, 'punch'); // 2..2.45, overlaps
+    editor.addImpact(40, { x: 20, y: 20 }, 'punch'); // 4..4.45, free
+    expect(state.lanes.map(l => l.row)).toEqual([0, 1, 0]);
   });
 });

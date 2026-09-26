@@ -1,5 +1,6 @@
-// Records the preview canvas (plus the clip's audio when the browser allows) with
-// MediaRecorder. Stand-in until the frame-by-frame MP4 exporter replaces it.
+// Records the preview canvas plus the sound (the editor's mix, or failing that the clip's own audio
+// when the browser allows) with MediaRecorder. Stand-in until the frame-by-frame MP4 exporter
+// replaces it.
 type CapturableVideo = HTMLVideoElement & { captureStream?: () => MediaStream; mozCaptureStream?: () => MediaStream };
 
 export interface Recording { url: string; ext: string; hasAudio: boolean }
@@ -13,12 +14,14 @@ export function recordingType() {
 
 export function canRecord(canvas: HTMLCanvasElement) { return recordingType() !== null && !!canvas.captureStream; }
 
-// records until stop() is called; resolves with the finished clip
-export function startCanvasRecording(canvas: HTMLCanvasElement, video: HTMLVideoElement) {
+// records until stop() is called; resolves with the finished clip. audio: the sound to record; without
+// it, the video element's own audio is tried
+export function startCanvasRecording(canvas: HTMLCanvasElement, audio: MediaStreamTrack | null, video: HTMLVideoElement) {
   const type = recordingType() ?? '', ext = type.startsWith('video/mp4') ? 'mp4' : 'webm';
   const stream = canvas.captureStream(30);
   let hasAudio = false;
-  try {
+  if (audio) { stream.addTrack(audio); hasAudio = true; }
+  else try {
     const cv = video as CapturableVideo;
     const vs = cv.captureStream ? cv.captureStream() : cv.mozCaptureStream ? cv.mozCaptureStream() : null;
     vs?.getAudioTracks().forEach(t => { stream.addTrack(t); hasAudio = true; });

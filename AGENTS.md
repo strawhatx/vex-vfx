@@ -16,8 +16,8 @@ testable without a browser. Dependencies point inward only.
 ```
 src/
 ├── domain/          # pure TypeScript: no React, DOM, canvas, workers or Next.js
-│   ├── project/     #   shots, keyframes, tracks (the editing rules)
-│   ├── tracking/    #   track data types, cut detection, object matching
+│   ├── project/     #   effects on the timeline: ranges, keyframes, stacking (the editing rules)
+│   ├── tracking/    #   track data types, clip time (lining file times up with the player)
 │   └── effects/     #   effect settings and palettes
 ├── application/     # use cases: editor.ts (actions + job queue), ports.ts (interfaces it needs)
 ├── infrastructure/  # browser adapters that implement the ports

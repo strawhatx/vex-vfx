@@ -1,73 +1,130 @@
-// The timeline: a ruler, the clip's filmstrip, one lane per tracked object and cut lines through
-// them all. The playhead is fixed in the middle and the timeline scrolls under it; scrolling scrubs.
+// The timeline: a ruler, the clip's filmstrip, and the effects and impacts as bars covering the
+// stretch each one lasts, stacked in rows where they overlap; the clip's own sound and each
+// effect's sound are drawn as waveforms. The playhead
+// is fixed in the middle and the timeline scrolls under it; scrolling scrubs. Pinch (or Ctrl/⌘ +
+// scroll) zooms it, keeping the playhead on the same moment.
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
+import { IMPACTS } from '@/domain/effects/impacts';
 import type { Lane, UiState } from './player';
 import { makeFilmstrip } from './filmstrip';
 import { Icon, I } from './icons';
 import { effectName } from './ToolSheet';
 
-// pixels per second of video, and filmstrip tile height
-const PPS = 64, THUMB_H = 56;
-const x = (t: number) => t * PPS;
+// pixels per second: at the start, and how far it zooms; filmstrip tile height
+const BASE_PPS = 64, MIN_PPS = 12, MAX_PPS = 480, THUMB_H = 56;
+// ruler label spacing, in seconds: the smallest that keeps labels this far apart
+const LABEL_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120], LABEL_GAP = 64;
 
 export const mmss = (t: number) => { t = Math.max(0, t || 0); return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(Math.floor(t % 60)).padStart(2, '0'); };
+const label = (t: number, step: number) => (step < 1 ? `${mmss(t)}.${Math.round((t % 1) * 10)}` : mmss(t));
 
-export function Timeline({ ui, clipSelected, busy, currentTime, on }: {
+// a waveform: levels (0..1) spread evenly across its box, drawn mirrored around the middle
+function Wave({ levels, className }: { levels: number[]; className: string }) {
+  const n = Math.max(1, levels.length), top = levels.map((v, k) => `${k + 0.5},${(0.5 - Math.max(0.02, v) * 0.48).toFixed(3)}`);
+  const bottom = levels.map((v, k) => `${k + 0.5},${(0.5 + Math.max(0.02, v) * 0.48).toFixed(3)}`).reverse();
+  return (
+    <svg className={className} viewBox={`0 0 ${n} 1`} preserveAspectRatio="none" aria-hidden="true">
+      <polygon points={[...top, ...bottom].join(' ')} />
+    </svg>
+  );
+}
+
+export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }: {
   ui: UiState; clipSelected: boolean; busy: boolean;
-  currentTime(): number; // the video's time, read every frame while playing
+  soundShape(l: Lane): number[]; // each clip's sound effect, for its waveform
+  currentTime(): number; // the clip time being shown, read every frame while playing
   on: {
-    seek(t: number): void; deselect(): void; selectClip(): void; selectLane(id: number): void;
-    chooseFile(): void; addObject(): void; goToShot(id: number, shot: number): void; setRange(id: number, r: { s?: number; e?: number }): void;
+    seek(t: number): void; toggleMute(): void; deselect(): void; selectClip(): void; selectLane(id: number): void;
+    chooseFile(): void; addEffect(): void;
+    // live while dragging an effect's end; commit once the drag ends
+    setRange(id: number, r: { s?: number; e?: number }): void; commitRange(id: number): void;
+    // an impact dragged to hit at time t
+    moveImpact(id: number, t: number): void;
   };
 }) {
   const dur = ui.duration || 0;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [pps, setPps] = useState(BASE_PPS);
+  const x = (t: number) => t * pps;
   const [clock, setClock] = useState(0);
   const [strip, setStrip] = useState<{ src: string; urls: string[] } | null>(null);
 
-  // ---------- filmstrip: at most 60 tiles ----------
+  // ---------- filmstrip: at most 60 tiles, stretched when zoomed ----------
   const step = dur > 60 ? dur / 60 : 1;
   useEffect(() => {
     const src = ui.src;
     if (!src || !dur) return;
     const ac = new AbortController();
-    void makeFilmstrip(src, dur, step, step * PPS, THUMB_H, ac.signal, (i, url) => {
+    void makeFilmstrip(src, dur, ui.videoStart, step, step * BASE_PPS, THUMB_H, ac.signal, (i, url) => {
       setStrip(st => { const urls = st?.src === src ? st.urls.slice() : []; urls[i] = url; return { src, urls }; });
     });
     return () => ac.abort();
-  }, [ui.src, dur, step]);
+  }, [ui.src, dur, ui.videoStart, step]);
   const thumbs = strip && strip.src === ui.src ? strip.urls : [];
 
   // ---------- timeline <-> playhead ----------
   const lastSet = useRef(-1);
   const pending = useRef<number | null>(null);
-  const scrollTo = useCallback((t: number) => {
+  const shownTime = ui.playing ? clock : ui.time;
+  const scrollTo = useCallback((t: number, scale: number) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollLeft = x(t);
+    el.scrollLeft = t * scale;
     lastSet.current = el.scrollLeft;
   }, []);
   // while playing, follow the video every frame (timeupdate is too coarse)
   useEffect(() => {
     if (!ui.playing) return;
     let raf = 0;
-    const tick = () => { const t = currentTime(); setClock(t); scrollTo(t); raf = requestAnimationFrame(tick); };
+    const tick = () => { const t = currentTime(); setClock(t); scrollTo(t, pps); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [ui.playing, scrollTo, currentTime]);
-  useEffect(() => { if (!ui.playing) scrollTo(ui.time); }, [ui.time, ui.playing, scrollTo]);
-  const shownTime = ui.playing ? clock : ui.time;
+  }, [ui.playing, scrollTo, currentTime, pps]);
+  // paused, or zoom changed: keep the playhead on the same moment
+  useEffect(() => { if (!ui.playing) scrollTo(ui.time, pps); }, [ui.time, ui.playing, scrollTo, pps]);
 
   function onScroll() {
     const el = scrollRef.current;
     if (!el || Math.abs(el.scrollLeft - lastSet.current) < 1) return; // our own scroll
     lastSet.current = el.scrollLeft;
-    const t = Math.min(dur, el.scrollLeft / PPS);
+    const t = Math.min(dur, el.scrollLeft / pps);
     if (pending.current === null) requestAnimationFrame(() => { if (pending.current !== null) on.seek(pending.current); pending.current = null; });
     pending.current = t;
   }
 
-  // ---------- dragging an effect's start or end handle ----------
+  // ---------- zoom: pinch with two fingers, or Ctrl/⌘ + scroll (trackpad pinch) ----------
+  const ppsRef = useRef(pps);
+  useEffect(() => { ppsRef.current = pps; }, [pps]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const clamp = (v: number) => Math.max(MIN_PPS, Math.min(MAX_PPS, v));
+    let pinch: { d: number; pps: number } | null = null;
+    const dist = (e: TouchEvent) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    const start = (e: TouchEvent) => { if (e.touches.length === 2) { pinch = { d: dist(e), pps: ppsRef.current }; e.preventDefault(); } };
+    const move = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      setPps(clamp(pinch.pps * dist(e) / Math.max(1, pinch.d)));
+    };
+    const end = (e: TouchEvent) => { if (e.touches.length < 2) pinch = null; };
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setPps(p => clamp(p * Math.exp(-e.deltaY * 0.01)));
+    };
+    el.addEventListener('touchstart', start, { passive: false });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', start); el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); el.removeEventListener('wheel', wheel);
+    };
+  }, []);
+
+  // ---------- dragging an effect's start or end ----------
   const drag = useRef<{ id: number; end: 's' | 'e'; x: number; t: number } | null>(null);
   function gripDown(e: PointerEvent, l: Lane, end: 's' | 'e') {
     e.stopPropagation(); e.preventDefault();
@@ -76,26 +133,56 @@ export function Timeline({ ui, clipSelected, busy, currentTime, on }: {
   }
   function gripMove(e: PointerEvent) {
     const d = drag.current;
-    if (d) on.setRange(d.id, { [d.end]: d.t + (e.clientX - d.x) / PPS });
+    if (d) on.setRange(d.id, { [d.end]: d.t + (e.clientX - d.x) / pps });
   }
-  const gripUp = () => { drag.current = null; };
+  function gripUp() {
+    const d = drag.current;
+    drag.current = null;
+    if (d) on.commitRange(d.id);
+  }
   const grip = (l: Lane, end: 's' | 'e') => (
     <span className={`grip ${end}`} onPointerDown={e => gripDown(e, l, end)} onPointerMove={gripMove} onPointerUp={gripUp} onPointerCancel={gripUp}
-      role="slider" aria-label={end === 's' ? 'Effect start' : 'Effect end'} aria-valuemin={0} aria-valuemax={dur} aria-valuenow={l.range[end]} />
+      onClick={e => e.stopPropagation()}
+      role="slider" aria-label={`${l.name} ${end === 's' ? 'start' : 'end'}`} aria-valuemin={0} aria-valuemax={dur} aria-valuenow={l.range[end]} />
   );
+
+  // ---------- impacts: tap to select, drag to move the hit ----------
+  const [impDrag, setImpDrag] = useState<{ id: number; x: number; from: number; t: number; moved: boolean } | null>(null);
+  function impDown(e: PointerEvent, l: Lane) {
+    e.stopPropagation(); e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setImpDrag({ id: l.id, x: e.clientX, from: l.range.s, t: l.range.s, moved: false });
+  }
+  function impMove(e: PointerEvent) {
+    if (!impDrag) return;
+    const dx = e.clientX - impDrag.x;
+    if (!impDrag.moved && Math.abs(dx) < 4) return;
+    setImpDrag({ ...impDrag, t: Math.max(0, Math.min(dur, impDrag.from + dx / pps)), moved: true });
+  }
+  function impUp() {
+    const d = impDrag;
+    setImpDrag(null);
+    if (!d) return;
+    if (d.moved) on.moveImpact(d.id, d.t);
+    if (!d.moved || ui.selected !== d.id) on.selectLane(d.id);
+  }
 
   const stop = (f: () => void) => (e: MouseEvent) => { e.stopPropagation(); f(); };
 
-  // ruler: a label every 2 s, a dot on the odd seconds
+  // ruler: labels far enough apart for the zoom, with a dot halfway between
+  const every = LABEL_STEPS.find(s => s * pps >= LABEL_GAP) ?? LABEL_STEPS[LABEL_STEPS.length - 1];
   const ticks = [];
-  for (let s = 0; s <= Math.floor(dur); s++) ticks.push(
-    <span key={s} className={s % 2 ? 'tick dot' : 'tick'} style={{ left: x(s) }}>{s % 2 ? '' : mmss(s)}</span>,
-  );
+  for (let k = 0; k * every / 2 <= dur + 1e-6; k++) {
+    const s = k * every / 2, dot = k % 2 === 1;
+    ticks.push(<span key={k} className={dot ? 'tick dot' : 'tick'} style={{ left: x(s) }}>{dot ? '' : label(s, every)}</span>);
+  }
+
+  const rows = Array.from({ length: ui.rows }, (_, r) => ui.lanes.filter(l => l.row === r));
 
   return (
     <div className="timeline" onClick={on.deselect}>
       <span className="tl-time"><b>{mmss(shownTime)}</b> / {mmss(dur)}</span>
-      <div ref={scrollRef} className="tl-scroll" onScroll={onScroll} aria-label="Timeline. Drag to scrub.">
+      <div ref={scrollRef} className="tl-scroll" onScroll={onScroll} aria-label="Timeline. Drag to scrub, pinch to zoom.">
         <div className="tl-inner" style={{ width: x(dur) }}>
           <div className="ruler">{ticks}</div>
 
@@ -103,6 +190,9 @@ export function Timeline({ ui, clipSelected, busy, currentTime, on }: {
             {ui.ready ? (
               <>
                 <div className="heads">
+                  <button type="button" className="head" aria-pressed={ui.muted} onClick={stop(on.toggleMute)}>
+                    <Icon d={ui.muted ? I.muted : I.sound} size={20} />{ui.muted ? 'Unmute' : 'Mute'}
+                  </button>
                   <button type="button" className="head" onClick={stop(on.chooseFile)}><Icon d={I.swap} size={20} />Replace</button>
                 </div>
                 <button type="button" className={`lane clip${clipSelected ? ' sel' : ''}`} style={{ width: x(dur), height: THUMB_H }}
@@ -120,42 +210,67 @@ export function Timeline({ ui, clipSelected, busy, currentTime, on }: {
             )}
           </div>
 
-          {ui.lanes.map(l => {
-            const sel = l.id === ui.selected;
-            return (
-              <div key={l.id} className="tl-row fx-row">
-                <span className="heads"><span className="lane-icon" style={{ color: l.color }}><Icon d={I.effects} size={16} /></span></span>
-                <button type="button" className={`lane fx${sel ? ' on' : ''}`} style={{ left: 0, width: x(dur), '--c': l.color } as CSSProperties}
-                  aria-pressed={sel} aria-label={`${l.name}: ${effectName(l.fx.effect)}`} onClick={stop(() => on.selectLane(l.id))}>
-                  {l.spans.map((sp, i) => (
-                    <span key={i} className={`span${sp.weak ? ' weak' : ''}`} style={{ left: x(sp.s), width: Math.max(2, x(sp.e - sp.s)) }} />
-                  ))}
-                  {/* outside the effect's start and end */}
-                  <span className="off" style={{ left: 0, width: x(l.range.s) }} />
-                  <span className="off" style={{ left: x(l.range.e), right: 0 }} />
-                  {l.keys.map((k, i) => <i key={i} className={`key${k.auto ? ' auto' : ''}`} style={{ left: x(k.t) }} />)}
-                  <span className="fx-label" style={{ left: x(l.range.s) + (sel ? 18 : 8) }}><i style={{ background: l.color }} />{l.name} · {effectName(l.fx.effect)}</span>
-                </button>
-                {l.missing.map(m => (
-                  <button key={m.shot} type="button" className="missing" style={{ left: x(m.s), width: Math.max(28, x(m.e - m.s)) }}
-                    onClick={stop(() => on.goToShot(l.id, m.shot))}>
-                    {x(m.e - m.s) > 96 ? 'Not found · tap to fix' : '?'}
-                  </button>
-                ))}
-                {sel && <span className="range" style={{ left: x(l.range.s), width: x(l.range.e - l.range.s) }}>{grip(l, 's')}{grip(l, 'e')}</span>}
-              </div>
-            );
-          })}
-
           {ui.ready && (
-            <div className="tl-row add-row">
-              <button type="button" className={`add-hint${ui.adding ? ' on' : ''}`} disabled={busy} onClick={stop(on.addObject)}>
-                <Icon d={I.plus} size={16} />{ui.adding ? 'Tap the object in the preview' : ui.lanes.length ? 'Add object' : 'Add effect: tap an object above'}
+            // the clip's own sound
+            <div className="tl-row audio-row">
+              <button type="button" className={`audio-clip${ui.muted ? ' muted' : ''}${clipSelected ? ' sel' : ''}`} style={{ width: x(dur) }}
+                aria-label={ui.wave === 'none' ? 'This clip has no sound' : ui.muted ? 'Clip sound, muted' : 'Clip sound'} onClick={stop(on.selectClip)}>
+                {Array.isArray(ui.wave) ? <Wave levels={ui.wave} className="wave" />
+                  : <span>{ui.wave === 'none' ? 'No sound in this clip' : ui.wave === 'unreadable' ? 'Clip sound (can’t show its waveform here)' : 'Reading sound…'}</span>}
+                {ui.wave !== 'none' && ui.muted && <span className="muted-tag"><Icon d={I.muted} size={12} />Muted</span>}
               </button>
             </div>
           )}
 
-          {ui.cuts.map(t => <span key={t} className="cut" style={{ left: x(t) }} aria-hidden="true" />)}
+          {rows.map((lanes, r) => (
+            <div key={r} className="tl-row fx-row">
+              {r === 0 && <span className="heads"><span className="lane-icon"><Icon d={I.effects} size={16} /></span></span>}
+              {lanes.map(l => {
+                const sel = l.id === ui.selected;
+                if (l.kind === 'impact') {
+                  // a short clip starting at the hit: tap to select, drag to move; stretch its ends to
+                  // slow the burst down, squeeze them to speed it up
+                  const dragging = impDrag?.id === l.id, at = dragging ? impDrag.t : l.range.s, w = Math.max(24, x(l.range.e - l.range.s));
+                  const speed = Math.abs(l.speed - 1) < 0.01 ? '' : `${l.speed < 1 ? l.speed.toFixed(2).replace(/0$/, '') : l.speed.toFixed(1)}×`;
+                  return (
+                    <span key={l.id} className={`fx-clip${sel || dragging ? ' on' : ''}`} style={{ left: x(at), width: w, '--c': l.color } as CSSProperties}>
+                      <button type="button" className={`impact-clip${sel || dragging ? ' on' : ''}`}
+                        aria-pressed={sel} aria-label={`${l.name}: ${IMPACTS[l.impact!].label}${speed ? ` at ${speed} speed` : ''}, hits at ${mmss(l.range.s)}. Tap to select, drag to move.`}
+                        onClick={e => e.stopPropagation()} onPointerDown={e => impDown(e, l)} onPointerMove={impMove} onPointerUp={impUp} onPointerCancel={() => setImpDrag(null)}>
+                        <Wave levels={soundShape(l)} className="fx-wave" />
+                        <Icon d={I.burst} size={14} />
+                        {w > 40 && <span>{w > 110 ? IMPACTS[l.impact!].label : ''}{speed && <b>{speed}</b>}</span>}
+                      </button>
+                      {sel && !dragging && <>{grip(l, 's')}{grip(l, 'e')}</>}
+                    </span>
+                  );
+                }
+                const w = x(l.range.e - l.range.s);
+                return (
+                  <span key={l.id} className={`fx-clip${sel ? ' on' : ''}`} style={{ left: x(l.range.s), width: w, '--c': l.color } as CSSProperties}>
+                    <button type="button" className="fx-body" aria-pressed={sel} aria-label={`${l.name}: ${effectName(l.fx.effect)}, ${mmss(l.range.s)} to ${mmss(l.range.e)}`}
+                      onClick={stop(() => on.selectLane(l.id))}>
+                      {l.spans.map((sp, i) => (
+                        <span key={i} className={`span${sp.weak ? ' weak' : ''}`} style={{ left: x(sp.s - l.range.s), width: Math.max(2, x(sp.e - sp.s)) }} />
+                      ))}
+                      <Wave levels={soundShape(l)} className="fx-wave" />
+                      {l.keys.map((k, i) => <i key={i} className="key" style={{ left: x(k - l.range.s) }} />)}
+                      <span className="fx-label"><i style={{ background: l.color }} />{w > 110 ? `${l.name} · ${effectName(l.fx.effect)}` : effectName(l.fx.effect)}</span>
+                    </button>
+                    {sel && <>{grip(l, 's')}{grip(l, 'e')}</>}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+
+          {ui.ready && (
+            <div className="tl-row add-row">
+              <button type="button" className={`add-hint${ui.adding ? ' on' : ''}`} disabled={busy} onClick={stop(on.addEffect)}>
+                <Icon d={I.plus} size={16} />{ui.adding ? 'Tap the object in the preview' : 'Add effect'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
       <div className="playhead" aria-hidden="true" />

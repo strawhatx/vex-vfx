@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import type { ClipFrame, Shape } from '../tracking/types';
-import { makeShots } from './shots';
-import { nearestOther, newTrack, refreshFrames, setRange, swapFrom, toLane, trackAt } from './track';
+import { hitFrame, impactSpeed, nearestOther, newImpact, newTrack, packRows, rangeFrames, refreshFrames, setHit, setRange, swapFrom, toLane, trackAt, trackSpan } from './track';
 
-const FX = { effect: 'fire', pal: 0, size: 1, intensity: 1 } as const;
+const FX = { effect: 'fire', pal: 0, size: 1, intensity: 1, volume: 1 } as const;
 // 10 frames at 10 fps
 const clip: ClipFrame[] = Array.from({ length: 10 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
 const shape = (cx: number, lost = false): Shape => ({ id: 0, cx, cy: 50, w: 20, h: 20, lost: lost || undefined });
 
-function tracked(id: number, cx: number) {
-  const t = newTrack(id, clip, FX, 1);
+function tracked(id: number, cx: number, range = { s: 0, e: 1 }) {
+  const t = newTrack(id, clip, FX, range);
   t.shapes = clip.map(() => shape(cx));
   refreshFrames(t, clip);
   return t;
 }
 
 describe('effect range', () => {
+  it('covers the frames that start inside it', () => {
+    expect(rangeFrames(tracked(1, 10, { s: 0.3, e: 0.6 }), clip)).toEqual({ s: 3, e: 6 });
+    expect(rangeFrames(tracked(1, 10, { s: 0.25, e: 0.65 }), clip)).toEqual({ s: 3, e: 7 });
+  });
   it('only draws the shapes inside the range', () => {
     const t = tracked(1, 10);
     expect(setRange(t, { s: 0.3, e: 0.6 }, 1, clip)).toBe(true);
@@ -30,11 +33,23 @@ describe('effect range', () => {
   });
 });
 
+describe('packRows', () => {
+  it('puts effects that follow each other on one row', () => {
+    expect(packRows([{ s: 0, e: 2 }, { s: 2, e: 4 }, { s: 5, e: 6 }])).toEqual([0, 0, 0]);
+  });
+  it('stacks overlapping effects on new rows, reusing a row once it is free', () => {
+    expect(packRows([{ s: 0, e: 3 }, { s: 1, e: 2 }, { s: 2.5, e: 4 }, { s: 3, e: 5 }])).toEqual([0, 1, 1, 0]);
+  });
+  it('goes by start time, not the order the effects were added', () => {
+    expect(packRows([{ s: 4, e: 5 }, { s: 0, e: 1 }])).toEqual([0, 0]);
+  });
+});
+
 describe('swapFrom', () => {
-  it('swaps shapes and keyframes from the frame on, and keeps each track id', () => {
+  it('swaps shapes and keyframes from the frame on, and keeps each effect id', () => {
     const a = tracked(1, 10), b = tracked(2, 90);
-    a.keys = [{ i: 1, x: 10, y: 50, auto: false }, { i: 8, x: 10, y: 50, auto: false }];
-    b.keys = [{ i: 6, x: 90, y: 50, auto: true }];
+    a.keys = [{ i: 1, x: 10, y: 50 }, { i: 8, x: 10, y: 50 }];
+    b.keys = [{ i: 6, x: 90, y: 50 }];
     swapFrom(a, b, 5, clip);
     expect(a.shapes.map(s => s!.cx)).toEqual([10, 10, 10, 10, 10, 90, 90, 90, 90, 90]);
     expect(b.shapes.map(s => s!.cx)).toEqual([90, 90, 90, 90, 90, 10, 10, 10, 10, 10]);
@@ -44,15 +59,17 @@ describe('swapFrom', () => {
   });
 });
 
-describe('finding tracks', () => {
-  it('nearestOther picks the closest object at that frame', () => {
-    const a = tracked(1, 10), near = tracked(2, 30), far = tracked(3, 90);
-    expect(nearestOther([a, far, near], a, 4)).toBe(near);
+describe('finding effects', () => {
+  it('nearestOther picks the closest object at that frame, among effects there', () => {
+    const a = tracked(1, 10), near = tracked(2, 30, { s: 0.6, e: 1 }), far = tracked(3, 90);
+    expect(nearestOther([a, far, near], a, 4)).toBe(far); // `near` hasn't started yet
+    expect(nearestOther([a, far, near], a, 7)).toBe(near);
   });
-  it('trackAt hits an object inside its box', () => {
-    const a = tracked(1, 10), b = tracked(2, 90);
-    expect(trackAt([a, b], 2, 92, 55)).toBe(b);
-    expect(trackAt([a, b], 2, 50, 50)).toBeNull();
+  it('trackAt hits an object inside its box, only while its effect lasts', () => {
+    const a = tracked(1, 10), b = tracked(2, 90, { s: 0, e: 0.5 });
+    expect(trackAt([a, b], clip, 2, 92, 55)).toBe(b);
+    expect(trackAt([a, b], clip, 7, 92, 55)).toBeNull();
+    expect(trackAt([a, b], clip, 2, 50, 50)).toBeNull();
   });
 });
 
@@ -60,14 +77,65 @@ describe('toLane', () => {
   it('groups frames into found and weak stretches, bridging a single missing frame', () => {
     const t = tracked(1, 10);
     t.shapes[4] = shape(10, true); t.shapes[5] = shape(10, true); t.shapes[2] = null; t.shapes[7] = null; t.shapes[8] = null;
-    const spans = toLane(t, clip, makeShots(10, []).shots).spans.map(s => [+s.s.toFixed(2), +s.e.toFixed(2), s.weak]);
+    refreshFrames(t, clip);
+    const spans = toLane(t, clip, 0).spans.map(s => [+s.s.toFixed(2), +s.e.toFixed(2), s.weak]);
     expect(spans).toEqual([[0, 0.4, false], [0.4, 0.6, true], [0.6, 0.7, false], [0.9, 1, false]]);
   });
-  it('lists shots it was looked for in and not found', () => {
-    const { shots } = makeShots(10, [5]);
-    const t = tracked(1, 10);
-    t.keys = [{ i: 1, x: 0, y: 0, auto: false }];
-    t.searched = new Set([0, 1]);
-    expect(toLane(t, clip, shots).missing).toEqual([{ shot: 1, s: 0.5, e: 1 }]);
+  it('shows only what is inside the range', () => {
+    const t = tracked(1, 10, { s: 0.2, e: 0.5 });
+    t.keys = [{ i: 1, x: 0, y: 0 }, { i: 3, x: 0, y: 0 }];
+    const lane = toLane(t, clip, 2);
+    expect(lane.spans.map(s => [+s.s.toFixed(2), +s.e.toFixed(2)])).toEqual([[0.2, 0.5]]);
+    expect(lane.keys).toEqual([0.3]);
+    expect(lane.row).toBe(2);
+  });
+});
+
+describe('impacts', () => {
+  it('hit at the tapped frame and last as long as their style', () => {
+    const t = newImpact(1, clip, FX, 'punch', 4, 1);
+    expect(t.kind).toBe('impact');
+    expect(t.range.s).toBe(0.4);
+    expect(t.range.e).toBeCloseTo(0.85);
+    expect(hitFrame(t, clip)).toBe(4);
+  });
+  it('are tracked a little before the hit, to know which way the object was moving', () => {
+    const t = newImpact(1, clip, FX, 'punch', 4, 1);
+    t.keys = [{ i: 4, x: 0, y: 0 }];
+    expect(trackSpan(t, clip)).toEqual({ s: 2, e: 9 });
+  });
+  it('a moved impact still tracks from where the object was tapped', () => {
+    const t = newImpact(1, clip, FX, 'punch', 2, 1);
+    t.keys = [{ i: 2, x: 0, y: 0 }];
+    setHit(t, clip, 1, 7);
+    expect(t.range.s).toBe(0.7);
+    expect(trackSpan(t, clip)).toEqual({ s: 2, e: 10 });
+  });
+  it('a new style changes how long it lasts, not when it hits', () => {
+    const t = newImpact(1, clip, FX, 'punch', 2, 1);
+    setHit(t, clip, 1, undefined, 'blast');
+    expect(t.impact).toBe('blast');
+    expect(t.range.s).toBe(0.2);
+    expect(t.range.e).toBe(1);
+  });
+  it('stretching plays the burst slower, squeezing faster, within limits', () => {
+    const t = newImpact(1, clip, FX, 'punch', 1, 1); // 0.45 s at 0.1
+    expect(impactSpeed(t)).toBeCloseTo(1);
+    expect(setRange(t, { e: 1 }, 1, clip)).toBe(true); // 0.9 s: half speed
+    expect(impactSpeed(t)).toBeCloseTo(0.5);
+    expect(setRange(t, { e: 0.15 }, 1, clip)).toBe(false); // 0.05 s would be 9x faster
+    expect(impactSpeed(t)).toBeCloseTo(0.5);
+  });
+  it('moving the start moves the hit', () => {
+    const t = newImpact(1, clip, FX, 'punch', 1, 1);
+    setRange(t, { s: 0.3 }, 1, clip);
+    expect(hitFrame(t, clip)).toBe(3);
+  });
+  it('a stretched impact keeps its length through a move or a new style', () => {
+    const t = newImpact(1, clip, FX, 'punch', 1, 2);
+    setRange(t, { e: 1.0 }, 2, clip); // 0.9 s
+    setHit(t, clip, 2, 5, 'blast');
+    expect(t.range.s).toBe(0.5);
+    expect(t.range.e).toBeCloseTo(1.4);
   });
 });

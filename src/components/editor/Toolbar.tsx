@@ -1,21 +1,41 @@
-// The bottom toolbar: the main tools, or the selected item's tools behind a back button, like CapCut.
+// The bottom toolbar: the main tools, or a list (effect categories, or the selected clip's tools)
+// behind a back button, like CapCut.
 import { Icon, I } from './icons';
-import type { Tool } from './ToolSheet';
+import type { Category, Tool } from './ToolSheet';
 
-export type ToolKey = Tool | 'edit' | 'add' | 'replace' | 'camera' | 'outline' | 'start' | 'end' | 'unfix' | 'swap' | 'delete';
+export type ToolKey = Tool | `cat-${Category}` | 'catalog' | 'cancel' | 'edit' | 'replace' | 'camera' | 'outline'
+  | 'start' | 'end' | 'unfix' | 'swap' | 'delete' | 'hithere' | 'mute';
 export interface ToolBtn { key: ToolKey; label: string; icon: string; on?: boolean; disabled?: boolean }
-export type Mode = 'clip' | 'track' | null;
+// what the toolbar lists: the effect categories, the clip's tools, a selected effect or impact's tools
+export type Mode = 'catalog' | 'clip' | 'track' | 'impact' | null;
+
+export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
+  { id: 'fire', label: 'Fire', icon: I.flame },
+  { id: 'lightning', label: 'Lightning', icon: I.bolt },
+  { id: 'aura', label: 'Aura', icon: I.aura },
+  { id: 'sparks', label: 'Sparks', icon: I.effects },
+  { id: 'impact', label: 'Impact', icon: I.burst },
+];
 
 // which buttons show for what's selected
 export function toolsFor(mode: Mode, s: {
-  ready: boolean; busy: boolean; recording: boolean; camera: boolean; adding: boolean; outline: boolean;
+  ready: boolean; busy: boolean; recording: boolean; camera: boolean; adding: boolean; outline: boolean; muted: boolean;
   open: Tool | null; hasKeys: boolean; objects: number;
 }): ToolBtn[] {
   const sheet = (t: Tool, label: string, icon: string): ToolBtn => ({ key: t, label, icon, disabled: !s.ready, on: s.open === t });
+  if (s.adding) return [{ key: 'cancel', label: 'Cancel', icon: I.back }];
+  if (mode === 'catalog') return CATEGORIES.map(c => ({ key: `cat-${c.id}` as const, label: c.label, icon: c.icon, disabled: s.busy }));
   if (mode === 'clip') return [
+    { key: 'mute', label: s.muted ? 'Unmute' : 'Mute', icon: s.muted ? I.muted : I.sound, on: s.muted, disabled: !s.ready },
     { key: 'replace', label: 'Replace', icon: I.swap, disabled: s.recording },
     { key: 'camera', label: s.camera ? 'Stop camera' : 'Camera', icon: I.camera, disabled: s.recording },
     { key: 'outline', label: 'Outline', icon: I.outline, on: s.outline, disabled: !s.ready },
+  ];
+  if (mode === 'impact') return [
+    sheet('impact', 'Style', I.burst), sheet('color', 'Color', I.color), sheet('adjust', 'Adjust', I.adjust),
+    { key: 'hithere', label: 'Hit here', icon: I.target, disabled: s.busy },
+    { key: 'unfix', label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
+    { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
   ];
   if (mode === 'track') return [
     sheet('effects', 'Effect', I.effects), sheet('color', 'Color', I.color), sheet('adjust', 'Adjust', I.adjust),
@@ -26,9 +46,8 @@ export function toolsFor(mode: Mode, s: {
     { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
   ];
   return [
+    { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
     { key: 'edit', label: 'Edit', icon: I.edit },
-    { key: 'add', label: s.adding ? 'Cancel' : 'Add object', icon: I.target, on: s.adding, disabled: s.busy },
-    sheet('effects', 'Effects', I.effects), sheet('color', 'Color', I.color), sheet('adjust', 'Adjust', I.adjust),
   ];
 }
 

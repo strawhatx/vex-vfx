@@ -9,4 +9,5 @@ export const PALETTES = [
 
 export const DEFAULT_PAL: Record<Effect, number> = { fire: 0, lightning: 1, aura: 3, sparks: 0 };
 
-export interface FxSettings { effect: Effect; pal: number; size: number; intensity: number }
+// volume: how loud the clip's sound effect is, 0 (off) to 1.5
+export interface FxSettings { effect: Effect; pal: number; size: number; intensity: number; volume: number }

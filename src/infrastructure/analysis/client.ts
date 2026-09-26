@@ -11,18 +11,15 @@ export class AnalysisClient implements Analysis {
   private worker: Worker | null = null;
   private jobId = 0;
   private handlers: Handlers | null = null;
+  private clipIds = new WeakMap<Blob, number>();
+  private nextClipId = 1;
 
-  scan: Analysis['scan'] = (file, on) => this.start({ type: 'scan', file }, {
-    progress: m => on.progress(m.done, m.total), scanned: m => on.scanned(m.meta, m.frames, m.cuts), done: on.done, error: m => on.error(m.message),
+  scan: Analysis['scan'] = (file, playerLength, on) => this.start({ type: 'scan', clipId: this.clipId(file), file, playerLength }, {
+    progress: m => on.progress(m.done, m.total), scanned: m => on.scanned(m.meta, m.frames), done: on.done, error: m => on.error(m.message),
   });
 
-  track: Analysis['track'] = (file, req, on) => this.start({ type: 'track', file, ...req }, {
-    progress: m => on.progress(m.done, m.total), appearance: m => on.appearance(m.appearance), shapes: m => on.shapes(m.shapes),
-    done: on.done, error: m => on.error(m.message),
-  });
-
-  find: Analysis['find'] = (file, req, on) => this.start({ type: 'find', file, ...req }, {
-    progress: m => on.progress(m.done, m.total), found: m => on.found(m.hit && { x: m.hit.x, y: m.hit.y }), done: on.done, error: m => on.error(m.message),
+  track: Analysis['track'] = (file, req, on) => this.start({ type: 'track', clipId: this.clipId(file), file, ...req }, {
+    progress: m => on.progress(m.done, m.total), shapes: m => on.shapes(m.shapes), done: on.done, error: m => on.error(m.message),
   });
 
   cancel() {
@@ -31,6 +28,12 @@ export class AnalysisClient implements Analysis {
   }
 
   terminate() { this.handlers = null; this.worker?.terminate(); this.worker = null; }
+
+  private clipId(file: Blob) {
+    let id = this.clipIds.get(file);
+    if (id === undefined) { id = this.nextClipId++; this.clipIds.set(file, id); }
+    return id;
+  }
 
   private start(req: Job, handlers: Handlers) {
     const w = this.worker ??= this.spawn();
