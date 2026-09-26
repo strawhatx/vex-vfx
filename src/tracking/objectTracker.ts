@@ -1,13 +1,18 @@
-// Click-to-trace object tracking, run once per frame by the analysis worker:
-// pyramidal Lucas-Kanade + Median Flow for motion, colour region growing for the outline.
-// Works on analysis-resolution RGBA frames.
+// Click-an-object tracking, run once per frame by the analysis worker. An AI segmenter
+// outlines the object at a point; pyramidal Lucas-Kanade + Median Flow follows its motion
+// so each new frame is segmented at the right place. Works on analysis-resolution frames.
 import { encodeRle, type Rle, type Shape } from './types';
 
 type Img = { w: number; h: number; d: Float32Array };
 type Pyr = Img[];
-export type Selection = { x: number; y: number } | { cx: number; cy: number; w: number; h: number };
+export type Selection = { x: number; y: number };
+// outlines the object at (x, y) in the current frame; 1 = object
+export type SegmentAt = (x: number, y: number) => Uint8Array;
 
 const LEVELS = 4, WIN = 5, WS = 2 * WIN + 1, NW = WS * WS;
+// a new outline is only accepted if it overlaps the previous one (moved with the motion)
+// this much and hasn't changed size too abruptly
+const MIN_OVERLAP = 0.3, MAX_GROWTH = 2.5;
 
 function samp(img: Img, x: number, y: number) {
   const w = img.w, h = img.h;
@@ -22,40 +27,38 @@ const median = (arr: ArrayLike<number>) => {
 };
 const dot = (a: Float32Array, b: Float32Array) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
 
+type Bounds = { bx0: number; by0: number; bx1: number; by1: number };
+
 export class ObjectTracker {
   private prevPyr: Pyr; private nextPyr: Pyr;
-  private cY: Float32Array; private cB: Float32Array; private cR: Float32Array;
-  private mask: Uint8Array; private queue: Int32Array;
+  private mask: Uint8Array; private prevMask: Uint8Array; private queue: Int32Array;
   private tI = new Float32Array(NW); private tX = new Float32Array(NW); private tY = new Float32Array(NW);
   private box = { cx: 0, cy: 0, w: 0, h: 0 };
   private trk = { vx: 0, vy: 0, lostFrames: 0, frames: 0, anchorVec: null as Float32Array | null };
-  private seg = { on: false, ref: [0, 0, 0], useTol: 28, offX: 0, offY: 0, area: 0, dx: 0, dy: 0, bx0: 0, by0: 0, bx1: 0, by1: 0, miss: 0 };
+  // seg: the current outline; seeds: where to segment next frame, relative to the box
+  private seg = { on: false, area: 0, dx: 0, dy: 0, bx0: 0, by0: 0, bx1: 0, by1: 0, miss: 0 };
+  private seeds: { u: number; v: number }[] = [];
   private rle: Rle | null = null;
   private lost = false;
 
-  constructor(private W: number, private H: number) {
+  constructor(private W: number, private H: number, private segmentAt: SegmentAt) {
     this.prevPyr = this.makePyr(); this.nextPyr = this.makePyr();
     const n = W * H;
-    this.cY = new Float32Array(n); this.cB = new Float32Array(n); this.cR = new Float32Array(n);
-    this.mask = new Uint8Array(n); this.queue = new Int32Array(n);
+    this.mask = new Uint8Array(n); this.prevMask = new Uint8Array(n); this.queue = new Int32Array(n);
   }
 
-  // first frame: trace from a click (falls back to a box), or lock a dragged box
-  start(rgba: Uint8ClampedArray, sel: Selection, tol: number): Shape {
+  // first frame: outline the clicked object (falls back to a box if nothing is found)
+  start(rgba: Uint8ClampedArray, sel: Selection): Shape {
     this.load(rgba, this.prevPyr);
-    if ('x' in sel) {
-      if (this.traceClick(sel.x, sel.y, tol)) {
-        const s = this.seg, bx = (s.bx0 + s.bx1) / 2, by = (s.by0 + s.by1) / 2;
-        const bw = (s.bx1 - s.bx0 + 1) * 1.04, bh = (s.by1 - s.by0 + 1) * 1.04;
-        s.offX = (sel.x - bx) / bw; s.offY = (sel.y - by) / bh;
-        this.lock(bx, by, bw, bh);
-      } else {
-        this.seg.on = false;
-        this.lock(sel.x, sel.y, this.W * 0.16, this.W * 0.16);
-      }
+    const b = this.outlineAt(sel.x, sel.y);
+    if (b && this.area(b) >= 30) {
+      this.commit(b);
+      const bw = (b.bx1 - b.bx0 + 1) * 1.04, bh = (b.by1 - b.by0 + 1) * 1.04;
+      this.lock((b.bx0 + b.bx1) / 2, (b.by0 + b.by1) / 2, bw, bh);
+      this.seeds = [this.interiorSeed(b), { u: (sel.x - this.box.cx) / bw, v: (sel.y - this.box.cy) / bh }];
     } else {
       this.seg.on = false;
-      this.lock(sel.cx, sel.cy, sel.w, sel.h);
+      this.lock(sel.x, sel.y, this.W * 0.16, this.W * 0.16);
     }
     return this.shape();
   }
@@ -63,12 +66,12 @@ export class ObjectTracker {
   step(rgba: Uint8ClampedArray): Shape {
     this.load(rgba, this.nextPyr);
     const pcx = this.box.cx, pcy = this.box.cy;
-    this.trackStep(); this.traceStep(pcx, pcy);
+    this.trackStep(); this.segmentStep(pcx, pcy);
     const t = this.prevPyr; this.prevPyr = this.nextPyr; this.nextPyr = t;
     return this.shape();
   }
 
-  // traced outline, or the last one shifted along with the box while the trace misses
+  // the outline, or the last one moved along with the box while segmenting misses
   private shape(): Shape {
     const b = this.box, s = this.seg;
     let mask: Rle | undefined;
@@ -93,11 +96,8 @@ export class ObjectTracker {
     return p;
   }
   private load(d: Uint8ClampedArray, pyr: Pyr) {
-    const { W, H, cY, cB, cR } = this, g = pyr[0].d;
-    for (let i = 0, j = 0; i < W * H; i++, j += 4) {
-      const r = d[j], gg = d[j + 1], b = d[j + 2], yv = 0.299 * r + 0.587 * gg + 0.114 * b;
-      g[i] = yv; cY[i] = yv; cB[i] = 128 - 0.168736 * r - 0.331264 * gg + 0.5 * b; cR[i] = 128 + 0.5 * r - 0.418688 * gg - 0.081312 * b;
-    }
+    const { W, H } = this, g = pyr[0].d;
+    for (let i = 0, j = 0; i < W * H; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
     for (let l = 1; l < LEVELS; l++) {
       const s = pyr[l - 1], t = pyr[l];
       for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
@@ -256,61 +256,46 @@ export class ObjectTracker {
     this.lost = trk.lostFrames > 2;
   }
 
-  // ---------- colour region growing ----------
-  private colorDist(i: number) {
-    const { cY, cB, cR } = this, ref = this.seg.ref;
-    const dy = (cY[i] - ref[0]) * 0.45, db = cB[i] - ref[1], dr = cR[i] - ref[2];
-    return Math.sqrt(dy * dy + db * db + dr * dr);
-  }
-  private sampleRef(x: number, y: number) {
-    const { W, H, cY, cB, cR } = this;
-    let a = 0, b = 0, c = 0, n = 0;
-    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-      const xx = Math.min(W - 1, Math.max(0, x + dx)), yy = Math.min(H - 1, Math.max(0, y + dy)), i = yy * W + xx;
-      a += cY[i]; b += cB[i]; c += cR[i]; n++;
+  // ---------- segmentation ----------
+  // segments at (x, y) and keeps the connected piece under that point, holes filled
+  private outlineAt(x: number, y: number): Bounds | null {
+    const { W, H, mask, queue } = this;
+    const xi = Math.round(x), yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= W || yi >= H) return null;
+    const m = this.segmentAt(xi, yi);
+    // start from the object pixel nearest the point
+    let si = -1;
+    for (let r = 0; r <= 6 && si < 0; r++) for (let dy = -r; dy <= r && si < 0; dy++) for (let dx = -r; dx <= r; dx++) {
+      const xx = xi + dx, yy = yi + dy;
+      if (xx >= 0 && yy >= 0 && xx < W && yy < H && m[yy * W + xx]) { si = yy * W + xx; break; }
     }
-    this.seg.ref = [a / n, b / n, c / n];
-  }
-  private findSeed(x: number, y: number, tol: number) {
-    const { W, H } = this;
-    x = Math.round(x); y = Math.round(y);
-    for (let r = 0; r <= 5; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-      const xx = x + dx, yy = y + dy;
-      if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
-      if (this.colorDist(yy * W + xx) <= tol * 0.85) return yy * W + xx;
-    }
-    return -1;
-  }
-  // grows the region from the seed; stops at color changes and strong edges; returns area
-  private flood(si: number, tol: number, rx0: number, ry0: number, rx1: number, ry1: number) {
-    const { W, mask, queue, cY } = this;
+    if (si < 0) return null;
     mask.fill(0);
-    let qh = 0, qt = 0, area = 1;
-    let bx0 = si % W, bx1 = bx0, by0 = (si / W) | 0, by1 = by0;
+    let qh = 0, qt = 0, bx0 = si % W, bx1 = bx0, by0 = (si / W) | 0, by1 = by0;
     mask[si] = 1; queue[qt++] = si;
     while (qh < qt) {
-      const i = queue[qh++], x = i % W, y = (i / W) | 0, gi = cY[i];
+      const i = queue[qh++], px = i % W, py = (i / W) | 0;
       for (let d = 0; d < 4; d++) {
-        const nx = d === 0 ? x + 1 : d === 1 ? x - 1 : x, ny = d === 2 ? y + 1 : d === 3 ? y - 1 : y;
-        if (nx < rx0 || ny < ry0 || nx > rx1 || ny > ry1) continue;
+        const nx = d === 0 ? px + 1 : d === 1 ? px - 1 : px, ny = d === 2 ? py + 1 : d === 3 ? py - 1 : py;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
-        if (mask[j]) continue;
-        if (Math.abs(cY[j] - gi) > 38 || this.colorDist(j) > tol) continue;
-        mask[j] = 1; queue[qt++] = j; area++;
+        if (mask[j] || !m[j]) continue;
+        mask[j] = 1; queue[qt++] = j;
         if (nx < bx0) bx0 = nx;
         if (nx > bx1) bx1 = nx;
         if (ny < by0) by0 = ny;
         if (ny > by1) by1 = ny;
       }
     }
-    Object.assign(this.seg, { bx0, bx1, by0, by1 });
-    return area;
+    const b = { bx0, by0, bx1, by1 };
+    this.fillHoles(b);
+    return b;
   }
-  // fills holes inside the traced shape (eyes, gaps between fingers that close up)
-  private fillHoles() {
-    const { W, H, mask, queue, seg } = this;
-    const x0 = Math.max(0, seg.bx0 - 1), x1 = Math.min(W - 1, seg.bx1 + 1), y0 = Math.max(0, seg.by0 - 1), y1 = Math.min(H - 1, seg.by1 + 1);
+
+  // fills holes inside the outline
+  private fillHoles(b: Bounds) {
+    const { W, H, mask, queue } = this;
+    const x0 = Math.max(0, b.bx0 - 1), x1 = Math.min(W - 1, b.bx1 + 1), y0 = Math.max(0, b.by0 - 1), y1 = Math.min(H - 1, b.by1 + 1);
     let qh = 0, qt = 0;
     const push = (x: number, y: number) => { const j = y * W + x; if (!mask[j]) { mask[j] = 2; queue[qt++] = j; } };
     for (let x = x0; x <= x1; x++) { push(x, y0); push(x, y1); }
@@ -322,58 +307,76 @@ export class ObjectTracker {
       if (y > y0) push(x, y - 1);
       if (y < y1) push(x, y + 1);
     }
-    let area = 0;
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-      const j = y * W + x; mask[j] = mask[j] === 2 ? 0 : 1; area += mask[j];
-    }
-    return area;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const j = y * W + x; mask[j] = mask[j] === 2 ? 0 : 1; }
   }
-  private commitMask() {
+
+  private area(b: Bounds) {
+    let a = 0;
+    for (let y = b.by0; y <= b.by1; y++) for (let x = b.bx0; x <= b.bx1; x++) a += this.mask[y * this.W + x];
+    return a;
+  }
+
+  // share of the new outline that the previous outline, moved by (dx, dy), also covers
+  private overlap(b: Bounds, dx: number, dy: number) {
+    const { W, H, mask, prevMask } = this;
+    let both = 0, n = 0;
+    for (let y = b.by0; y <= b.by1; y++) for (let x = b.bx0; x <= b.bx1; x++) {
+      if (!mask[y * W + x]) continue;
+      n++;
+      const px = x - dx, py = y - dy;
+      if (px >= 0 && py >= 0 && px < W && py < H && prevMask[py * W + px]) both++;
+    }
+    return n ? both / n : 0;
+  }
+
+  private commit(b: Bounds) {
     const s = this.seg;
-    this.rle = encodeRle(this.mask, this.W, s.bx0, s.by0, s.bx1, s.by1);
-    s.dx = s.dy = 0;
+    this.rle = encodeRle(this.mask, this.W, b.bx0, b.by0, b.bx1, b.by1);
+    this.prevMask.set(this.mask);
+    Object.assign(s, b, { on: true, miss: 0, dx: 0, dy: 0, area: this.area(b) });
   }
-  // first trace from a click; tightens automatically if the result is silly
-  private traceClick(x: number, y: number, tol0: number) {
-    const { W, H, seg } = this;
-    this.sampleRef(Math.round(x), Math.round(y));
-    let tol = tol0;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const si = this.findSeed(x, y, tol);
-      if (si < 0) return false;
-      let area = this.flood(si, tol, 0, 0, W - 1, H - 1);
-      const tooBig = area > W * H * 0.42 || (seg.bx1 - seg.bx0) > W * 0.95 || (seg.by1 - seg.by0) > H * 0.97;
-      if (tooBig) { tol *= 0.72; continue; }
-      if (area < 30) return false;
-      area = this.fillHoles(); this.commitMask();
-      Object.assign(seg, { area, on: true, miss: 0, useTol: tol });
-      return true;
+
+  // the point deepest inside the outline (farthest from its edge), relative to the box;
+  // segmenting there is least likely to land on the background as the object moves
+  private interiorSeed(b: Bounds) {
+    const { W, mask, box } = this, bw = b.bx1 - b.bx0 + 1, bh = b.by1 - b.by0 + 1, d = new Float32Array(bw * bh);
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+      const i = y * bw + x;
+      if (!mask[(b.by0 + y) * W + b.bx0 + x]) { d[i] = 0; continue; }
+      d[i] = Math.min(x ? d[i - 1] + 1 : 1, y ? d[i - bw] + 1 : 1);
     }
-    return false;
+    let best = 0, bi = 0;
+    for (let y = bh - 1; y >= 0; y--) for (let x = bw - 1; x >= 0; x--) {
+      const i = y * bw + x;
+      if (!d[i]) continue;
+      d[i] = Math.min(d[i], x < bw - 1 ? d[i + 1] + 1 : 1, y < bh - 1 ? d[i + bw] + 1 : 1);
+      if (d[i] > best) { best = d[i]; bi = i; }
+    }
+    const x = b.bx0 + bi % bw, y = b.by0 + ((bi / bw) | 0);
+    return { u: (x - box.cx) / box.w, v: (y - box.cy) / box.h };
   }
-  // re-trace on each new frame, seeded from where the tracker says the object is
-  private traceStep(prevCx: number, prevCy: number) {
-    const { W, H, box, seg, mask, cY, cB, cR } = this;
+
+  // re-outline the object where the motion tracker says it went
+  private segmentStep(prevCx: number, prevCy: number) {
+    const { box, seg } = this;
     if (!seg.on) return;
-    const si = this.findSeed(box.cx + seg.offX * box.w, box.cy + seg.offY * box.h, seg.useTol);
-    const miss = () => { seg.miss++; seg.dx += box.cx - prevCx; seg.dy += box.cy - prevCy; };
-    if (si < 0) return miss();
-    const rx0 = Math.max(0, Math.round(box.cx - box.w * 0.95)), rx1 = Math.min(W - 1, Math.round(box.cx + box.w * 0.95));
-    const ry0 = Math.max(0, Math.round(box.cy - box.h * 0.95)), ry1 = Math.min(H - 1, Math.round(box.cy + box.h * 0.95));
-    let area = this.flood(si, seg.useTol, rx0, ry0, rx1, ry1);
-    if (area < 20 || area > seg.area * 2.3 || area < seg.area * 0.35) return miss();
-    area = this.fillHoles(); this.commitMask();
-    seg.area = 0.7 * seg.area + 0.3 * area; seg.miss = 0;
-    // let the traced shape steer and size the tracking box
-    const mcx = (seg.bx0 + seg.bx1) / 2, mcy = (seg.by0 + seg.by1) / 2;
-    const mw = (seg.bx1 - seg.bx0 + 1) * 1.04, mh = (seg.by1 - seg.by0 + 1) * 1.04;
-    box.cx += (mcx - box.cx) * 0.35; box.cy += (mcy - box.cy) * 0.35;
-    box.w += (mw - box.w) * 0.3; box.h += (mh - box.h) * 0.3; this.clampBox();
-    // slowly follow lighting changes
-    let a = 0, b = 0, c = 0, n = 0;
-    for (let y = seg.by0; y <= seg.by1; y += 2) for (let x = seg.bx0; x <= seg.bx1; x += 2) {
-      const i = y * W + x; if (mask[i]) { a += cY[i]; b += cB[i]; c += cR[i]; n++; }
+    const mdx = Math.round(box.cx - prevCx), mdy = Math.round(box.cy - prevCy);
+    for (const s of this.seeds) {
+      const b = this.outlineAt(box.cx + s.u * box.w, box.cy + s.v * box.h);
+      if (!b) continue;
+      const area = this.area(b);
+      if (area < 20 || area > seg.area * MAX_GROWTH || area < seg.area / MAX_GROWTH) continue;
+      if (this.overlap(b, mdx + Math.round(seg.dx), mdy + Math.round(seg.dy)) < MIN_OVERLAP) continue;
+      this.commit(b);
+      // let the outline steer and size the tracking box, then re-centre the seeds
+      const mcx = (b.bx0 + b.bx1) / 2, mcy = (b.by0 + b.by1) / 2;
+      const mw = (b.bx1 - b.bx0 + 1) * 1.04, mh = (b.by1 - b.by0 + 1) * 1.04;
+      box.cx += (mcx - box.cx) * 0.35; box.cy += (mcy - box.cy) * 0.35;
+      box.w += (mw - box.w) * 0.3; box.h += (mh - box.h) * 0.3; this.clampBox();
+      this.seeds[0] = this.interiorSeed(b);
+      return;
     }
-    if (n > 10) { const r = seg.ref; r[0] += (a / n - r[0]) * 0.03; r[1] += (b / n - r[1]) * 0.03; r[2] += (c / n - r[2]) * 0.03; }
+    // nothing believable: keep the last outline, moved along with the box
+    seg.miss++; seg.dx += box.cx - prevCx; seg.dy += box.cy - prevCy;
   }
 }

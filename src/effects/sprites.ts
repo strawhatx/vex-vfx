@@ -38,3 +38,20 @@ export function drawTongue(ctx: Ctx2D, img: OffscreenCanvas, x: number, y: numbe
   ctx.setTransform(c, s, -s, c, x, y);
   ctx.drawImage(img, -w / 2, -h * 0.6, w, h);
 }
+
+// cheap bloom: shrinking a layer and stretching it back blurs it; added on top it glows
+const bloomCache: Record<string, readonly [OffscreenCanvas, OffscreenCanvasRenderingContext2D]> = {};
+export function bloom(ctx: Ctx2D, src: OffscreenCanvas, alpha: number, levels = [4, 12]) {
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'lighter';
+  ctx.imageSmoothingEnabled = true;
+  for (const k of levels) {
+    const w = Math.max(1, Math.round(src.width / k)), h = Math.max(1, Math.round(src.height / k)), key = `${k}`;
+    let e = bloomCache[key];
+    if (!e || e[0].width !== w || e[0].height !== h) e = bloomCache[key] = make(w, h);
+    const [c, g] = e;
+    g.clearRect(0, 0, w, h); g.imageSmoothingEnabled = true; g.drawImage(src, 0, 0, w, h);
+    ctx.globalAlpha = Math.min(1, alpha);
+    ctx.drawImage(c, 0, 0, src.width, src.height);
+  }
+  ctx.restore();
+}

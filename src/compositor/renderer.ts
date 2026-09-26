@@ -4,8 +4,9 @@
 import { PALETTES, type FxSettings } from '@/effects/palettes';
 import { EffectSim, MAX_LIFE, type FxFrame } from '@/effects/sim';
 import type { Ctx2D } from '@/effects/sprites';
+import { FireShader } from '@/effects/fireShader';
 import { frameIndexAt, type TrackFrame } from '@/tracking/types';
-import { FrameGeometry, type Selection } from './geometry';
+import { FrameGeometry } from './geometry';
 
 export interface RenderOptions { outline: boolean; paused: boolean }
 
@@ -13,7 +14,6 @@ export class Renderer {
   readonly ctx: Ctx2D;
   CW = 0; CH = 0;
   private frames: TrackFrame[] = [];
-  private sel: Selection = null;
   private settings: FxSettings;
   private sim = new EffectSim(1);
   private simIdx = -1;
@@ -21,6 +21,10 @@ export class Renderer {
   private geo: FrameGeometry | null = null;
   private glowCanvas: OffscreenCanvas | null = null;
   private gctx: OffscreenCanvasRenderingContext2D | null = null;
+  // GPU fire at half the output size, fed from a heat-source canvas of the same size
+  private fire: FireShader | null = null;
+  private fireFailed = false;
+  private fireSrc: OffscreenCanvas | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement | OffscreenCanvas, settings: FxSettings) {
     this.ctx = canvas.getContext('2d') as Ctx2D;
@@ -35,6 +39,9 @@ export class Renderer {
     this.geo = new FrameGeometry(W, H, this.CW / W);
     this.glowCanvas = new OffscreenCanvas(this.CW, this.CH);
     this.gctx = this.glowCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const fw = Math.max(1, Math.round(this.CW / 2)), fh = Math.max(1, Math.round(this.CH / 2));
+    this.fireSrc = new OffscreenCanvas(fw, fh);
+    this.fire?.resize(fw, fh);
     this.invalidate();
   }
 
@@ -44,7 +51,6 @@ export class Renderer {
     this.geo?.forget(prevLength - 3);
     if (this.simIdx >= prevLength - 3) this.dirty = true;
   }
-  setSelection(sel: Selection) { this.sel = sel; this.invalidate(); }
   setSettings(s: FxSettings) { this.settings = s; this.dirty = true; }
   invalidate() { this.geo?.clear(); this.dirty = true; }
 
@@ -59,8 +65,11 @@ export class Renderer {
     if (idx < 0) return -1;
     this.advanceTo(idx);
     const f = this.fxFrame(idx), geo = this.geo!;
-    geo.prepareCanvas(this.frames[idx], this.sel);
-    this.sim.draw(ctx, f, this.settings, (c, col, blur, alpha) => this.maskGlow(c, col, blur, alpha));
+    geo.prepareCanvas(this.frames[idx]);
+    this.sim.draw(ctx, f, this.settings, {
+      maskGlow: (c, col, blur, alpha) => this.maskGlow(c, col, blur, alpha),
+      fire: (c, fr, u, intensity) => this.drawFire(c, fr, u, intensity),
+    });
     if (opts.outline) this.drawOutline(f, opts.paused);
     return idx;
   }
@@ -82,8 +91,24 @@ export class Renderer {
   private fxFrame(i: number): FxFrame {
     const frames = this.frames, geo = this.geo!, f = frames[i];
     const prev = frames[i - 1], dt = Math.max(0.001, Math.min(0.1, prev && f.t - prev.t < 0.2 ? f.t - prev.t : f.dur || 1 / 30));
-    const o = geo.outline(frames, i, this.sel);
-    return { index: i, t: f.t, dt, tgt: geo.target(frames, i, this.sel, dt), contour: o.contour, n: o.n, hasShape: o.hasShape };
+    const o = geo.outline(frames, i);
+    return { index: i, t: f.t, dt, tgt: geo.target(frames, i, dt), contour: o.contour, n: o.n, hasShape: o.hasShape };
+  }
+
+  private drawFire(ctx: Ctx2D, f: FxFrame, u: number, intensity: number) {
+    const src = this.fireSrc!, fw = src.width, fh = src.height;
+    if (!this.fire && !this.fireFailed) { this.fire = FireShader.create(fw, fh); this.fireFailed = !this.fire; }
+    if (!this.fire) return false;
+    // heat source: the silhouette, or an ellipse around the target when there's only a box
+    const g = src.getContext('2d') as OffscreenCanvasRenderingContext2D, k = fw / this.CW, t = f.tgt;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, fw, fh);
+    if (f.hasShape) g.drawImage(this.geo!.maskCanvas, 0, 0, fw, fh);
+    else { g.fillStyle = '#fff'; g.beginPath(); g.ellipse(t.x * k, t.y * k, t.rx * k, t.ry * k, 0, 0, Math.PI * 2); g.fill(); }
+    const out = this.fire.render(src, f.t, u * k, u * k * 9, Math.min(1.6, intensity), this.settings.pal);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = true; ctx.drawImage(out, 0, 0, this.CW, this.CH);
+    ctx.restore();
+    return true;
   }
 
   // soft glow hugging the selected silhouettes; cut keeps the inside clear
@@ -107,7 +132,7 @@ export class Renderer {
   }
 
   private drawOutline(f: FxFrame, paused: boolean) {
-    const ctx = this.ctx, lost = this.geo!.outline(this.frames, f.index, this.sel).lost;
+    const ctx = this.ctx, lost = this.geo!.outline(this.frames, f.index).lost;
     if (f.hasShape) {
       if (paused) this.maskTint(ctx, PALETTES[this.settings.pal].c[1], 0.22);
       this.maskGlow(ctx, lost ? '#ff4d4d' : '#ffffff', 3, 0.9);

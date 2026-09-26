@@ -4,7 +4,7 @@
 // at any frame can be rebuilt by simulating from MAX_LIFE seconds earlier.
 import { PALETTES, type FxSettings } from './palettes';
 import { rngFor, type Rng } from './rng';
-import { drawTongue, flameSprite, rgba, ringSprite, sprite, type Ctx2D } from './sprites';
+import { bloom, drawTongue, flameSprite, ringSprite, sprite, type Ctx2D } from './sprites';
 
 export const MAX_LIFE = 2.2; // seconds
 
@@ -21,6 +21,11 @@ export interface FxFrame {
 
 // draws a soft glow hugging the current outline (provided by the compositor)
 export type MaskGlow = (ctx: Ctx2D, col: string, blur: number, alpha: number) => void;
+// drawing the compositor does for the effects; fire returns false when the GPU layer isn't available
+export interface Layers {
+  maskGlow: MaskGlow;
+  fire?: (ctx: Ctx2D, f: FxFrame, u: number, intensity: number) => boolean;
+}
 
 type Particle =
   | { k: 'f'; x: number; y: number; vx: number; vy: number; life: number; max: number; s: number; seed: number; inner: boolean }
@@ -34,22 +39,40 @@ const MAX_PARTS = 2600;
 const noise = (t: number, s: number) => Math.sin(t * 2.3 + s) * 0.5 + Math.sin(t * 5.7 + s * 1.7) * 0.3 + Math.sin(t * 11.1 + s * 2.9) * 0.2;
 const fireCol = (pal: readonly string[], f: number) => f < 0.12 ? pal[0] : f < 0.35 ? pal[1] : f < 0.65 ? pal[2] : pal[3];
 
-function boltPts(r: Rng, x1: number, y1: number, x2: number, y2: number, disp: number, depth: number, out: number[]) {
+type Bolt = { pts: number[]; w: number; born: number; life: number };
+
+// midpoint displacement: split each segment, push the midpoint sideways, halve the push, repeat.
+// Now and then a fork leaves from a midpoint and is built the same way, thinner.
+function boltPts(r: Rng, x1: number, y1: number, x2: number, y2: number, disp: number, depth: number,
+  out: number[], forks: Bolt[] | null, w: number, born: number, life: number) {
   if (depth === 0) { out.push(x2, y2); return; }
-  const mx = (x1 + x2) / 2 + (r() - 0.5) * disp, my = (y1 + y2) / 2 + (r() - 0.5) * disp;
-  boltPts(r, x1, y1, mx, my, disp / 2, depth - 1, out); boltPts(r, mx, my, x2, y2, disp / 2, depth - 1, out);
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1, off = (r() - 0.5) * disp;
+  const mx = (x1 + x2) / 2 - dy / len * off, my = (y1 + y2) / 2 + dx / len * off;
+  if (forks && depth >= 3 && r() < 0.22) {
+    const a = Math.atan2(y2 - my, x2 - mx) + (r() < 0.5 ? -1 : 1) * (0.4 + r() * 0.6);
+    const l = Math.hypot(x2 - mx, y2 - my) * (0.6 + r() * 0.5), pts = [mx, my];
+    boltPts(r, mx, my, mx + Math.cos(a) * l, my + Math.sin(a) * l, l * 0.4, depth - 1, pts, forks.length < 24 ? forks : null, w * 0.55, born, life);
+    forks.push({ pts, w: w * 0.55, born, life });
+  }
+  // shrinking the push a little slower than the segments keeps the fine zigzag sharp
+  boltPts(r, x1, y1, mx, my, disp * 0.58, depth - 1, out, forks, w, born, life);
+  boltPts(r, mx, my, x2, y2, disp * 0.58, depth - 1, out, forks, w, born, life);
 }
-function makeBolt(r: Rng, x: number, y: number, ang: number, len: number) {
-  const pts = [x, y]; boltPts(r, x, y, x + Math.cos(ang) * len, y + Math.sin(ang) * len, len * 0.45, 5, pts); return pts;
+function makeBolt(r: Rng, x1: number, y1: number, x2: number, y2: number, born: number, life: number, out: Bolt[]) {
+  const pts = [x1, y1];
+  boltPts(r, x1, y1, x2, y2, Math.hypot(x2 - x1, y2 - y1) * 0.3, 7, pts, out, 1, born, life);
+  out.push({ pts, w: 1, born, life });
 }
 
 export class EffectSim {
   private parts: Particle[] = [];
-  private bolts: number[][] = [];
+  private bolts: Bolt[] = [];
+  private flash = 0;
+  private layer: readonly [OffscreenCanvas, OffscreenCanvasRenderingContext2D] | null = null;
 
   constructor(private seed = 1) {}
 
-  reset() { this.parts = []; this.bolts = []; }
+  reset() { this.parts = []; this.bolts = []; this.flash = 0; }
 
   step(f: FxFrame, s: FxSettings) {
     const r = rngFor(this.seed, frameKey(f)), { tgt, dt } = f, time = f.t, parts = this.parts;
@@ -118,16 +141,26 @@ export class EffectSim {
           return { k: 's', x: p.x, y: p.y, vx: Math.cos(p.a) * sp - tgt.vx * 0.15, vy: Math.sin(p.a) * sp - u * 12 - tgt.vy * 0.15, life: 0, max: 0.35 + r() * 0.5 };
         });
       } else if (fx === 'lightning') {
-        // new bolts every few frames; decided per frame, so it doesn't depend on history
-        if (f.index % 3 === 0 || r() < 0.3) {
-          this.bolts = [];
-          const n = 1 + Math.round(r() * 3 * I * Math.min(2, A));
+        // each bolt lives a few frames; strikes are decided per frame, so they don't depend on history
+        this.bolts = this.bolts.filter(b => time - b.born < b.life);
+        if (r() < Math.min(0.9, 0.45 * I)) {
+          this.flash = 1;
+          const n = 1 + Math.round(r() * 2 * I * Math.min(2, A)), life = 0.05 + r() * 0.1;
           for (let i = 0; i < n; i++) {
-            const p = edgePoint(0.85), ang = p.a + (r() - 0.5) * 0.9, len = u * (5 + r() * 8);
-            this.bolts.push(makeBolt(r, p.x, p.y, ang, len));
-            if (r() < 0.5) { const b = this.bolts[this.bolts.length - 1], m = (b.length / 2) & ~1; this.bolts.push(makeBolt(r, b[m], b[m + 1], ang + (r() - 0.5) * 1.6, len * 0.4)); }
+            const p = edgePoint(0.85);
+            // some arcs crawl across the object to another nearby point of its outline
+            if (f.hasShape && r() < 0.4) {
+              let hit = false;
+              for (let k = 0; k < 6 && !hit; k++) {
+                const j = ((r() * f.n) | 0) * 4, qx = f.contour[j], qy = f.contour[j + 1], d = Math.hypot(qx - p.x, qy - p.y);
+                if (d > u * 3 && d < u * 12) { makeBolt(r, p.x, p.y, qx, qy, time, life, this.bolts); hit = true; }
+              }
+              if (hit) continue;
+            }
+            const ang = p.a + (r() - 0.5) * 0.9, len = u * (6 + r() * 10);
+            makeBolt(r, p.x, p.y, p.x + Math.cos(ang) * len, p.y + Math.sin(ang) * len, time, life, this.bolts);
           }
-        }
+        } else this.flash *= 0.4;
         emit(25 * I, () => { const p = edgePoint(0.9), sp = u * (18 + r() * 30);
           return { k: 's', x: p.x, y: p.y, vx: Math.cos(p.a) * sp, vy: Math.sin(p.a) * sp, life: 0, max: 0.2 + r() * 0.3 }; });
       }
@@ -162,7 +195,8 @@ export class EffectSim {
     parts.length = alive;
   }
 
-  draw(ctx: Ctx2D, f: FxFrame, s: FxSettings, maskGlow: MaskGlow) {
+  draw(ctx: Ctx2D, f: FxFrame, s: FxSettings, layers: Layers) {
+    const { maskGlow } = layers;
     const { tgt } = f, parts = this.parts;
     if (!tgt.active && !parts.length) return;
     const r = rngFor(this.seed ^ 0x5bd1e995, frameKey(f)), time = f.t;
@@ -191,14 +225,16 @@ export class EffectSim {
         ctx.globalAlpha = Math.min(1, 0.4 * I * flick);
         ctx.drawImage(ringSprite(pal[2]), tgt.x - tgt.rx * 1.3, tgt.y - tgt.ry * 1.3, tgt.rx * 2.6, tgt.ry * 2.6);
       }
-      // outer flame body, then a hotter inner pass on the young particles
-      for (const p of parts) if (p.k === 'f') {
+      // GPU flames when available; otherwise particle tongues: outer body, then a hotter inner pass
+      const shaded = tgt.active && !!layers.fire?.(ctx, f, u, I);
+      ctx.globalCompositeOperation = 'lighter';
+      if (!shaded) for (const p of parts) if (p.k === 'f') {
         const g = p.life / p.max, grow = g < 0.25 ? 0.55 + g * 1.8 : 1 - (g - 0.25) * 0.9;
         const w = p.s * grow, h = w * (2.2 + Math.min(1.5, Math.hypot(p.vx, p.vy) / (u * 25)));
         ctx.globalAlpha = Math.pow(1 - g, 1.3) * (p.inner ? 0.25 : 0.62);
         drawTongue(ctx, flameSprite(fireCol(pal, g)), p.x, p.y, p.vx, p.vy, w, h);
       }
-      for (const p of parts) if (p.k === 'f' && p.life / p.max < 0.35) {
+      if (!shaded) for (const p of parts) if (p.k === 'f' && p.life / p.max < 0.35) {
         const g = p.life / p.max, w = p.s * 0.45;
         ctx.globalAlpha = (1 - g / 0.35) * 0.5;
         drawTongue(ctx, flameSprite(pal[0]), p.x, p.y, p.vx, p.vy, w, w * 2.4);
@@ -237,15 +273,26 @@ export class EffectSim {
       }
     } else if (fx === 'lightning') {
       ctx.globalCompositeOperation = 'lighter';
-      if (tgt.active && f.hasShape) { maskGlow(ctx, pal[2], u * 2.5, (0.4 + r() * 0.5) * I); ctx.globalCompositeOperation = 'lighter'; }
-      else if (tgt.active) glow(pal[2], tgt.rx * 1.6, tgt.ry * 1.6, (0.2 + r() * 0.3) * I);
-      ctx.globalAlpha = 1; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      for (const pts of this.bolts) {
-        ctx.beginPath(); ctx.moveTo(pts[0], pts[1]);
-        for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-        ctx.shadowBlur = u * 2; ctx.shadowColor = pal[2];
-        ctx.strokeStyle = rgba(pal[1], 0.9); ctx.lineWidth = Math.max(1.5, u * 0.45); ctx.stroke();
-        ctx.shadowBlur = 0; ctx.strokeStyle = pal[0]; ctx.lineWidth = Math.max(1, u * 0.15); ctx.stroke();
+      const fl = this.flash, W = ctx.canvas.width, H = ctx.canvas.height;
+      if (tgt.active && f.hasShape) { maskGlow(ctx, pal[2], u * 3, (0.3 + fl * 0.6 + r() * 0.1) * I); ctx.globalCompositeOperation = 'lighter'; }
+      else if (tgt.active) glow(pal[2], tgt.rx * 1.6, tgt.ry * 1.6, (0.15 + fl * 0.3) * I);
+      // the whole scene lights up for a moment with each strike
+      if (fl > 0.3) { ctx.globalAlpha = Math.min(0.2, 0.07 * fl * I); ctx.fillStyle = pal[2]; ctx.fillRect(0, 0, W, H); }
+      if (this.bolts.length) {
+        // colored channel on a layer, bloomed for the glow, then white-hot cores on top
+        if (!this.layer || this.layer[0].width !== W || this.layer[0].height !== H) {
+          const c = new OffscreenCanvas(W, H); this.layer = [c, c.getContext('2d') as OffscreenCanvasRenderingContext2D];
+        }
+        const [lc, g] = this.layer;
+        g.clearRect(0, 0, W, H); g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = pal[1];
+        const path = (c: Ctx2D, pts: number[]) => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); };
+        const fade = (b: Bolt) => Math.max(0, 1 - (time - b.born) / b.life * 0.7) * (0.75 + r() * 0.25);
+        for (const b of this.bolts) { g.globalAlpha = fade(b); g.lineWidth = Math.max(1.5, u * 0.22 * b.w); path(g, b.pts); g.stroke(); }
+        ctx.globalAlpha = 0.9; ctx.drawImage(lc, 0, 0);
+        bloom(ctx, lc, Math.min(1, 0.8 * I), [2, 6, 18]);
+        bloom(ctx, lc, Math.min(1, 0.6 * I), [40]);
+        ctx.lineJoin = 'miter'; ctx.lineCap = 'round'; ctx.strokeStyle = pal[0];
+        for (const b of this.bolts) { ctx.globalAlpha = fade(b); ctx.lineWidth = Math.max(0.8, u * 0.06 * b.w); path(ctx, b.pts); ctx.stroke(); }
       }
     }
     if (fx === 'sparks' || fx === 'lightning') {

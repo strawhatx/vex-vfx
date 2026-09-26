@@ -3,16 +3,13 @@
 // All coordinates are in analysis ("work") pixels: the video scaled so its long side is
 // at most WORK_LONG_SIDE.
 
-export type BodyPart = 'hand' | 'body' | 'face';
-export type Subject = 'object' | BodyPart;
-
 export const WORK_LONG_SIDE = 480;
 
 // Silhouette as run-length rows inside its bounding box: for each row, the number of runs,
 // then (start, length) per run, with x relative to x0.
 export interface Rle { x0: number; y0: number; w: number; h: number; runs: Uint16Array }
 
-// One tracked person or object in one frame.
+// One tracked object in one frame.
 export interface Shape {
   id: number;
   // tracking box (center and size); drives the effect's position and scale
@@ -30,7 +27,6 @@ export interface TrackFrame {
 }
 
 export interface TrackMeta {
-  subject: Subject;
   videoW: number; videoH: number;
   W: number; H: number;
   duration: number;
