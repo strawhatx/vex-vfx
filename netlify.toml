@@ -1,4 +1,0 @@
-# Static landing page + waitlist function, while the VFX editor is built on feat/vfx-editor.
-[build]
-  publish = "public"
-  functions = "netlify/functions"
