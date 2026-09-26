@@ -8,6 +8,9 @@ import type { Selection as ObjectSelection } from '@/tracking/protocol';
 import { workSize, type TrackFrame, type TrackMeta } from '@/tracking/types';
 import { canRecord, startCameraCapture, startCanvasRecording, type Recording } from '@/video/recorder';
 
+// a stretch of the clip where the object was found; weak = the tracker was searching
+export interface Span { s: number; e: number; weak: boolean }
+
 export interface UiState {
   ready: boolean;
   playing: boolean;
@@ -23,13 +26,16 @@ export interface UiState {
   tracked: boolean; // an object has been picked; clicking the video now plays/pauses
   canRecord: boolean;
   result: Recording | null;
+  src: string | null; // object URL of the loaded clip
+  coverage: Span[];
 }
 
-const OBJECT_TAP = 'Pause on a clear frame and click the object. It outlines the whole object and follows it through the clip.';
+const OBJECT_TAP = 'Pause on a clear frame and tap the object. It outlines it and follows it through the clip.';
 
 export const INITIAL_UI: UiState = {
   ready: false, playing: false, time: 0, duration: 0, hint: '', status: '', tapStatus: OBJECT_TAP,
   progress: null, analyzed: false, camera: false, recording: false, tracked: false, canRecord: false, result: null,
+  src: null, coverage: [],
 };
 
 type VideoWithFrameCallback = HTMLVideoElement & {
@@ -79,6 +85,7 @@ export class Player {
     const v = this.video;
     v.srcObject = null; v.muted = false;
     v.src = this.srcUrl = URL.createObjectURL(f);
+    this.set({ src: this.srcUrl });
     v.onloadeddata = () => {
       v.onloadeddata = null;
       this.fixDuration().then(() => this.onReady());
@@ -149,7 +156,7 @@ export class Player {
 
   private resetTrack() {
     this.frames = []; this.renderer.setFrames(this.frames);
-    this.set({ tracked: false, canRecord: false });
+    this.set({ tracked: false, canRecord: false, coverage: [] });
   }
 
   private setupRenderer(vw: number, vh: number) {
@@ -199,20 +206,31 @@ export class Player {
         this.frames.push(...frames);
         this.renderer.framesAppended(prev);
         const last = this.frames[this.frames.length - 1], dur = this.meta?.duration || this.ui.duration || 1;
-        this.set({ progress: Math.min(0.99, (last.t + last.dur - start) / Math.max(0.001, dur - start)) });
+        this.set({ coverage: this.coverage(), progress: Math.min(0.99, (last.t + last.dur - start) / Math.max(0.001, dur - start)) });
         if (first) this.set({ tapStatus: first.shapes[0]?.mask
-          ? 'Outlined. It’s following the object through the clip; press Play to watch. Wrong object? Press Reset and click it again.'
-          : 'Couldn’t find an object there, so it’s following a box instead. Press Reset and try clicking the middle of the object.' });
+          ? 'Outlined. It’s following the object through the clip; press Play to watch. Wrong object? Use Reselect and tap it again.'
+          : 'Couldn’t find an object there, so it’s following a box instead. Use Reselect and try tapping the middle of the object.' });
         if (this.video.paused) this.redraw();
       },
       done: () => {
         this.renderer.invalidate();
         const any = this.frames.some(f => f.shapes.length);
-        this.set({ progress: null, analyzed: true, canRecord: any && canRecord(this.view) });
+        this.set({ coverage: this.coverage(), progress: null, analyzed: true, canRecord: any && canRecord(this.view) });
         this.redraw();
       },
       error: message => { this.set({ progress: null }); this.say(message); },
     });
+  }
+
+  private coverage() {
+    const out: Span[] = [];
+    for (const f of this.frames) {
+      if (!f.shapes.length) continue;
+      const weak = f.shapes.every(sh => sh.lost), last = out[out.length - 1];
+      if (last && last.weak === weak && f.t - last.e < f.dur * 1.5) last.e = f.t + f.dur;
+      else out.push({ s: f.t, e: f.t + f.dur, weak });
+    }
+    return out;
   }
 
   // ---------- drawing ----------
@@ -249,7 +267,7 @@ export class Player {
     let m = '';
     if (this.camera) m = 'Recording from the camera.';
     else if (!this.ui.ready) m = '';
-    else if (!this.objectJob) m = 'Click the object you want the effect to follow.';
+    else if (!this.objectJob) m = 'Tap the object you want the effect to follow.';
     else if (idx >= 0 && this.frames[idx].shapes.some(sh => sh.lost)) m = 'Searching for the object…';
     if (m !== this.ui.hint) this.set({ hint: m });
   }
