@@ -1,0 +1,3 @@
+# Static landing page (waitlist) while the VFX editor is built on feat/vfx-editor.
+[build]
+  publish = "."
