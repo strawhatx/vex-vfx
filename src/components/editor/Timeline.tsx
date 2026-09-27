@@ -1,17 +1,18 @@
 // The timeline: a ruler, the clip's filmstrip, and the effects and impacts as bars covering the
 // stretch each one lasts, stacked in rows where they overlap; the clip's own sound and each
-// effect's sound are drawn as waveforms. The playhead
-// is fixed in the middle and the timeline scrolls under it; scrolling scrubs. Pinch (or Ctrl/⌘ +
-// scroll) zooms it, keeping the playhead on the same moment.
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
+// effect's sound are drawn as waveforms. It starts at the left; the playhead moves across as the
+// video plays, and the timeline scrolls along to keep it in view. Tap or drag the ruler (or the
+// playhead's handle) to scrub; scrolling just scrolls. Pinch (or Ctrl/⌘ + scroll) zooms it, keeping
+// the playhead where it is on screen.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { IMPACTS } from '@/domain/effects/impacts';
 import type { Lane, UiState } from './player';
 import { makeFilmstrip } from './filmstrip';
 import { Icon, I } from './icons';
 import { effectName } from './ToolSheet';
 
-// pixels per second: at the start, and how far it zooms; filmstrip tile height
-const BASE_PPS = 64, MIN_PPS = 12, MAX_PPS = 480, THUMB_H = 56;
+// pixels per second: at the start, and how far it zooms; filmstrip tile height; the margin before 0:00
+const BASE_PPS = 64, MIN_PPS = 12, MAX_PPS = 480, THUMB_H = 56, PAD = 16;
 // ruler label spacing, in seconds: the smallest that keeps labels this far apart
 const LABEL_STEPS = [0.5, 1, 2, 5, 10, 15, 30, 60, 120], LABEL_GAP = 64;
 
@@ -34,7 +35,7 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
   soundShape(l: Lane): number[]; // each clip's sound effect, for its waveform
   currentTime(): number; // the clip time being shown, read every frame while playing
   on: {
-    seek(t: number): void; toggleMute(): void; deselect(): void; selectClip(): void; selectLane(id: number): void;
+    seek(t: number): void; deselect(): void; selectClip(): void; selectLane(id: number): void;
     chooseFile(): void; addEffect(): void;
     // live while dragging an effect's end; commit once the drag ends
     setRange(id: number, r: { s?: number; e?: number }): void; commitRange(id: number): void;
@@ -45,6 +46,7 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
   const dur = ui.duration || 0;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pps, setPps] = useState(BASE_PPS);
+  const ppsRef = useRef(pps); // the zoom, for event handlers
   const x = (t: number) => t * pps;
   const [clock, setClock] = useState(0);
   const [strip, setStrip] = useState<{ src: string; urls: string[] } | null>(null);
@@ -62,56 +64,79 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
   }, [ui.src, dur, ui.videoStart, step]);
   const thumbs = strip && strip.src === ui.src ? strip.urls : [];
 
-  // ---------- timeline <-> playhead ----------
-  const lastSet = useRef(-1);
-  const pending = useRef<number | null>(null);
+  // ---------- the playhead ----------
   const shownTime = ui.playing ? clock : ui.time;
-  const scrollTo = useCallback((t: number, scale: number) => {
+  const timeRef = useRef(shownTime);
+  useEffect(() => { timeRef.current = shownTime; }, [shownTime]);
+  // scrolls just enough to bring the playhead back into view (with a little room to its right)
+  const follow = useCallback((t: number, scale: number) => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollLeft = t * scale;
-    lastSet.current = el.scrollLeft;
+    const px = PAD + t * scale;
+    if (px < el.scrollLeft + 8 || px > el.scrollLeft + el.clientWidth - 48) el.scrollLeft = px - el.clientWidth * 0.2;
   }, []);
   // while playing, follow the video every frame (timeupdate is too coarse)
   useEffect(() => {
     if (!ui.playing) return;
     let raf = 0;
-    const tick = () => { const t = currentTime(); setClock(t); scrollTo(t, pps); raf = requestAnimationFrame(tick); };
+    const tick = () => { const t = currentTime(); setClock(t); follow(t, ppsRef.current); raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [ui.playing, scrollTo, currentTime, pps]);
-  // paused, or zoom changed: keep the playhead on the same moment
-  useEffect(() => { if (!ui.playing) scrollTo(ui.time, pps); }, [ui.time, ui.playing, scrollTo, pps]);
+  }, [ui.playing, follow, currentTime]);
+  useEffect(() => { if (!ui.playing) follow(ui.time, ppsRef.current); }, [ui.time, ui.playing, follow]);
 
-  function onScroll() {
-    const el = scrollRef.current;
-    if (!el || Math.abs(el.scrollLeft - lastSet.current) < 1) return; // our own scroll
-    lastSet.current = el.scrollLeft;
-    const t = Math.min(dur, el.scrollLeft / pps);
+  // scrubbing: tap or drag on the ruler, or drag the playhead's handle
+  const scrubbing = useRef(false), pending = useRef<number | null>(null);
+  const timeAt = (clientX: number) => {
+    const inner = scrollRef.current?.firstElementChild?.getBoundingClientRect();
+    return inner ? Math.max(0, Math.min(dur, (clientX - inner.left - PAD) / pps)) : 0;
+  };
+  const seekSoon = (t: number) => {
     if (pending.current === null) requestAnimationFrame(() => { if (pending.current !== null) on.seek(pending.current); pending.current = null; });
     pending.current = t;
+  };
+  function scrubDown(e: PointerEvent) {
+    if (!ui.ready) return;
+    e.stopPropagation(); e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrubbing.current = true;
+    seekSoon(timeAt(e.clientX));
   }
+  function scrubMove(e: PointerEvent) { if (scrubbing.current) seekSoon(timeAt(e.clientX)); }
+  const scrubUp = () => { scrubbing.current = false; };
+  const scrubbable = { onPointerDown: scrubDown, onPointerMove: scrubMove, onPointerUp: scrubUp, onPointerCancel: scrubUp, onClick: (e: MouseEvent) => e.stopPropagation() };
 
   // ---------- zoom: pinch with two fingers, or Ctrl/⌘ + scroll (trackpad pinch) ----------
-  const ppsRef = useRef(pps);
-  useEffect(() => { ppsRef.current = pps; }, [pps]);
+  // where the playhead sat on screen before a zoom, to put it back there after
+  const zoomAnchor = useRef<{ t: number; off: number } | null>(null);
+  useLayoutEffect(() => {
+    ppsRef.current = pps;
+    const el = scrollRef.current, a = zoomAnchor.current;
+    if (el && a) el.scrollLeft = PAD + a.t * pps - a.off;
+    zoomAnchor.current = null;
+  }, [pps]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const clamp = (v: number) => Math.max(MIN_PPS, Math.min(MAX_PPS, v));
+    const zoomTo = (next: number) => {
+      const t = timeRef.current;
+      zoomAnchor.current ??= { t, off: PAD + t * ppsRef.current - el.scrollLeft };
+      setPps(clamp(next));
+    };
     let pinch: { d: number; pps: number } | null = null;
     const dist = (e: TouchEvent) => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     const start = (e: TouchEvent) => { if (e.touches.length === 2) { pinch = { d: dist(e), pps: ppsRef.current }; e.preventDefault(); } };
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
       e.preventDefault();
-      setPps(clamp(pinch.pps * dist(e) / Math.max(1, pinch.d)));
+      zoomTo(pinch.pps * dist(e) / Math.max(1, pinch.d));
     };
     const end = (e: TouchEvent) => { if (e.touches.length < 2) pinch = null; };
     const wheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      setPps(p => clamp(p * Math.exp(-e.deltaY * 0.01)));
+      zoomTo(ppsRef.current * Math.exp(-e.deltaY * 0.01));
     };
     el.addEventListener('touchstart', start, { passive: false });
     el.addEventListener('touchmove', move, { passive: false });
@@ -181,20 +206,13 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
 
   return (
     <div className="timeline" onClick={on.deselect}>
-      <span className="tl-time"><b>{mmss(shownTime)}</b> / {mmss(dur)}</span>
-      <div ref={scrollRef} className="tl-scroll" onScroll={onScroll} aria-label="Timeline. Drag to scrub, pinch to zoom.">
+      <div ref={scrollRef} className="tl-scroll" aria-label="Timeline. Drag the ruler to scrub, pinch to zoom.">
         <div className="tl-inner" style={{ width: x(dur) }}>
-          <div className="ruler">{ticks}</div>
+          <div className="ruler" {...scrubbable} role="slider" aria-label="Playhead" aria-valuemin={0} aria-valuemax={dur} aria-valuenow={shownTime}>{ticks}</div>
 
           <div className="tl-row">
             {ui.ready ? (
               <>
-                <div className="heads">
-                  <button type="button" className="head" aria-pressed={ui.muted} onClick={stop(on.toggleMute)}>
-                    <Icon d={ui.muted ? I.muted : I.sound} size={20} />{ui.muted ? 'Unmute' : 'Mute'}
-                  </button>
-                  <button type="button" className="head" onClick={stop(on.chooseFile)}><Icon d={I.swap} size={20} />Replace</button>
-                </div>
                 <button type="button" className={`lane clip${clipSelected ? ' sel' : ''}`} style={{ width: x(dur), height: THUMB_H }}
                   aria-pressed={clipSelected} aria-label="Video clip" onClick={stop(on.selectClip)}>
                   {thumbs.map((u, i) => u && (
@@ -224,7 +242,6 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
 
           {rows.map((lanes, r) => (
             <div key={r} className="tl-row fx-row">
-              {r === 0 && <span className="heads"><span className="lane-icon"><Icon d={I.effects} size={16} /></span></span>}
               {lanes.map(l => {
                 const sel = l.id === ui.selected;
                 if (l.kind === 'impact') {
@@ -271,9 +288,12 @@ export function Timeline({ ui, clipSelected, busy, currentTime, soundShape, on }
               </button>
             </div>
           )}
+          {/* the playhead: moves across as the video plays; drag its handle to scrub */}
+          <div className="playhead" style={{ left: PAD + x(shownTime) }}>
+            <span className="playhead-knob" {...scrubbable} aria-hidden="true" />
+          </div>
         </div>
       </div>
-      <div className="playhead" aria-hidden="true" />
     </div>
   );
 }

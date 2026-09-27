@@ -114,7 +114,7 @@ export class Renderer implements EffectLayers {
         // a stretched impact plays its burst slower, a squeezed one faster, filling its clip
         const look = IMPACTS[m.style], age = ft - this.clip[m.i].t, len = l.spec.range.e - l.spec.range.s;
         if (age < -1e-6 || age >= len) continue;
-        hits.push(this.hitAt(l, m, Math.max(0, age) * look.duration / Math.max(1e-3, len), look));
+        hits.push(this.hitAt(l, m, idx, Math.max(0, age) * look.duration / Math.max(1e-3, len), look));
       }
     }
     if (!hits.length) return;
@@ -142,7 +142,11 @@ export class Renderer implements EffectLayers {
   // where and which way an impact hits: the spot that was tapped, carried along with the object to
   // the hit frame (or the object's middle, or the nearest frame it was found), moving the way it
   // was just before
-  private hitAt(l: Layer, m: LayerSpec['impacts'][number], age: number, look: Hit['look']): Hit {
+  //
+  // While it plays out (at frame idx), the burst stays stuck to the object: it moves with it and
+  // grows or shrinks as the object does on screen, so a panning or zooming camera doesn't leave it
+  // hanging in the air.
+  private hitAt(l: Layer, m: LayerSpec['impacts'][number], idx: number, age: number, look: Hit['look']): Hit {
     const { i, id } = m, frames = l.spec.frames, geo = l.geo, dt = frames[i].dur || 1 / 30;
     let tg = geo.target(frames, i, dt, this.shot);
     for (let d = 1; !tg.active && d <= 6; d++) {
@@ -151,7 +155,24 @@ export class Renderer implements EffectLayers {
     let x = tg.active ? tg.x : this.CW / 2, y = tg.active ? tg.y : this.CH / 2;
     const at = m.tap && this.tapAt(frames, m.tap, i);
     if (at) { x = at.x; y = at.y; }
-    const size = Math.max(this.CW * 0.04, tg.active ? Math.sqrt(tg.rx * tg.ry) : this.CW * 0.08) * l.spec.settings.size;
+    let size = Math.max(this.CW * 0.04, tg.active ? Math.sqrt(tg.rx * tg.ry) : this.CW * 0.08) * l.spec.settings.size;
+    // the pinned spot now (or where it was last followed since the hit): the burst sits on it and
+    // scales with it
+    const pinAt = (j: number) => frames[j]?.shapes[0]?.pin;
+    let pinNow = pinAt(idx);
+    for (let j = idx - 1; !pinNow && j >= i; j--) pinNow = pinAt(j);
+    const pinHit = pinAt(i), q = this.CW / (this.W || 1);
+    // otherwise, the object now (or where it was last found since the hit)
+    let now = tg;
+    if (!pinNow || !pinHit) for (let j = idx; j > i; j--) { const t = geo.target(frames, j, dt, this.shot); if (t.active) { now = t; break; } }
+    if (pinNow && pinHit) {
+      x = pinNow.x * q; y = pinNow.y * q;
+      size *= pinNow.s / pinHit.s;
+    } else if (tg.active && now !== tg) {
+      const u = (x - tg.x) / Math.max(1, tg.rx), v = (y - tg.y) / Math.max(1, tg.ry);
+      x = now.x + u * now.rx; y = now.y + v * now.ry;
+      size *= Math.sqrt((now.rx * now.ry) / Math.max(1, tg.rx * tg.ry));
+    }
     // velocity from a couple of frames before the hit, before it stopped
     const before = geo.target(frames, Math.max(0, i - 2), dt, this.shot);
     const vx = before.active ? before.vx : 0, vy = before.active ? before.vy : 0;

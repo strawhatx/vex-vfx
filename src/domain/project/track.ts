@@ -8,6 +8,7 @@
 // keyframes it was tracked from.
 import { IMPACTS, type ImpactStyle } from '../effects/impacts';
 import type { FxSettings } from '../effects/palettes';
+import { partLabel, type BodyPart } from '../tracking/bodyParts';
 import type { ClipFrame, Shape, TrackFrame } from '../tracking/types';
 import { inSpan, type FrameSpan, type Key } from './keyframes';
 
@@ -16,6 +17,7 @@ export type TrackKind = 'effect' | 'impact';
 export interface Track {
   id: number; name: string; color: string;
   kind: TrackKind;
+  part: BodyPart | null;        // a body part of the person tapped, or null for the object under the tap
   fx: FxSettings;               // look: effect type, colors, size, intensity (impacts use the colors and size)
   impact: ImpactStyle | null;   // for impacts
   range: { s: number; e: number }; // seconds; for an impact, s is the moment of the hit
@@ -38,21 +40,22 @@ export const IMPACT_MIN_SPEED = 1 / 8, IMPACT_MAX_SPEED = 4;
 export const impactSpeed = (t: { impact: ImpactStyle | null; range: { s: number; e: number } }) =>
   t.impact ? IMPACTS[t.impact].duration / Math.max(1e-3, t.range.e - t.range.s) : 1;
 
-function make(id: number, kind: TrackKind, clip: ClipFrame[], fx: FxSettings, range: { s: number; e: number }, impact: ImpactStyle | null): Track {
+function make(id: number, kind: TrackKind, clip: ClipFrame[], fx: FxSettings, range: { s: number; e: number }, impact: ImpactStyle | null, part: BodyPart | null): Track {
   const t: Track = {
-    id, name: `${kind === 'impact' ? 'Impact' : 'Object'} ${id}`, color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length], kind,
+    id, name: part && part !== 'body' ? partLabel(part) : `${kind === 'impact' ? 'Impact' : 'Object'} ${id}`,
+    color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length], kind, part,
     fx: { ...fx }, impact, range, shapes: new Array(clip.length).fill(null), frames: [], keys: [],
   };
   refreshFrames(t, clip);
   return t;
 }
 
-export const newTrack = (id: number, clip: ClipFrame[], fx: FxSettings, range: { s: number; e: number }) =>
-  make(id, 'effect', clip, fx, range, null);
+export const newTrack = (id: number, clip: ClipFrame[], fx: FxSettings, range: { s: number; e: number }, part: BodyPart | null = null) =>
+  make(id, 'effect', clip, fx, range, null, part);
 
 // an impact hitting at frame i
-export function newImpact(id: number, clip: ClipFrame[], fx: FxSettings, style: ImpactStyle, i: number, duration: number) {
-  return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style);
+export function newImpact(id: number, clip: ClipFrame[], fx: FxSettings, style: ImpactStyle, i: number, duration: number, part: BodyPart | null = null) {
+  return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style, part);
 }
 
 const impactRange = (clip: ClipFrame[], i: number, style: ImpactStyle, duration: number) =>

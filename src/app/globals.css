@@ -37,8 +37,8 @@ button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px sol
 .empty span { max-width: 32ch; font-size: .9rem; }
 .import { width: 72px; height: 72px; border-radius: 20px; padding: 0; background: var(--brand); color: #fff; }
 
-.tip, .toast { position: absolute; left: 50%; transform: translateX(-50%); max-width: min(92%, 440px); width: max-content; padding: 7px 14px; border-radius: 999px; background: rgba(0, 0, 0, .66); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: .8rem; text-align: center; pointer-events: none; }
-.tip { top: 12px; }
+.toast { position: absolute; left: 50%; transform: translateX(-50%); max-width: min(92%, 440px); width: max-content; padding: 7px 14px; border-radius: 999px; background: rgba(0, 0, 0, .66); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: .8rem; text-align: center; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .job { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: min(92%, 440px); display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: rgba(0, 0, 0, .7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: .78rem; font-weight: 600; white-space: nowrap; pointer-events: none; }
 .job-bar { --p: 0%; flex: none; width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--brand) var(--p), rgba(255, 255, 255, .2) 0); }
 .toast { bottom: 12px; background: rgba(40, 40, 44, .92); }
@@ -51,6 +51,9 @@ button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px sol
 
 .transport { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 2px 10px; }
 .transport > :last-child { justify-self: end; }
+.transport-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.transport .time { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.transport .time b { color: var(--ink); font-weight: 500; }
 .transport .icon-btn { color: var(--muted); }
 .transport .icon-btn[aria-pressed="true"] { color: var(--ink); }
 .play { width: 44px; height: 44px; padding: 0; background: transparent; border-radius: 50%; }
@@ -63,20 +66,15 @@ button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px sol
 /* ---------- timeline ---------- */
 .dock { position: relative; flex: none; background: var(--dock); }
 .timeline { position: relative; padding: 4px 0 10px; }
-.tl-time { position: absolute; z-index: 3; top: 4px; left: 0; height: 24px; line-height: 24px; white-space: pre; padding: 0 28px 0 14px; font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; background: linear-gradient(90deg, var(--dock) calc(100% - 14px), transparent); pointer-events: none; }
-.tl-time b { color: var(--ink); font-weight: 500; }
 .tl-scroll { max-height: 30dvh; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; touch-action: pan-x pan-y; }
 .tl-scroll::-webkit-scrollbar { display: none; }
-.tl-inner { position: relative; box-sizing: content-box; padding: 0 50% 4px; min-height: 1px; }
-.ruler { position: relative; height: 24px; }
+/* 16 px before 0:00, room after the end for the + button */
+.tl-inner { position: relative; box-sizing: content-box; padding: 0 120px 4px 16px; min-height: 1px; }
+.ruler { position: relative; height: 24px; cursor: pointer; touch-action: none; }
 .tick { position: absolute; top: 4px; transform: translateX(-50%); font-size: .68rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tick.dot { top: 11px; width: 3px; height: 3px; border-radius: 50%; background: var(--track); }
 .tl-row { position: relative; height: 56px; margin-top: 8px; }
 
-/* track heads sit just left of where the clip starts and scroll with it */
-.heads { position: absolute; right: 100%; top: 0; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: 10px; }
-.head { flex-direction: column; gap: 3px; width: 64px; height: 56px; padding: 0; border-radius: 10px; background: var(--panel); color: var(--ink); font-size: .68rem; font-weight: 500; }
-.lane-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: var(--panel); color: var(--muted); }
 
 .lane { position: absolute; top: 0; height: 100%; padding: 0; border-radius: 6px; font-weight: 600; }
 .lane.clip { left: 0; overflow: hidden; background: var(--raised); }
@@ -111,7 +109,11 @@ button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px sol
 .grip.e { right: -2px; border-radius: 0 6px 6px 0; }
 .add-hint:disabled { opacity: .5; }
 .add-hint.on { color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--brand); }
-.playhead { position: absolute; z-index: 4; top: 6px; bottom: 6px; left: 50%; width: 2px; margin-left: -1px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px rgba(0, 0, 0, .6); pointer-events: none; }
+/* the playhead moves across the timeline; its handle in the ruler scrubs */
+.playhead { position: absolute; top: 0; bottom: 0; z-index: 6; width: 2px; margin-left: -1px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px rgba(0, 0, 0, .6); pointer-events: none; }
+.playhead-knob { position: absolute; top: 0; left: 50%; width: 14px; height: 20px; margin-left: -7px; border-radius: 4px 4px 7px 7px; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); pointer-events: auto; touch-action: none; cursor: ew-resize; }
+/* a bigger invisible target for fingers */
+.playhead-knob::after { content: ""; position: absolute; inset: -6px -12px; }
 
 /* ---------- bottom toolbar ---------- */
 .toolbar { display: flex; align-items: stretch; gap: 2px; overflow-x: auto; scrollbar-width: none; padding: 6px 4px calc(env(safe-area-inset-bottom, 0px) + 8px); background: var(--bg); }
@@ -188,3 +190,8 @@ input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 
 /* each effect's sound along the bottom of its bar */
 .fx-wave { position: absolute; left: 0; right: 0; bottom: 1px; width: 100%; height: 45%; fill: rgba(255, 255, 255, .35); pointer-events: none; }
 .impact-clip .fx-wave { fill: rgba(0, 0, 0, .25); }
+.stage.zoomed .view { cursor: grab; }
+
+/* body parts: the one nearest the tap is picked out */
+.part-tile .tile-art { display: grid; place-items: center; background: var(--raised); color: var(--ink); }
+.part-tile .tile-art.mirror svg { transform: scaleX(-1); }

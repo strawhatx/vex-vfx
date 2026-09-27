@@ -38,6 +38,7 @@ export class ObjectTracker {
   private seg = { on: false, area: 0, dx: 0, dy: 0, bx0: 0, by0: 0, bx1: 0, by1: 0, miss: 0 };
   private seeds: { u: number; v: number }[] = [];
   private rle: Rle | null = null;
+  private pin: { x: number; y: number; s: number; vx: number; vy: number } | null = null;
   private lost = false;
 
   constructor(private W: number, private H: number, private segmentAt: SegmentAt) {
@@ -46,9 +47,11 @@ export class ObjectTracker {
     this.mask = new Uint8Array(n); this.prevMask = new Uint8Array(n); this.queue = new Int32Array(n);
   }
 
-  // first frame: outline the clicked object (falls back to a box if nothing is found)
-  start(rgba: Uint8ClampedArray, sel: Selection): Shape {
+  // first frame: outline the clicked object (falls back to a box if nothing is found). pin: also
+  // follow the clicked spot itself (see pinStep)
+  start(rgba: Uint8ClampedArray, sel: Selection, pin = false): Shape {
     this.load(rgba, this.prevPyr);
+    this.pin = pin ? { x: sel.x, y: sel.y, s: 1, vx: 0, vy: 0 } : null;
     const b = this.outlineAt(sel.x, sel.y);
     if (b && this.area(b) >= 30) {
       this.commit(b);
@@ -65,7 +68,9 @@ export class ObjectTracker {
   step(rgba: Uint8ClampedArray): Shape {
     this.load(rgba, this.nextPyr);
     const pcx = this.box.cx, pcy = this.box.cy;
-    this.trackStep(); this.segmentStep(pcx, pcy);
+    this.trackStep();
+    this.pinStep();
+    this.segmentStep(pcx, pcy);
     const t = this.prevPyr; this.prevPyr = this.nextPyr; this.nextPyr = t;
     return this.shape();
   }
@@ -78,7 +83,53 @@ export class ObjectTracker {
       const dx = Math.round(s.dx), dy = Math.round(s.dy);
       mask = dx || dy ? { ...this.rle, x0: this.rle.x0 + dx, y0: this.rle.y0 + dy } : this.rle;
     }
-    return { id: 1, cx: b.cx, cy: b.cy, w: b.w, h: b.h, mask, lost: this.lost || undefined };
+    const pin = this.pin && { x: this.pin.x, y: this.pin.y, s: this.pin.s };
+    return { id: 1, cx: b.cx, cy: b.cy, w: b.w, h: b.h, mask, lost: this.lost || undefined, ...(pin && { pin }) };
+  }
+
+  // ---------- the pinned point ----------
+  // Keeps the pinned spot where it is in the scene while the camera moves: follows a grid of points
+  // spread over the whole frame with Lucas-Kanade (each checked by tracking it back again), and fits
+  // the camera's shift and zoom to them (the typical move of all the points, so an object passing
+  // in front of the spot can't drag it along). The pin moves by that, and grows as the camera
+  // closes in or shrinks as it pulls away.
+  private pinStep() {
+    const p = this.pin;
+    if (!p) return;
+    const { W, H } = this, P = this.prevPyr, N = this.nextPyr, G = 10;
+    const olds: { x: number; y: number }[] = [], news: [number, number][] = [];
+    for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
+      const x = WIN + 3 + (gx + 0.5) / G * (W - 2 * WIN - 6), y = WIN + 3 + (gy + 0.5) / G * (H - 2 * WIN - 6);
+      const f = this.lk(P, N, x, y, p.vx, p.vy);
+      const b = f && this.lk(N, P, f[0], f[1], -p.vx, -p.vy);
+      if (!f || !b || Math.hypot(b[0] - x, b[1] - y) > 1) continue;
+      olds.push({ x, y }); news.push(f);
+    }
+    if (olds.length < 8) return; // not enough to go on: leave it where it is
+    // fit x' = s·x + t (shift and zoom): start from the typical shift, then keep refitting to the
+    // points that agree with the fit, so something moving through the shot is left out
+    let sc = 1, tx = median(news.map((f, k) => f[0] - olds[k].x)), ty = median(news.map((f, k) => f[1] - olds[k].y));
+    let use = olds.map((_, k) => k);
+    for (let round = 0; round < 4; round++) {
+      const res = olds.map((o, k) => Math.hypot(news[k][0] - (sc * o.x + tx), news[k][1] - (sc * o.y + ty)));
+      const cut = Math.max(0.75, 2 * median(use.map(k => res[k])));
+      const keep = olds.map((_, k) => k).filter(k => res[k] <= cut);
+      if (keep.length < 6) break;
+      use = keep;
+      let mx = 0, my = 0, mx2 = 0, my2 = 0;
+      for (const k of use) { mx += olds[k].x; my += olds[k].y; mx2 += news[k][0]; my2 += news[k][1]; }
+      mx /= use.length; my /= use.length; mx2 /= use.length; my2 /= use.length;
+      let num = 0, den = 0;
+      for (const k of use) {
+        const ax = olds[k].x - mx, ay = olds[k].y - my;
+        num += ax * (news[k][0] - mx2) + ay * (news[k][1] - my2); den += ax * ax + ay * ay;
+      }
+      sc = den > 0 ? Math.max(0.95, Math.min(1.05, num / den)) : 1;
+      tx = mx2 - sc * mx; ty = my2 - sc * my;
+    }
+    const nx = sc * p.x + tx, ny = sc * p.y + ty;
+    p.vx = 0.6 * (nx - p.x) + 0.4 * p.vx; p.vy = 0.6 * (ny - p.y) + 0.4 * p.vy;
+    p.x = nx; p.y = ny; p.s = Math.max(0.2, Math.min(5, p.s * sc));
   }
 
   private lock(cx: number, cy: number, w: number, h: number) {

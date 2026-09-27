@@ -5,6 +5,7 @@
 import { Editor, type EditorState } from '@/application/editor';
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
+import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { workSize, type Selection } from '@/domain/tracking/types';
 import { AnalysisClient } from '@/infrastructure/analysis/client';
 import { Mixer } from '@/infrastructure/audio/mixer';
@@ -25,6 +26,8 @@ export interface UiState extends Omit<EditorState, 'hasEffects'> {
   status: string;
   selected: number | null; // selected object; taps on the preview fix it
   adding: AddChoice | null; // what the next tap on the preview adds
+  // a person was tapped while adding: which body part should it follow? (suggested: the nearest)
+  choosing: { suggested: BodyPart } | null;
   camera: boolean;
   recording: boolean;
   muted: boolean;          // the clip's own sound is off
@@ -41,7 +44,7 @@ export type AddChoice = { kind: 'effect'; fx: Partial<FxSettings> } | { kind: 'i
 
 export const INITIAL_UI: UiState = {
   ready: false, playing: false, time: 0, duration: 0, videoStart: 0, hint: '', status: '', scan: null, job: null,
-  lanes: [], rows: 0, selected: null, adding: null, camera: false, recording: false, muted: false, wave: undefined, canRecord: false, result: null, src: null,
+  lanes: [], rows: 0, selected: null, adding: null, choosing: null, camera: false, recording: false, muted: false, wave: undefined, canRecord: false, result: null, src: null,
 };
 
 type VideoWithFrameCallback = HTMLVideoElement & {
@@ -66,6 +69,8 @@ export class Player {
   private camera: Awaited<ReturnType<typeof startCameraCapture>> | null = null;
   private recorder: ReturnType<typeof startCanvasRecording> | null = null;
   private mixer: Mixer;
+  // what's waiting for a body part to be picked
+  private pendingAdd: { choice: AddChoice; i: number; at: Selection } | null = null;
   private loads = 0; // counts clips loaded, so a slow waveform for an old clip is dropped
   private events = new AbortController();
   private destroyed = false;
@@ -157,7 +162,14 @@ export class Player {
   select(id: number | null) { this.set({ selected: id, adding: null }); this.redraw(); }
   // the next tap on the preview adds a new effect on what's tapped
   startAdding(choice: AddChoice) { this.video.pause(); this.set({ adding: choice, selected: null }); this.redraw(); }
-  cancelAdding() { this.set({ adding: null }); this.redraw(); }
+  cancelAdding() { this.pendingAdd = null; this.set({ adding: null, choosing: null }); this.redraw(); }
+  // the body part picked for the person tapped ('body' = the whole person)
+  choosePart(part: BodyPart) {
+    const p = this.pendingAdd;
+    this.pendingAdd = null;
+    this.set({ choosing: null });
+    if (p) this.addNow(p.choice, p.i, p.at, part === 'body' ? null : part);
+  }
   deleteTrack(id: number) { this.editor.deleteTrack(id); if (this.ui.selected === id) this.select(null); }
   removeFixHere() { if (this.ui.selected !== null) this.editor.removeFixAt(this.ui.selected, this.frameNow()); }
   swapHere() { if (this.ui.selected !== null) this.editor.swapAt(this.ui.selected, this.frameNow()); }
@@ -280,6 +292,7 @@ export class Player {
     if (this.camera) m = 'Recording from the camera.';
     else if (!this.ui.ready || this.ui.scan !== null || this.recorder) m = '';
     else if (!ed.trackCount) m = 'Tap what the effect should follow.';
+    else if (this.ui.choosing) m = 'Pick which part it should follow.';
     else if (this.ui.adding) m = this.ui.adding.kind === 'impact' ? 'Tap what the impact should hit.' : 'Tap what the effect should follow.';
     else if (sel !== null && this.video.paused) m = idx < 0 ? ''
       : !ed.inRange(sel, idx) ? `Outside ${name}’s effect. Drag its ends to cover this.`
@@ -311,16 +324,28 @@ export class Player {
     const i = this.frameNow();
     if (i < 0) return;
     const q = this.renderer.CW / (this.workW || 1), at: Selection = { x: p.x / q, y: p.y / q }, sel = this.ui.selected;
+    if (this.ui.choosing) return; // picking a body part first
     const add = this.ui.adding;
     if (add || !ed.trackCount) {
-      const id = add?.kind === 'impact' ? ed.addImpact(i, at, add.style, add.fx) : ed.addTrack(i, at, add?.fx);
-      if (id !== null) this.select(id);
+      // a person? then ask which part it should follow; anything else is added straight away
+      const choice: AddChoice = add ?? { kind: 'effect', fx: {} };
+      void ed.probe(i, at).then(part => {
+        if (this.destroyed || this.ui.adding !== add) return;
+        if (part) { this.pendingAdd = { choice, i, at }; this.set({ choosing: { suggested: part } }); }
+        else this.addNow(choice, i, at, null);
+      });
       return;
     }
     if (sel !== null) { ed.fixAt(sel, i, at); return; }
     // tapping a tracked object selects it; tapping elsewhere plays
     const hit = ed.trackAt(i, at);
     if (hit !== null) this.select(hit); else this.togglePlay();
+  }
+
+  private addNow(choice: AddChoice, i: number, at: Selection, part: BodyPart | null) {
+    const ed = this.editor;
+    const id = choice.kind === 'impact' ? ed.addImpact(i, at, choice.style, choice.fx, part) : ed.addTrack(i, at, choice.fx, part);
+    if (id !== null) this.select(id);
   }
 
   // ---------- recording ----------

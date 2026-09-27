@@ -1,18 +1,22 @@
-// Analysis worker. Two jobs, one at a time:
+// Analysis worker. Three jobs, one at a time:
 // - scan: decodes the whole clip tiny and lists every frame, in clip time
-// - track: from the frame the object was tapped on, follows it forward to the end of the
-//   given frames, then backward to their start, streaming the track data back in batches
+// - probe: says whether a tap landed on a person, and which body part is nearest
+// - track: from the frame the object (or body part) was tapped on, follows it forward to the end
+//   of the given frames, then backward to their start, streaming the track data back in batches
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from 'mediabunny';
 import { toClipTime } from '@/domain/tracking/timeline';
-import { createSegmenter, type Segmenter } from './mediapipe';
+import { BodyPartTracker, modelsFor } from './bodyTracker';
+import { createFaces, createHands, createPoses, createSegmenter, type Landmarks, type Segmenter } from './mediapipe';
 import { ObjectTracker } from './objectTracker';
-import type { JobRequest, ScanRequest, TrackRequest, WorkerMessage, WorkerRequest } from './protocol';
-import { workSize, type ClipFrame, type Shape } from '@/domain/tracking/types';
+import type { JobRequest, ProbeRequest, ScanRequest, TrackRequest, WorkerMessage, WorkerRequest } from './protocol';
+import { partNearest, person, personAt } from '@/domain/tracking/bodyParts';
+import { workSize, type ClipFrame, type Selection, type Shape } from '@/domain/tracking/types';
 
 const POST_EVERY_MS = 120, BACK_CHUNK = 24, SCAN_W = 16;
 
 let current = 0;
 let segmenter: Promise<Segmenter> | null = null;
+let poses: Promise<Landmarks> | null = null, hands: Promise<Landmarks> | null = null, faces: Promise<Landmarks> | null = null;
 const post = (m: WorkerMessage) => self.postMessage(m);
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
@@ -25,7 +29,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
 };
 
 function run(job: JobRequest) {
-  return job.type === 'scan' ? scan(job) : track(job);
+  return job.type === 'scan' ? scan(job) : job.type === 'probe' ? probe(job) : track(job);
 }
 
 // ---------- the open clip, reused across jobs ----------
@@ -53,10 +57,26 @@ function open(job: JobRequest) {
   })();
 }
 
-// the tracker segments c.work, which must hold the frame being processed
-async function makeTracker(c: Clip) {
+// something that follows what was tapped from frame to frame: the object under the tap (outlined
+// and followed), or a body part of the person tapped. Both look at c.work, which must hold the frame.
+interface Follower { start(rgba: Uint8ClampedArray, sel: Selection): Shape | null; step(rgba: Uint8ClampedArray): Shape | null }
+
+async function makeFollower(c: Clip, job: TrackRequest): Promise<() => Follower> {
+  const part = job.part;
+  if (part && part !== 'body') {
+    const need = modelsFor(part);
+    const models = {
+      poses: await (poses ??= createPoses()),
+      hands: need.hands ? await (hands ??= createHands()) : null,
+      faces: need.faces ? await (faces ??= createFaces()) : null,
+    };
+    return () => { const t = new BodyPartTracker(c.W, c.H, part, models, c.work); return { start: (_rgba, sel) => t.start(sel), step: () => t.step() }; };
+  }
   const seg = await (segmenter ??= createSegmenter());
-  return () => new ObjectTracker(c.W, c.H, (x, y) => seg.segment(c.work, x, y));
+  return () => {
+    const t = new ObjectTracker(c.W, c.H, (x, y) => seg.segment(c.work, x, y));
+    return { start: (rgba, sel) => t.start(rgba, sel, job.pin), step: rgba => t.step(rgba) };
+  };
 }
 
 // the file time of the frame starting at clip time t (nudged so rounding never picks the frame before)
@@ -90,7 +110,7 @@ async function scan(job: ScanRequest) {
 
 // ---------- track ----------
 async function track(job: TrackRequest) {
-  const c = await open(job), newTracker = await makeTracker(c), { W, H, wctx } = c;
+  const c = await open(job), newTracker = await makeFollower(c, job), { W, H, wctx } = c;
   if (current !== job.jobId) return;
   const { times, key } = job, total = times.length;
   let batch: { i: number; shape: Shape }[] = [], done = 0, lastPost = 0;
@@ -100,8 +120,10 @@ async function track(job: TrackRequest) {
     post({ type: 'progress', jobId: job.jobId, done, total });
     batch = []; lastPost = performance.now();
   };
-  const emit = (i: number, shape: Shape) => {
-    batch.push({ i, shape }); done++;
+  // frames where the part (or object) isn't found send nothing
+  const emit = (i: number, shape: Shape | null) => {
+    if (shape) batch.push({ i, shape });
+    done++;
     // the key frame goes out straight away so the paused preview shows the outline
     if (done === 1 || performance.now() - lastPost > POST_EVERY_MS) flush();
   };
@@ -143,5 +165,21 @@ async function track(job: TrackRequest) {
     }
   }
   flush();
+  post({ type: 'done', jobId: job.jobId });
+}
+
+// ---------- probe ----------
+// is there a person where the tap landed, and which part of them is nearest?
+async function probe(job: ProbeRequest) {
+  const c = await open(job), find = await (poses ??= createPoses());
+  const wc = await c.sink.getCanvas(at(c, job.t));
+  if (current !== job.jobId) return;
+  let part = null;
+  if (wc) {
+    c.wctx.drawImage(wc.canvas, 0, 0, c.W, c.H);
+    const who = personAt(find(c.work).map(person), job.at);
+    if (who) part = partNearest(who, job.at);
+  }
+  post({ type: 'probed', jobId: job.jobId, part });
   post({ type: 'done', jobId: job.jobId });
 }

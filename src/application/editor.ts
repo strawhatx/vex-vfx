@@ -10,6 +10,7 @@ import {
   DEFAULT_EFFECT_S, clearShapes, hitFrame, nearestOther, newImpact, newTrack, packRows, rangeFrames, refreshFrames, setHit, setRange,
   swapFrom, toLane, trackAt, trackSpan, type Lane, type Track,
 } from '@/domain/project/track';
+import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { frameIndexAt, type ClipFrame, type Selection, type TrackMeta } from '@/domain/tracking/types';
 import type { Analysis, EffectLayers } from './ports';
 
@@ -45,6 +46,8 @@ export class Editor {
   private running: Job | null = null;
   private lastFx: FxSettings = { ...DEFAULT_FX };
   private lastImpact: ImpactStyle = 'punch';
+  // a probe in progress: how to answer it (it's answered with null if another replaces it)
+  private probing: ((part: BodyPart | null) => void) | null = null;
   private state: EditorState = { scan: null, job: null, lanes: [], rows: 0, hasEffects: false };
 
   constructor(private analysis: Analysis, private layers: EffectLayers, private events: EditorEvents) {}
@@ -99,19 +102,37 @@ export class Editor {
   }
 
   // ---------- adding ----------
-  // a new effect on the object tapped at frame i, lasting DEFAULT_EFFECT_S from there
-  addTrack(i: number, sel: Selection, fx: Partial<FxSettings> = {}) {
+  // whether the tap at frame i is on a person, and the body part nearest it (null: not a person).
+  // It goes ahead of any tracking in progress, which runs again after.
+  probe(i: number, at: Selection): Promise<BodyPart | null> {
+    const f = this.clip[i], source = this.source;
+    if (!f || !source) return Promise.resolve(null);
+    this.probing?.(null);
+    if (this.running) { this.analysis.cancel(); this.queue.unshift(this.running); this.running = null; }
+    return new Promise(resolve => {
+      let part: BodyPart | null = null;
+      const answer = (p: BodyPart | null) => { if (this.probing === answer) this.probing = null; resolve(p); };
+      this.probing = answer;
+      this.update({ job: { label: 'Looking at what you tapped', progress: 0 } });
+      const done = () => { if (this.probing !== answer) return; answer(part); this.update({ job: null }); this.pump(); };
+      this.analysis.probe(source, { t: f.t, at }, { probed: p => { part = p; }, done, error: done });
+    });
+  }
+
+  // a new effect on what was tapped at frame i (the object there, or a body part of the person
+  // there), lasting DEFAULT_EFFECT_S from there
+  addTrack(i: number, sel: Selection, fx: Partial<FxSettings> = {}, part: BodyPart | null = null) {
     const f = this.clip[i];
     if (!f) return null;
     this.lastFx = { ...this.lastFx, ...fx };
-    return this.start(newTrack(this.nextId++, this.clip, this.lastFx, { s: f.t, e: Math.min(this.duration, f.t + DEFAULT_EFFECT_S) }), i, sel);
+    return this.start(newTrack(this.nextId++, this.clip, this.lastFx, { s: f.t, e: Math.min(this.duration, f.t + DEFAULT_EFFECT_S) }, part), i, sel);
   }
 
-  // a new impact hitting the object tapped at frame i
-  addImpact(i: number, sel: Selection, style: ImpactStyle = this.lastImpact, fx: Partial<FxSettings> = {}) {
+  // a new impact hitting what was tapped at frame i
+  addImpact(i: number, sel: Selection, style: ImpactStyle = this.lastImpact, fx: Partial<FxSettings> = {}, part: BodyPart | null = null) {
     if (!this.clip[i]) return null;
     this.lastImpact = style;
-    return this.start(newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration), i, sel);
+    return this.start(newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration, part), i, sel);
   }
 
   private start(t: Track, i: number, sel: Selection) {
@@ -265,10 +286,10 @@ export class Editor {
     })));
   }
 
-  private stopJobs() { this.analysis.cancel(); this.queue = []; this.running = null; }
+  private stopJobs() { this.analysis.cancel(); this.queue = []; this.running = null; this.probing?.(null); }
 
   private pump() {
-    if (this.running) return;
+    if (this.running || this.probing) return;
     const source = this.source;
     const job = source && this.ready ? this.queue.shift() : undefined;
     if (!source || !job) { if (this.state.job) this.update({ job: null }); return; }
@@ -280,7 +301,7 @@ export class Editor {
     this.running = job;
     this.update({ job: { label, progress: 0 } });
     const next = () => { if (this.running === job) { this.running = null; this.pump(); } };
-    this.analysis.track(source, { times: this.clip.slice(from, to).map(f => f.t), key: key.i - from, select: { x: key.x, y: key.y } }, {
+    this.analysis.track(source, { times: this.clip.slice(from, to).map(f => f.t), key: key.i - from, select: { x: key.x, y: key.y }, pin: t.kind === 'impact' && !t.part, part: t.part ?? undefined }, {
       progress: (done, total) => this.update({ job: { label, progress: done / total } }),
       shapes: shapes => {
         let lo = Infinity, hi = -1;

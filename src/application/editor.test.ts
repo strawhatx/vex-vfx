@@ -6,13 +6,15 @@ import type { Analysis, EffectLayers, LayerSpec } from './ports';
 // ---------- fakes ----------
 type Call =
   | { kind: 'scan'; on: Parameters<Analysis['scan']>[2] }
-  | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] };
+  | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] }
+  | { kind: 'probe'; req: Parameters<Analysis['probe']>[1]; on: Parameters<Analysis['probe']>[2] };
 
 class FakeAnalysis implements Analysis {
   calls: Call[] = [];
   cancels = 0;
   scan: Analysis['scan'] = (_s, _l, on) => { this.calls.push({ kind: 'scan', on }); };
   track: Analysis['track'] = (_s, req, on) => { this.calls.push({ kind: 'track', req, on }); };
+  probe: Analysis['probe'] = (_s, req, on) => { this.calls.push({ kind: 'probe', req, on }); };
   cancel() { this.cancels++; }
   get last() { return this.calls[this.calls.length - 1]; }
   get tracks() { return this.calls.filter(c => c.kind === 'track').length; }
@@ -57,6 +59,7 @@ describe('adding an effect', () => {
     editor.addTrack(14, { x: 50, y: 50 });
     expect(state.lanes[0].range).toEqual({ s: 1.4, e: 4.4 });
     const c = trackCall();
+    expect(c.req.pin).toBe(false);
     expect(c.req.times).toEqual(times(14, 44));
     expect(c.req.key).toBe(0);
     expect(state.job?.label).toBe('Tracking Object 1');
@@ -205,6 +208,8 @@ describe('impacts', () => {
   it('tracks the object from a little before the hit to the end of the burst', () => {
     editor.addImpact(20, { x: 50, y: 50 }, 'punch');
     const c = trackCall();
+    // impacts also follow the tapped spot with the camera; effects don't need to
+    expect(c.req.pin).toBe(true);
     expect(c.req.times[0]).toBe(1.8);
     expect(c.req.times[c.req.times.length - 1]).toBe(2.4);
     expect(c.req.times[c.req.key]).toBe(2);
@@ -247,5 +252,42 @@ describe('impacts', () => {
     editor.addImpact(20, { x: 20, y: 20 }, 'punch'); // 2..2.45, overlaps
     editor.addImpact(40, { x: 20, y: 20 }, 'punch'); // 4..4.45, free
     expect(state.lanes.map(l => l.row)).toEqual([0, 1, 0]);
+  });
+});
+
+describe('body parts', () => {
+  it('a probe goes ahead of tracking in progress, which then runs again', async () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    const cancels = analysis.cancels;
+    const answer = editor.probe(20, { x: 30, y: 40 });
+    const c = analysis.last;
+    if (c.kind !== 'probe') throw new Error('expected a probe');
+    expect(analysis.cancels).toBe(cancels + 1);
+    expect(c.req).toEqual({ t: 2, at: { x: 30, y: 40 } });
+    c.on.probed('handR'); c.on.done();
+    expect(await answer).toBe('handR');
+    expect(trackCall().req.times).toEqual(times(14, 44)); // the interrupted tracking, again
+  });
+
+  it('a probe that misses a person answers null', async () => {
+    const answer = editor.probe(20, { x: 0, y: 0 });
+    const c = analysis.last;
+    if (c.kind !== 'probe') throw new Error('expected a probe');
+    c.on.probed(null); c.on.done();
+    expect(await answer).toBeNull();
+  });
+
+  it('an effect on a body part tracks that part and is named after it', () => {
+    editor.addTrack(14, { x: 50, y: 50 }, {}, 'eyes');
+    expect(trackCall().req.part).toBe('eyes');
+    expect(state.lanes[0].name).toBe('Eyes');
+  });
+
+  it('an impact on a body part tracks the part rather than pinning the spot', () => {
+    editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, 'handL');
+    const c = trackCall();
+    expect(c.req.part).toBe('handL');
+    expect(c.req.pin).toBe(false);
+    expect(state.lanes[0].name).toBe('Left hand');
   });
 });

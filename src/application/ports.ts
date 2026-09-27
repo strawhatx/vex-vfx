@@ -2,6 +2,7 @@
 // in infrastructure/ implement these; tests use in-memory fakes.
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
+import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
 interface JobEvents {
@@ -15,9 +16,13 @@ export interface Analysis {
   // lists every frame the player can show, in clip time (0 at its first frame; playerLength: how
   // long the player can play)
   scan(source: Blob, playerLength: number, on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void }): void;
-  // follows the object at `select` in frame times[key], forward to the end of times then back to the start
-  track(source: Blob, req: { times: number[]; key: number; select: Selection },
+  // follows the object at `select` in frame times[key], forward to the end of times then back to the
+  // start; pin: also follows that exact spot (Shape.pin); part: follows that body part of the
+  // person at `select` instead of the object there
+  track(source: Blob, req: { times: number[]; key: number; select: Selection; pin?: boolean; part?: BodyPart },
     on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void }): void;
+  // whether the tap at `at` in the frame at t is on a person, and the body part nearest it
+  probe(source: Blob, req: { t: number; at: Selection }, on: Omit<JobEvents, 'progress'> & { probed(part: BodyPart | null): void }): void;
   cancel(): void;
 }
 

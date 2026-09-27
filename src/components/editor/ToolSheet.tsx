@@ -4,9 +4,10 @@
 import type { CSSProperties } from 'react';
 import { IMPACTS, IMPACT_STYLES, type ImpactStyle } from '@/domain/effects/impacts';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
+import { BODY_PARTS, type BodyPart } from '@/domain/tracking/bodyParts';
 import { Icon, I } from './icons';
 
-export type Tool = 'styles' | 'effects' | 'color' | 'adjust' | 'impact';
+export type Tool = 'styles' | 'effects' | 'color' | 'adjust' | 'impact' | 'parts';
 // the effect categories: each continuous effect, and impacts
 export type Category = Effect | 'impact';
 
@@ -19,7 +20,9 @@ export const EFFECTS: { id: Effect; label: string }[] = [
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
 export const categoryName = (c: Category) => (c === 'impact' ? 'Impact' : effectName(c));
 
-export const TOOL_TITLES: Record<Tool, string> = { styles: 'Styles', effects: 'Effect', color: 'Color', adjust: 'Adjust', impact: 'Impact style' };
+export const TOOL_TITLES: Record<Tool, string> = { styles: 'Styles', effects: 'Effect', color: 'Color', adjust: 'Adjust', impact: 'Impact style', parts: 'Which part?' };
+
+const PART_ICONS: Record<BodyPart, string> = { body: I.person, head: I.head, eyes: I.eye, handL: I.hand, handR: I.hand, footL: I.foot, footR: I.foot };
 
 // a burst of each impact style's colors, for its tile
 export const IMPACT_ART: Record<ImpactStyle, string> = {
@@ -35,10 +38,12 @@ const pct = (v: number, min: number, max: number) => ({ '--p': `${((v - min) / (
 // what picking a style in a category adds
 export type Pick = { kind: 'effect'; effect: Effect; pal: number } | { kind: 'impact'; style: ImpactStyle };
 
-export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick, impact, onImpact }: {
+export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick, impact, onImpact, suggested, onPart }: {
   tool: Tool; title: string; fx: FxSettings; onChange(p: Partial<FxSettings>): void; onClose(): void;
   category?: Category | null; onPick?(p: Pick): void;
   impact?: ImpactStyle | null; onImpact?(style: ImpactStyle): void;
+  // parts: the one nearest the tap, and what to do with the one picked
+  suggested?: BodyPart; onPart?(part: BodyPart): void;
 }) {
   return (
     <div className="sheet" role="dialog" aria-label={title}>
@@ -46,6 +51,16 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
         <strong>{title}</strong>
         <button type="button" className="icon-btn" aria-label="Done" onClick={onClose}><Icon d={I.check} /></button>
       </div>
+      {tool === 'parts' && (
+        <div className="tiles" role="group" aria-label="Body part">
+          {BODY_PARTS.map(b => (
+            <button key={b.id} type="button" className="tile part-tile" aria-pressed={suggested === b.id} onClick={() => onPart?.(b.id)}>
+              <span className={`tile-art${b.id.endsWith('L') ? ' mirror' : ''}`}><Icon d={PART_ICONS[b.id]} size={30} /></span>
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
       {tool === 'styles' && category === 'impact' && (
         <div className="tiles" role="group" aria-label="Impact styles">
           {IMPACT_STYLES.map(st => (

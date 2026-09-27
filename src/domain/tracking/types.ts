@@ -18,6 +18,10 @@ export interface Shape {
   mask?: Rle;
   // true when the object tracker has lost its target and is searching
   lost?: boolean;
+  // a pinned point (the tapped spot) carried along with the camera's movement, and how much bigger
+  // it looks than when tapped: keeps an impact on its spot in the scene while the camera pans or
+  // zooms (it may be off screen, outside the frame)
+  pin?: { x: number; y: number; s: number };
 }
 
 // one frame of the clip: when it starts and how long it shows, in seconds

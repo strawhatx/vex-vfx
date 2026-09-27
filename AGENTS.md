@@ -17,11 +17,11 @@ testable without a browser. Dependencies point inward only.
 src/
 ├── domain/          # pure TypeScript: no React, DOM, canvas, workers or Next.js
 │   ├── project/     #   effects on the timeline: ranges, keyframes, stacking (the editing rules)
-│   ├── tracking/    #   track data types, clip time (lining file times up with the player)
+│   ├── tracking/    #   track data types, clip time, body parts (from pose/hand/face landmarks)
 │   └── effects/     #   effect settings and palettes
 ├── application/     # use cases: editor.ts (actions + job queue), ports.ts (interfaces it needs)
 ├── infrastructure/  # browser adapters that implement the ports
-│   ├── analysis/    #   worker, MediaPipe segmenter, object tracker (implements Analysis)
+│   ├── analysis/    #   worker, MediaPipe models (segmenter, pose, hands, face), object and body-part trackers (implements Analysis)
 │   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root

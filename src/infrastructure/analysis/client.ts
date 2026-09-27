@@ -22,6 +22,10 @@ export class AnalysisClient implements Analysis {
     progress: m => on.progress(m.done, m.total), shapes: m => on.shapes(m.shapes), done: on.done, error: m => on.error(m.message),
   });
 
+  probe: Analysis['probe'] = (file, req, on) => this.start({ type: 'probe', clipId: this.clipId(file), file, ...req }, {
+    probed: m => on.probed(m.part), done: on.done, error: m => on.error(m.message),
+  });
+
   cancel() {
     this.handlers = null; this.jobId++;
     this.worker?.postMessage({ type: 'cancel' });

@@ -7,7 +7,7 @@ import type { FxSettings } from '@/domain/effects/palettes';
 import { DEFAULT_FX } from '@/application/editor';
 import { INITIAL_UI, Player, type UiState } from './player';
 import { Icon, I } from './icons';
-import { Timeline } from './Timeline';
+import { Timeline, mmss } from './Timeline';
 import { Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
 import { TOOL_TITLES, ToolSheet, categoryName, type Category, type Pick, type Tool } from './ToolSheet';
 
@@ -61,7 +61,8 @@ export default function VfxStudio() {
   }, [fit]);
   useLayoutEffect(fit, [fit, ui.ready, scanning, full, ui.lanes.length]);
 
-  // ---------- preview zoom: pinch (or Ctrl/⌘ + scroll) to zoom, two fingers to move around ----------
+  // ---------- preview zoom: pinch (or Ctrl/⌘ + scroll) to zoom; once zoomed, drag (one finger, the
+  // mouse, or scrolling) to move around. A tap without dragging still selects or places things. ----------
   // a new clip starts unzoomed
   const [zoomSrc, setZoomSrc] = useState(ui.src);
   if (zoomSrc !== ui.src) { setZoomSrc(ui.src); setZoom({ k: 1, x: 0, y: 0 }); }
@@ -85,7 +86,7 @@ export default function VfxStudio() {
       const [a, b] = [e.touches[0], e.touches[1]];
       return { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2 };
     };
-    const start = (e: TouchEvent) => { if (e.touches.length === 2) { pinch = two(e); e.preventDefault(); } };
+    const start = (e: TouchEvent) => { if (e.touches.length === 2) { pinch = two(e); drag = null; e.preventDefault(); } };
     const move = (e: TouchEvent) => {
       if (!pinch || e.touches.length !== 2) return;
       e.preventDefault();
@@ -95,18 +96,38 @@ export default function VfxStudio() {
     };
     const end = (e: TouchEvent) => { if (e.touches.length < 2) pinch = null; };
     const wheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      zoomAt(zoomRef.current.k * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+      const z = zoomRef.current;
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); zoomAt(z.k * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY); }
+      else if (z.k > 1) { e.preventDefault(); zoomAt(z.k, e.clientX, e.clientY, -e.deltaX, -e.deltaY); }
     };
+    // one finger or the mouse drags the zoomed preview around, once it has moved a little
+    let drag: { id: number; x: number; y: number; moved: boolean } | null = null;
+    const down = (e: PointerEvent) => { if (zoomRef.current.k > 1 && e.isPrimary && !pinch) drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false }; };
+    const pmove = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id || pinch) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 10) return;
+      // a drag: keep following the finger even if it slides off the preview
+      if (!drag.moved) try { st.setPointerCapture(e.pointerId); } catch { /* already gone */ }
+      drag.moved = true;
+      zoomAt(zoomRef.current.k, e.clientX, e.clientY, dx, dy);
+      drag.x = e.clientX; drag.y = e.clientY;
+    };
+    const up = (e: PointerEvent) => { if (drag?.id === e.pointerId) drag = null; };
     st.addEventListener('touchstart', start, { passive: false });
     st.addEventListener('touchmove', move, { passive: false });
     st.addEventListener('touchend', end);
     st.addEventListener('touchcancel', end);
     st.addEventListener('wheel', wheel, { passive: false });
+    st.addEventListener('pointerdown', down);
+    st.addEventListener('pointermove', pmove);
+    st.addEventListener('pointerup', up);
+    st.addEventListener('pointercancel', up);
     return () => {
       st.removeEventListener('touchstart', start); st.removeEventListener('touchmove', move);
       st.removeEventListener('touchend', end); st.removeEventListener('touchcancel', end); st.removeEventListener('wheel', wheel);
+      st.removeEventListener('pointerdown', down); st.removeEventListener('pointermove', pmove);
+      st.removeEventListener('pointerup', up); st.removeEventListener('pointercancel', up);
     };
   }, []);
 
@@ -148,7 +169,7 @@ export default function VfxStudio() {
   }
 
   const buttons = toolsFor(mode, {
-    ready: ui.ready, busy, recording: ui.recording, camera: ui.camera, adding: !!ui.adding, outline: showOutline, muted: ui.muted,
+    ready: ui.ready, busy, recording: ui.recording, camera: ui.camera, adding: !!ui.adding || !!ui.choosing, outline: showOutline, muted: ui.muted,
     open: tool, hasKeys: !!lane?.keys.length, objects: ui.lanes.filter(l => l.kind === 'effect').length,
   });
   function runTool(key: ToolKey) {
@@ -180,10 +201,10 @@ export default function VfxStudio() {
         </button>
       </header>
 
-      <section ref={stageRef} className="stage" aria-label="Video preview">
+      <section ref={stageRef} className={`stage${zoom.k > 1 ? ' zoomed' : ''}`} aria-label="Video preview">
         <canvas ref={viewRef} className={`view${ui.lanes.length && !ui.adding && !lane ? ' tracked' : ''}${ui.ready ? '' : ' hidden'}`} width={960} height={540}
           style={zoom.k > 1 ? { transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.k})` } : undefined}
-          aria-label="Video. Tap an object to track it. Pinch to zoom." />
+          aria-label="Video. Tap an object to track it. Pinch to zoom, then drag to move around." />
         {zoom.k > 1 && (
           <button type="button" className="zoom-reset" onClick={() => setZoom({ k: 1, x: 0, y: 0 })} aria-label="Reset zoom">
             <Icon d={I.shrink} size={16} />{Math.round(zoom.k * 100)}%
@@ -209,14 +230,18 @@ export default function VfxStudio() {
           </div>
         )}
         <div className={`rec${ui.recording || ui.camera ? ' on' : ''}`}>REC</div>
-        {ui.hint && !ui.job && <div className="tip" aria-live="polite">{ui.hint}</div>}
+        {/* hints aren't shown over the video (they got in the way); screen readers still hear them */}
+        <div className="sr-only" aria-live="polite">{ui.hint}</div>
         {toast && <div className="toast" role="status">{toast}</div>}
       </section>
 
       <div className="transport" aria-label="Playback controls">
-        <button type="button" className="icon-btn" disabled={!ui.ready} aria-label={full ? 'Exit full screen' : 'Full screen'} onClick={() => setFull(f => !f)}>
-          <Icon d={full ? I.shrink : I.expand} size={20} />
-        </button>
+        <div className="transport-left">
+          <button type="button" className="icon-btn" disabled={!ui.ready} aria-label={full ? 'Exit full screen' : 'Full screen'} onClick={() => setFull(f => !f)}>
+            <Icon d={full ? I.shrink : I.expand} size={20} />
+          </button>
+          <Clock playing={ui.playing} time={ui.time} duration={ui.duration} currentTime={currentTime} />
+        </div>
         <button type="button" className="play" disabled={!ui.ready || scanning} aria-label={ui.playing ? 'Pause' : 'Play'} onClick={() => player()?.togglePlay()}>
           <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
             <path d={ui.playing ? 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' : 'M8 5.5v13a.5.5 0 0 0 .8.4l10-6.5a.5.5 0 0 0 0-.8l-10-6.5a.5.5 0 0 0-.8.4z'} fill="currentColor" />
@@ -229,14 +254,18 @@ export default function VfxStudio() {
 
       <div className="dock">
         <Timeline ui={ui} clipSelected={clipSel} busy={busy} currentTime={currentTime} soundShape={l => player()?.soundShape(l) ?? []} on={{
-          seek: t => player()?.seek(t), toggleMute: () => player()?.setMuted(!ui.muted), deselect, selectClip, selectLane, chooseFile, addEffect,
+          seek: t => player()?.seek(t), deselect, selectClip, selectLane, chooseFile, addEffect,
           setRange: (id, r) => player()?.setRange(id, r),
           commitRange: id => player()?.commitRange(id),
           moveImpact: (id, t) => player()?.moveImpact(id, t),
         }} />
         <Toolbar label={mode === 'catalog' ? 'Effects' : mode === 'clip' ? 'Clip tools' : lane ? `${lane.name} tools` : 'Tools'} buttons={buttons} onPress={runTool}
           onBack={mode ? deselect : undefined} />
-        {tool && (
+        {ui.choosing && (
+          <ToolSheet tool="parts" title={TOOL_TITLES.parts} fx={fx} onChange={changeFx} onClose={() => player()?.cancelAdding()}
+            suggested={ui.choosing.suggested} onPart={p => player()?.choosePart(p)} />
+        )}
+        {tool && !ui.choosing && (
           <ToolSheet tool={tool} fx={fx} onChange={changeFx} onClose={() => setTool(null)}
             category={category} onPick={pick}
             impact={lane?.impact} onImpact={st => lane && player()?.setImpactStyle(lane.id, st)}
@@ -263,4 +292,17 @@ export default function VfxStudio() {
       <video ref={videoRef} className="src-video" playsInline preload="auto" />
     </div>
   );
+}
+
+// the time shown and the clip's length; while playing it follows the video every frame
+function Clock({ playing, time, duration, currentTime }: { playing: boolean; time: number; duration: number; currentTime(): number }) {
+  const [now, setNow] = useState(time);
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    const tick = () => { setNow(currentTime()); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, currentTime]);
+  return <span className="time"><b>{mmss(playing ? now : time)}</b> / {mmss(duration)}</span>;
 }

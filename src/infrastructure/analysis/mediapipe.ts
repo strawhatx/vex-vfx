@@ -1,10 +1,12 @@
-// MediaPipe's interactive segmenter, for the analysis worker. The runtime and model are
-// served from public/ (see scripts/setup-mediapipe.mjs), never from another site.
+// MediaPipe's interactive segmenter and body landmark models (pose, hands, face), for the
+// analysis worker. The runtime and models are served from public/ (see
+// scripts/setup-mediapipe.mjs), never from another site.
 type MP = typeof import('@mediapipe/tasks-vision');
 type Fileset = Awaited<ReturnType<MP['FilesetResolver']['forVisionTasks']>>;
 
 const abs = (path: string) => new URL(path, self.location.origin).href;
 const SEGMENT_MODEL = '/models/magic_touch.tflite';
+const POSE_MODEL = '/models/pose_landmarker_lite.task', HAND_MODEL = '/models/hand_landmarker.task', FACE_MODEL = '/models/face_landmarker.task';
 
 let runtime: Promise<{ mp: MP; fileset: Fileset; factory: unknown }> | null = null;
 function loadRuntime() {
@@ -49,4 +51,33 @@ export async function createSegmenter(): Promise<Segmenter> {
     },
     close: () => t.close(),
   };
+}
+
+// ---------- body landmarks ----------
+// Each finds every person (hand, face) in an image and returns its points in the image's pixels.
+type Pt = { x: number; y: number };
+export type Landmarks = (image: OffscreenCanvas) => Pt[][];
+
+const toPixels = (sets: { x: number; y: number }[][], image: OffscreenCanvas) =>
+  sets.map(set => set.map(p => ({ x: p.x * image.width, y: p.y * image.height })));
+
+export async function createPoses(): Promise<Landmarks> {
+  const { mp } = await loadRuntime();
+  const t = await createTask((fs, d) => mp.PoseLandmarker.createFromOptions(fs, {
+    baseOptions: { modelAssetPath: abs(POSE_MODEL), delegate: d }, ...gpuCanvas(d), runningMode: 'IMAGE', numPoses: 4 }));
+  return image => { const r = t.detect(image); try { return toPixels(r.landmarks, image); } finally { r.close(); } };
+}
+
+export async function createHands(): Promise<Landmarks> {
+  const { mp } = await loadRuntime();
+  const t = await createTask((fs, d) => mp.HandLandmarker.createFromOptions(fs, {
+    baseOptions: { modelAssetPath: abs(HAND_MODEL), delegate: d }, ...gpuCanvas(d), runningMode: 'IMAGE', numHands: 4 }));
+  return image => toPixels(t.detect(image).landmarks, image);
+}
+
+export async function createFaces(): Promise<Landmarks> {
+  const { mp } = await loadRuntime();
+  const t = await createTask((fs, d) => mp.FaceLandmarker.createFromOptions(fs, {
+    baseOptions: { modelAssetPath: abs(FACE_MODEL), delegate: d }, ...gpuCanvas(d), runningMode: 'IMAGE', numFaces: 3 }));
+  return image => toPixels(t.detect(image).faceLandmarks, image);
 }
