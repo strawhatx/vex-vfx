@@ -26,8 +26,9 @@ export type ToolKey =
   | 'cutout'
   | 'movekey'
   | 'place'
-  | 'attach'
-  | 'deletescene';
+  | 'deletescene'
+  | 'isolate'
+  | 'duplicate';
 export interface ToolBtn {
   key: ToolKey;
   label: string;
@@ -54,7 +55,6 @@ export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'outline', label: 'Outline', icon: I.outline },
   { id: 'glitch', label: 'Glitch', icon: I.glitch },
   { id: 'text', label: 'Text', icon: I.text },
-  { id: 'path', label: 'Path', icon: I.path },
 ];
 
 // the Impact menu: one button per family
@@ -87,9 +87,8 @@ export function toolsFor(
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
     moveKey: boolean; // the selected cutout has a transform keyframe at the playhead
+    isolated: boolean; // the selected cutout is shown on its own
     films: number; // how many films the clip is split into (kept)
-    path: boolean; // the selected effect is a path
-    pathEnd: boolean; // its far end is held
   },
 ): ToolBtn[] {
   const sheet = (t: Tool, label: string, icon: string): ToolBtn => ({
@@ -119,7 +118,7 @@ export function toolsFor(
     return [
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
-      { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 2 },
+      { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       {
         key: 'mute',
         label: s.muted ? 'Unmute' : 'Mute',
@@ -155,10 +154,12 @@ export function toolsFor(
         icon: I.target,
         disabled: s.busy,
       },
+      { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
   if (mode === 'cutout')
     return [
+      { key: 'isolate', label: 'View alone', icon: I.cutout, on: s.isolated, disabled: !s.ready },
       sheet('transform', 'Transform', I.move),
       {
         key: 'movekey',
@@ -172,30 +173,7 @@ export function toolsFor(
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'unfix', label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
-      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
-    ];
-  if (mode === 'track' && s.path)
-    return [
-      sheet('form', 'Form', I.path),
-      sheet('finish', 'Look', I.effects),
-      sheet('color', 'Color', I.color),
-      sheet('shape', 'Shape', I.adjust),
-      {
-        key: 'attach',
-        label: s.pathEnd ? 'Free end' : 'Attach end',
-        icon: I.attach,
-        on: s.pathEnd,
-        disabled: s.busy,
-      },
-      { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
-      { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
-      ...(s.pinned
-        ? []
-        : [
-            { key: 'unfix' as const, label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
-            { key: 'swap' as const, label: 'Swap', icon: I.cross, disabled: s.busy || s.objects < 2 },
-          ]),
-      sheet('effects', 'Effect', I.effects),
+      { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
   if (mode === 'track')
@@ -214,6 +192,7 @@ export function toolsFor(
             { key: 'unfix' as const, label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
             { key: 'swap' as const, label: 'Swap', icon: I.cross, disabled: s.busy || s.objects < 2 },
           ]),
+      { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
   return [

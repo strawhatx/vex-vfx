@@ -133,7 +133,7 @@ export default function VfxStudio() {
     setTool(null);
     setScene(null);
     setCatalog(null);
-    player()?.select(ui.selected === id ? null : id);
+    player()?.select(id);
   }
 
   // Effects: list the categories in the toolbar; Cancel while waiting for the tap
@@ -167,7 +167,7 @@ export default function VfxStudio() {
     busy,
     recording: ui.recording,
     camera: ui.camera,
-    adding: !!ui.adding || !!ui.choosing || ui.aiming !== null || ui.attaching !== null,
+    adding: !!ui.adding || !!ui.choosing || ui.aiming !== null,
     outline: showOutline,
     muted: ui.muted,
     open: tool,
@@ -180,9 +180,8 @@ export default function VfxStudio() {
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
     moveKey: !!cutout && !!ui.cutoutNow?.onKey,
+    isolated: !!cutout && ui.isolated === cutout.id,
     films: ui.scenes.length,
-    path: !!lane?.path,
-    pathEnd: !!lane?.path?.end,
   });
 
   // a toolbar button pressed
@@ -241,18 +240,17 @@ export default function VfxStudio() {
       case 'aim':
       case 'transform':
       case 'background':
-      case 'form':
-      case 'finish':
-      case 'shape':
         return setTool(cur => (cur === key ? null : key));
     }
     if (!lane) return;
     switch (key) {
+      case 'duplicate':
+        setTool(null);
+        return pl?.duplicate(lane.id);
+      case 'isolate':
+        return pl?.toggleIsolated(lane.id);
       case 'movekey':
         return pl?.toggleMoveKey(lane.id);
-      case 'attach':
-        setTool(null);
-        return lane.path?.end ? pl?.freePathEnd(lane.id) : pl?.startAttaching(lane.id);
       case 'place':
         return pl?.placeCutout(lane.id);
       case 'hithere':
@@ -349,6 +347,7 @@ export default function VfxStudio() {
             commitRange: id => player()?.commitRange(id),
             moveImpact: (id, t) => player()?.moveImpact(id, t),
             moveCutout: (id, t) => player()?.placeCutout(id, t),
+            moveRow: (id, row) => player()?.moveToRow(id, row),
           }}
         />
         <Toolbar

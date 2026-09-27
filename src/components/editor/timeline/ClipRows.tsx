@@ -36,7 +36,8 @@ export function VideoRow({
   const thumbs = useFilmstrip(makeThumbs, ui.src, dur, ui.videoStart, step);
   const { x } = scale;
 
-  if (!ui.ready) {
+  // no clip yet, or every film of it deleted
+  if (!ui.ready || (ui.scanned && !ui.scenes.length)) {
     return (
       <div className="tl-row">
         <button type="button" className="add-clip" onClick={stop(onChooseFile)}>
@@ -154,7 +155,7 @@ export function AudioRow({
 // the clip's waveform for each kept film, back to back
 function WavePieces({ levels, ui, scale }: { levels: number[]; ui: UiState; scale: Scale }) {
   const dur = ui.srcDuration || 0;
-  const pieces = ui.scenes.length ? ui.scenes : [{ s: 0, e: dur, at: 0 }];
+  const pieces = ui.scanned ? ui.scenes : [{ s: 0, e: dur, at: 0 }];
   if (!dur) return null;
   const n = levels.length;
   return pieces.map((p, k) => (

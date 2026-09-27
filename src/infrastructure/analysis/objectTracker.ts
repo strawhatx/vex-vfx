@@ -5,13 +5,30 @@
 //   2. Outline: the AI segmenter outlines the object where the box went. A new outline is only
 //      believed if it overlaps the last one (moved with the motion) and is about the same size;
 //      it then nudges the box. Otherwise the last outline moves along with the box.
+// Picked with a box drawn round it (a focus), the object is found inside that box, from whichever
+// of a few points in it gives the outline that best fills it; from then on it's only outlined
+// within a box as much bigger than it, so the outline can't spill onto what's around it.
 import { encodeRle, type Rle, type Selection, type Shape } from '@/domain/tracking/types';
 import { boxVec, cornersIn, dot, patchNcc } from './features';
 import { LucasKanade, loadPyr, makePyr, median, type Img, type Pyr } from './flow';
 import { deepestPoint, maskArea, overlapShare, pieceAt, type Bounds } from './maskOps';
 
-// outlines the object at (x, y) in the current frame; 1 = object
-export type SegmentAt = (x: number, y: number) => Uint8Array;
+// outlines the object at (x, y) in the current frame, looking only within region if given; 1 = object
+export type SegmentAt = (x: number, y: number, region?: Region) => Uint8Array;
+type Region = { x0: number; y0: number; x1: number; y1: number };
+
+// where in a focus box to try outlining from (fractions of it), best first
+const FOCUS_SEEDS = [
+  [0.5, 0.5],
+  [0.5, 0.35],
+  [0.5, 0.65],
+  [0.35, 0.5],
+  [0.65, 0.5],
+  [0.5, 0.2],
+  [0.5, 0.8],
+];
+// the region outlined in is at least this much bigger than the object
+const MIN_FOCUS = 1.15;
 
 // a new outline is only accepted if it overlaps the previous one (moved with the motion) this
 // much and hasn't changed size too abruptly
@@ -40,11 +57,14 @@ export class ObjectTracker {
   private rle: Rle | null = null;
   // where to segment next frame, relative to the box: deep inside the object, and where it was tapped
   private seeds: { u: number; v: number }[] = [];
+  // with a focus: how much bigger than the box the region outlined in is
+  private reach: { w: number; h: number } | null = null;
 
   constructor(
     private W: number,
     private H: number,
     private segmentAt: SegmentAt,
+    private focus: { w: number; h: number } | null = null,
   ) {
     this.prevPyr = makePyr(W, H);
     this.nextPyr = makePyr(W, H);
@@ -57,11 +77,16 @@ export class ObjectTracker {
   // the first frame: outline the tapped object (a box around the tap if nothing is found)
   start(rgba: Uint8ClampedArray, sel: Selection): Shape {
     loadPyr(rgba, this.prevPyr, this.W, this.H);
-    const b = this.outlineAt(sel.x, sel.y);
+    const b = this.focus ? this.outlineInFocus(sel, this.focus) : this.outlineAt(sel.x, sel.y);
     if (b && maskArea(this.mask, this.W, b) >= 30) {
       this.commit(b);
       const bw = (b.bx1 - b.bx0 + 1) * 1.04;
       const bh = (b.by1 - b.by0 + 1) * 1.04;
+      if (this.focus)
+        this.reach = {
+          w: Math.max(MIN_FOCUS, this.focus.w / bw),
+          h: Math.max(MIN_FOCUS, this.focus.h / bh),
+        };
       this.lock((b.bx0 + b.bx1) / 2, (b.by0 + b.by1) / 2, bw, bh);
       this.seeds = [this.interiorSeed(b), { u: (sel.x - this.box.cx) / bw, v: (sel.y - this.box.cy) / bh }];
     } else {
@@ -279,13 +304,54 @@ export class ObjectTracker {
     seg.dy += box.cy - prevCy;
   }
 
-  // segments at (x, y) into this.mask; the connected piece there, holes filled
-  private outlineAt(x: number, y: number): Bounds | null {
+  // segments at (x, y) into this.mask (within region, or with a focus the region around the box);
+  // the connected piece there, holes filled
+  private outlineAt(x: number, y: number, region = this.region()): Bounds | null {
     const { W, H } = this;
     const xi = Math.round(x);
     const yi = Math.round(y);
     if (xi < 0 || yi < 0 || xi >= W || yi >= H) return null;
-    return pieceAt(this.segmentAt(xi, yi), W, H, xi, yi, this.mask, this.queue);
+    return pieceAt(this.segmentAt(xi, yi, region), W, H, xi, yi, this.mask, this.queue);
+  }
+
+  // the region outlined in: the box, as much bigger as the focus was than the object (none without
+  // a focus)
+  private region(): Region | undefined {
+    const { box, reach } = this;
+    if (!reach) return undefined;
+    const hw = (box.w * reach.w) / 2,
+      hh = (box.h * reach.h) / 2;
+    return { x0: box.cx - hw, y0: box.cy - hh, x1: box.cx + hw, y1: box.cy + hh };
+  }
+
+  // the object in a focus box of size f around sel: outlined from a few points in it, keeping the
+  // outline that best fills the box (the box was drawn round the object, so the right one does).
+  // Leaves it in this.mask.
+  private outlineInFocus(sel: Selection, f: { w: number; h: number }): Bounds | null {
+    const { W, H } = this;
+    const region = { x0: sel.x - f.w / 2, y0: sel.y - f.h / 2, x1: sel.x + f.w / 2, y1: sel.y + f.h / 2 };
+    const rx0 = Math.max(0, region.x0),
+      ry0 = Math.max(0, region.y0),
+      rx1 = Math.min(W, region.x1),
+      ry1 = Math.min(H, region.y1);
+    const rArea = Math.max(1, (rx1 - rx0) * (ry1 - ry0));
+    let best: { b: Bounds; score: number; mask: Uint8Array } | null = null;
+    for (const [u, v] of FOCUS_SEEDS) {
+      const b = this.outlineAt(region.x0 + u * f.w, region.y0 + v * f.h, region);
+      if (!b) continue;
+      const area = maskArea(this.mask, W, b);
+      if (area < 30) continue;
+      // how well its bounds match the box: their overlap over their union
+      const ix = Math.max(0, Math.min(b.bx1 + 1, rx1) - Math.max(b.bx0, rx0)),
+        iy = Math.max(0, Math.min(b.by1 + 1, ry1) - Math.max(b.by0, ry0));
+      const inter = ix * iy,
+        bArea = (b.bx1 - b.bx0 + 1) * (b.by1 - b.by0 + 1);
+      const score = inter / (rArea + bArea - inter);
+      if (!best || score > best.score + 0.02) best = { b, score, mask: this.mask.slice() };
+      if (score > 0.8) break;
+    }
+    if (best) this.mask.set(best.mask);
+    return best?.b ?? null;
   }
 
   // takes this.mask as the object's outline

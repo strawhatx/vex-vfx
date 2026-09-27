@@ -155,6 +155,61 @@ describe('stacking effects', () => {
   });
 });
 
+describe('moving clips between rows', () => {
+  it('a clip moved down stays there, with room left above it', () => {
+    editor.addTrack(0, { x: 10, y: 10 }); // 0..3
+    editor.addTrack(30, { x: 20, y: 20 }); // 3..6
+    editor.moveToRow(2, 1);
+    expect(state.lanes.map(l => l.row)).toEqual([0, 1]);
+    expect(state.rows).toBe(2);
+    // and stays there when something else changes
+    editor.setFx(1, { pal: 3 });
+    expect(state.lanes.map(l => l.row)).toEqual([0, 1]);
+  });
+
+  it('moved onto a row where it overlaps something, it goes to the next free one', () => {
+    editor.addTrack(0, { x: 10, y: 10 });
+    editor.addTrack(10, { x: 20, y: 20 });
+    editor.addTrack(40, { x: 30, y: 30 });
+    // 3 overlaps nothing on row 0 after 1 ends; 2 overlaps 1, so it can't go up
+    editor.moveToRow(2, 0);
+    expect(state.lanes.find(l => l.id === 2)?.row).toBe(1);
+  });
+
+  it('moved above the top, it gets a new row of its own; undo puts it back', () => {
+    editor.addTrack(0, { x: 10, y: 10 });
+    editor.addTrack(30, { x: 20, y: 20 });
+    editor.moveToRow(2, -1);
+    expect(state.lanes.map(l => l.row)).toEqual([1, 0]);
+    editor.undo();
+    expect(state.lanes.map(l => l.row)).toEqual([0, 0]);
+  });
+});
+
+describe('duplicating a clip', () => {
+  it('copies it onto the row below, same look, timing and tracking', () => {
+    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'lightning' });
+    finishTrack();
+    const tracks = analysis.tracks;
+    const id = editor.duplicate(1)!;
+    expect(id).toBe(2);
+    expect(analysis.tracks).toBe(tracks); // nothing tracked again
+    expect(state.lanes.map(l => [l.name, l.row, l.range])).toEqual([
+      ['Object 1', 0, { s: 1.4, e: 4.4 }],
+      ['Object 2', 1, { s: 1.4, e: 4.4 }],
+    ]);
+    expect(editor.fx(2).effect).toBe('lightning');
+    expect(layers.specs[1].frames[20].shapes[0]?.id).toBe(2);
+  });
+
+  it('a copy of one still being tracked is tracked too', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.duplicate(1);
+    finishTrack();
+    expect(trackCall().req.times).toEqual(times(14, 44));
+  });
+});
+
 describe('changing where an effect starts and ends', () => {
   it('dragging does not track; letting go tracks only the new frames', () => {
     editor.addTrack(14, { x: 50, y: 50 });
@@ -543,6 +598,20 @@ describe('splitting the film', () => {
 });
 
 describe('cutting an object out', () => {
+  it('with a box drawn round it, looks for it only in a box that size', () => {
+    editor.addCutout(14, { x: 50, y: 50 }, 'keep', { w: 30, h: 60 });
+    expect(trackCall().req.focus).toEqual({ w: 30, h: 60 });
+    // fixed later with a tap, it's still looked for in a box that size
+    finishTrack();
+    editor.fixAt(1, 30, { x: 55, y: 50 });
+    expect(trackCall().req.focus).toEqual({ w: 30, h: 60 });
+  });
+
+  it('tapped, it looks for it anywhere', () => {
+    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    expect(trackCall().req.focus).toBeUndefined();
+  });
+
   it('tracks the object first, then cuts it out along its outlines', () => {
     const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
     expect(trackCall().req.times).toEqual(times(14, 44));
@@ -645,73 +714,6 @@ describe('cutting an object out', () => {
   });
 });
 
-// ---------- paths ----------
-
-describe('paths', () => {
-  const line = [
-    { x: 10, y: 10 },
-    { x: 30, y: 20 },
-    { x: 50, y: 10 },
-  ];
-
-  it('a drawn path stays put in the scene: nothing to track, but it needs the camera’s path', () => {
-    const id = editor.addDrawnPath(14, line, { strand: { ...editor.fx(null).strand, form: 'rope' } })!;
-    expect(analysis.tracks).toBe(0);
-    expect(analysis.calls.some(k => k.kind === 'camera')).toBe(true);
-    expect(state.lanes[0]).toMatchObject({ name: 'Path 1', pinned: true, path: { drawn: true, end: false } });
-    expect(editor.fx(id)).toMatchObject({ effect: 'path', strand: { form: 'rope' } });
-    expect(layers.specs[0].path?.drawn).toEqual({ i: 14, pts: line });
-  });
-
-  it('a tap moves a drawn path, keeping its shape; drawing it again replaces it', () => {
-    const id = editor.addDrawnPath(14, line)!;
-    editor.fixAt(id, 20, { x: 60, y: 60 });
-    expect(layers.specs[0].path?.drawn).toEqual({
-      i: 20,
-      pts: [
-        { x: 60, y: 60 },
-        { x: 80, y: 70 },
-        { x: 100, y: 60 },
-      ],
-    });
-    editor.redrawPath(id, 25, line.slice(0, 2));
-    expect(layers.specs[0].path?.drawn).toEqual({ i: 25, pts: line.slice(0, 2) });
-    expect(layers.specs[0].tap).toEqual({ i: 25, ...line[0] });
-  });
-
-  it('a path on an object is tracked like any effect', () => {
-    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'path' });
-    expect(trackCall().req.times).toEqual(times(14, 44));
-    expect(state.lanes[0].path).toEqual({ drawn: false, end: false });
-  });
-
-  it('its far end holds on to another clip’s object, or a spot in the scene', () => {
-    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'path' });
-    finishTrack();
-    editor.addTrack(14, { x: 20, y: 20 }, { effect: 'fire' });
-    finishTrack();
-    // the second object's box is 20 x 40 around (50, 50) too: tap its middle
-    editor.setPathEnd(1, 20, { x: 50, y: 50 });
-    expect(layers.specs[0].path?.end).toEqual({ i: 20, x: 50, y: 50, clip: 2 });
-    expect(statuses.at(-1)).toContain('holds on to Object 2');
-    // somewhere else: a spot in the scene
-    editor.setPathEnd(1, 20, { x: 90, y: 5 });
-    expect(layers.specs[0].path?.end?.clip).toBeNull();
-    editor.freePathEnd(1);
-    expect(layers.specs[0].path?.end).toBeNull();
-  });
-
-  it('deleting what its end holds on to leaves the end held where it was', () => {
-    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'path' });
-    finishTrack();
-    editor.addTrack(14, { x: 20, y: 20 }, { effect: 'fire' });
-    finishTrack();
-    editor.setPathEnd(1, 20, { x: 50, y: 50 });
-    editor.deleteTrack(2);
-    expect(layers.specs[0].path?.end).toEqual({ i: 20, x: 50, y: 50, clip: null });
-  });
-});
-
 // ---------- deleting films ----------
 
 describe('deleting a film', () => {
@@ -731,9 +733,11 @@ describe('deleting a film', () => {
     expect(editor.jumpFrom(1)).toBeNull();
   });
 
-  it('won’t delete the only film', () => {
-    expect(editor.deleteScene(0)).toBe(false);
-    expect(statuses.at(-1)).toContain('only film');
+  it('can delete every film, leaving nothing to play; undo brings it back', () => {
+    expect(editor.deleteScene(0)).toBe(true);
+    expect(state).toMatchObject({ scenes: [], length: 0, scanned: true });
+    editor.undo();
+    expect(state.length).toBe(6);
   });
 
   it('what’s on it stays in the project, unseen; a clip running over it closes up round it', () => {

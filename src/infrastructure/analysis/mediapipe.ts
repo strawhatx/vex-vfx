@@ -44,11 +44,19 @@ async function createTask<T>(create: (fileset: Fileset, delegate: 'GPU' | 'CPU')
 const gpuCanvas = (delegate: 'GPU' | 'CPU') =>
   delegate === 'GPU' ? { canvas: new OffscreenCanvas(1, 1) } : {};
 
-// Outlines whatever object is at a point: returns a mask the size of the image, 1 = object.
+// Outlines whatever object is at a point: returns a mask the size of the image, 1 = object. Given a
+// region, only that part of the image is looked at, enlarged so the model sees the object big
+// (small objects come out far more exactly), and nothing outside it is marked.
 export interface Segmenter {
-  segment(image: OffscreenCanvas, x: number, y: number): Uint8Array;
+  segment(image: OffscreenCanvas, x: number, y: number, region?: Region): Uint8Array;
   close(): void;
 }
+
+// a box in the image, in its pixels (x1, y1 exclusive)
+export type Region = { x0: number; y0: number; x1: number; y1: number };
+
+// the size a region is enlarged to (its longer side), about what the model works at
+const REGION_PX = 512;
 
 export async function createSegmenter(): Promise<Segmenter> {
   const { mp } = await loadRuntime();
@@ -60,18 +68,44 @@ export async function createSegmenter(): Promise<Segmenter> {
       outputConfidenceMasks: false,
     }),
   );
+  // the category mask marks the selected object with 0
+  const run = (image: OffscreenCanvas, x: number, y: number) => {
+    const r = t.segment(image, { keypoint: { x: x / image.width, y: y / image.height } });
+    try {
+      return r.categoryMask!.getAsUint8Array().map(v => (v === 0 ? 1 : 0));
+    } finally {
+      r.close();
+    }
+  };
+  let crop: OffscreenCanvas | null = null;
   return {
-    segment(image, x, y) {
-      const r = t.segment(image, { keypoint: { x: x / image.width, y: y / image.height } });
-      try {
-        // the category mask marks the selected object with 0
-        const m = r.categoryMask!.getAsUint8Array(),
-          out = new Uint8Array(m.length);
-        for (let i = 0; i < m.length; i++) out[i] = m[i] === 0 ? 1 : 0;
-        return out;
-      } finally {
-        r.close();
+    segment(image, x, y, region) {
+      if (!region) return run(image, x, y);
+      const W = image.width,
+        H = image.height;
+      const x0 = Math.max(0, Math.floor(region.x0)),
+        y0 = Math.max(0, Math.floor(region.y0)),
+        x1 = Math.min(W, Math.ceil(region.x1)),
+        y1 = Math.min(H, Math.ceil(region.y1));
+      const rw = x1 - x0,
+        rh = y1 - y0;
+      const out = new Uint8Array(W * H);
+      if (rw < 4 || rh < 4) return out;
+      const k = REGION_PX / Math.max(rw, rh);
+      const cw = Math.max(1, Math.round(rw * k)),
+        ch = Math.max(1, Math.round(rh * k));
+      if (!crop || crop.width !== cw || crop.height !== ch) crop = new OffscreenCanvas(cw, ch);
+      const g = crop.getContext('2d')!;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(image, x0, y0, rw, rh, 0, 0, cw, ch);
+      const m = run(crop, (x - x0) * k, (y - y0) * k);
+      // back to the image's pixels: each takes the crop pixel at its middle
+      for (let yy = y0; yy < y1; yy++) {
+        const cy = Math.min(ch - 1, Math.floor((yy - y0 + 0.5) * k)) * cw;
+        for (let xx = x0; xx < x1; xx++)
+          out[yy * W + xx] = m[cy + Math.min(cw - 1, Math.floor((xx - x0 + 0.5) * k))];
       }
+      return out;
     },
     close: () => t.close(),
   };

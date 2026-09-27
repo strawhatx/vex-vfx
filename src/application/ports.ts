@@ -4,7 +4,6 @@ import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Cutout } from '@/domain/project/cutout';
-import type { PathAnchor } from '@/domain/project/track';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Rle, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -24,10 +23,17 @@ export interface Analysis {
     on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void },
   ): void;
   // follows the object at `select` in frame times[key], forward to the end of times then back to the
-  // start; part: follows that body part of the person at `select` instead of the object there
+  // start; part: follows that body part of the person at `select` instead of the object there;
+  // focus: only looks for the object in a box this size around it (see Track.focus)
   track(
     source: Blob,
-    req: { times: number[]; key: number; select: Selection; part?: BodyPart },
+    req: {
+      times: number[];
+      key: number;
+      select: Selection;
+      part?: BodyPart;
+      focus?: { w: number; h: number };
+    },
     on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void },
   ): void;
   // whether the tap at `at` in the frame at t is on a person, and the body part nearest it
@@ -86,7 +92,6 @@ export interface LayerSpec {
   tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
   impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
   cutout: Cutout | null;
-  path: PathAnchor | null; // a path's drawn shape and held end
 }
 
 // Draws each effect over the video.

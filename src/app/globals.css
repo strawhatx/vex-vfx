@@ -587,13 +587,21 @@ button.primary {
   position: absolute;
   inset: -6px -12px;
 }
+/* just outside the clip's ends (their bigger targets reaching outwards), so even a short clip
+   leaves its middle free to drag */
 .grip.s {
-  left: -2px;
+  left: -14px;
   border-radius: 6px 0 0 6px;
 }
+.grip.s::before {
+  inset: -6px 0 -6px -12px;
+}
 .grip.e {
-  right: -2px;
+  right: -14px;
   border-radius: 0 6px 6px 0;
+}
+.grip.e::before {
+  inset: -6px -12px -6px 0;
 }
 .add-hint:disabled {
   opacity: 0.5;

@@ -6,7 +6,7 @@ import { Icon, I } from '../icons';
 import type { Lane } from '../player';
 import { mmss } from '@/domain/tracking/timeLabels';
 import { effectName } from '../ToolSheet';
-import type { Scale } from './layout';
+import { ROW_PITCH, type Scale } from './layout';
 import { Wave } from './Wave';
 
 // what a clip on the timeline can do
@@ -19,6 +19,8 @@ export interface ClipActions {
   moveImpact(id: number, t: number): void;
   // a cutout dragged to start at time t
   moveCutout(id: number, t: number): void;
+  // a clip dragged onto another row (-1: a new one on top)
+  moveRow(id: number, row: number): void;
 }
 
 interface ClipProps {
@@ -30,25 +32,29 @@ interface ClipProps {
   on: ClipActions;
 }
 
-// an effect: where its object was found (and where it's unsure), its keyframes and its sound
+// an effect: where its object was found (and where it's unsure), its keyframes and its sound.
+// Tap to select, drag to slide it to another time; its grips change its start and end.
 export function EffectClip({ lane: l, scale, selected, duration, sound, on }: ClipProps) {
   const { x } = scale;
-  const w = x(l.range.e - l.range.s);
+  const len = l.range.e - l.range.s;
+  const w = x(len);
   const name = effectName(l.fx.effect);
+  const slide = useSlide(l, scale, duration, on, t => {
+    on.setRange(l.id, { s: t, e: t + len });
+    on.commitRange(l.id);
+  });
   return (
     <span
-      className={`fx-clip${selected ? ' on' : ''}`}
-      style={{ left: x(l.range.s), width: w, '--c': l.color } as CSSProperties}
+      className={`fx-clip${selected || slide.dragging ? ' on' : ''}`}
+      style={{ left: x(slide.start), width: w, '--c': l.color, ...slide.style } as CSSProperties}
     >
       <button
         type="button"
         className="fx-body"
         aria-pressed={selected}
-        aria-label={`${l.name}: ${name}, ${mmss(l.range.s)} to ${mmss(l.range.e)}`}
-        onClick={e => {
-          e.stopPropagation();
-          on.select(l.id);
-        }}
+        aria-label={`${l.name}: ${name}, ${mmss(l.range.s)} to ${mmss(l.range.e)}. Tap to select, drag to slide it.`}
+        onClick={e => e.stopPropagation()}
+        {...slide.handlers(() => on.select(l.id))}
       >
         {l.spans.map((sp, i) => (
           <span
@@ -66,46 +72,78 @@ export function EffectClip({ lane: l, scale, selected, duration, sound, on }: Cl
           {w > 110 ? `${l.name} · ${name}` : name}
         </span>
       </button>
-      {selected && <Grips lane={l} scale={scale} duration={duration} on={on} />}
+      {selected && !slide.dragging && <Grips lane={l} scale={scale} duration={duration} on={on} />}
     </span>
   );
+}
+
+// dragging a clip about the timeline: along it to another time, and up or down onto another row
+// (or a new one above or below). While dragged, where it would start and how far it's lifted; the
+// pointer handlers for its body. A tap selects it; a drag moves it and selects it too.
+function useSlide(l: Lane, scale: Scale, duration: number, on: ClipActions, moveTo: (t: number) => void) {
+  const [drag, setDrag] = useState<{
+    x: number;
+    y: number;
+    from: number;
+    t: number;
+    dy: number;
+    moved: boolean;
+  } | null>(null);
+  const len = l.range.e - l.range.s;
+  const moved = !!drag?.moved;
+  return {
+    dragging: moved,
+    start: moved ? drag!.t : l.range.s,
+    style: moved ? ({ transform: `translateY(${drag!.dy}px)`, zIndex: 5 } as CSSProperties) : undefined,
+    handlers: (select: () => void) => ({
+      onPointerDown(e: PointerEvent) {
+        e.stopPropagation();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        setDrag({ x: e.clientX, y: e.clientY, from: l.range.s, t: l.range.s, dy: 0, moved: false });
+      },
+      onPointerMove(e: PointerEvent) {
+        if (!drag) return;
+        const dx = e.clientX - drag.x,
+          dy = e.clientY - drag.y;
+        if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+        // a small sideways wobble while moving it up or down doesn't change its time
+        const t =
+          Math.abs(dx) < 8
+            ? drag.from
+            : Math.max(0, Math.min(Math.max(0, duration - len), drag.from + dx / scale.pps));
+        setDrag({ ...drag, t, dy, moved: true });
+      },
+      onPointerUp() {
+        const d = drag;
+        setDrag(null);
+        if (!d) return;
+        if (d.moved) {
+          const rows = Math.round(d.dy / ROW_PITCH);
+          if (rows) on.moveRow(l.id, Math.max(-1, l.row + rows));
+          if (Math.abs(d.t - d.from) > 1e-6) moveTo(d.t);
+        }
+        select();
+      },
+      onPointerCancel: () => setDrag(null),
+    }),
+  };
 }
 
 // an impact: a short clip starting at the hit. Tap to select, drag to move; stretch its ends to
 // slow the burst down, squeeze them to speed it up.
 export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: ClipProps) {
-  const { x, pps } = scale;
-  const [drag, setDrag] = useState<{ x: number; from: number; t: number; moved: boolean } | null>(null);
-  const start = drag ? drag.t : l.range.s;
+  const { x } = scale;
+  const slide = useSlide(l, scale, duration, on, t => on.moveImpact(l.id, t));
+  const start = slide.start;
   const w = Math.max(24, x(l.range.e - l.range.s));
   const style = l.impact ? IMPACTS[l.impact].label : '';
   const speed = speedLabel(l.speed);
-  const on_ = selected || !!drag;
-
-  function down(e: PointerEvent) {
-    e.stopPropagation();
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDrag({ x: e.clientX, from: l.range.s, t: l.range.s, moved: false });
-  }
-  function move(e: PointerEvent) {
-    if (!drag) return;
-    const dx = e.clientX - drag.x;
-    if (!drag.moved && Math.abs(dx) < 4) return;
-    setDrag({ ...drag, t: Math.max(0, Math.min(duration, drag.from + dx / pps)), moved: true });
-  }
-  function up() {
-    const d = drag;
-    setDrag(null);
-    if (!d) return;
-    if (d.moved) on.moveImpact(l.id, d.t);
-    if (!d.moved || !selected) on.select(l.id);
-  }
+  const on_ = selected || slide.dragging;
 
   return (
     <span
       className={`fx-clip${on_ ? ' on' : ''}`}
-      style={{ left: x(start), width: w, '--c': l.color } as CSSProperties}
+      style={{ left: x(start), width: w, '--c': l.color, ...slide.style } as CSSProperties}
     >
       <button
         type="button"
@@ -113,10 +151,7 @@ export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: Cl
         aria-pressed={selected}
         aria-label={`${l.name}: ${style}${speed ? ` at ${speed} speed` : ''}, hits at ${mmss(l.range.s)}. Tap to select, drag to move.`}
         onClick={e => e.stopPropagation()}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={() => setDrag(null)}
+        {...slide.handlers(() => on.select(l.id))}
       >
         <Wave levels={sound} className="fx-wave" />
         <Icon d={I.burst} size={14} />
@@ -127,7 +162,7 @@ export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: Cl
           </span>
         )}
       </button>
-      {selected && !drag && <Grips lane={l} scale={scale} duration={duration} on={on} />}
+      {selected && !slide.dragging && <Grips lane={l} scale={scale} duration={duration} on={on} />}
     </span>
   );
 }
@@ -136,38 +171,18 @@ export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: Cl
 // on an effect, and its transform keyframes). Drag to place it at another time; its ends change
 // which frames it's cut from.
 export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<ClipProps, 'sound'>) {
-  const { x, pps } = scale;
-  const [drag, setDrag] = useState<{ x: number; from: number; t: number; moved: boolean } | null>(null);
+  const { x } = scale;
   const len = l.range.e - l.range.s;
-  const start = drag ? drag.t : l.range.s;
+  const slide = useSlide(l, scale, duration, on, t => on.moveCutout(l.id, t));
+  const start = slide.start;
   const w = x(len);
   const cut = l.cutout;
   const from = cut && Math.abs(cut.from - start) > 0.05 ? ` · from ${mmss(cut.from)}` : '';
 
-  function down(e: PointerEvent) {
-    e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDrag({ x: e.clientX, from: l.range.s, t: l.range.s, moved: false });
-  }
-  function move(e: PointerEvent) {
-    if (!drag) return;
-    const dx = e.clientX - drag.x;
-    if (!drag.moved && Math.abs(dx) < 4) return;
-    const t = Math.max(0, Math.min(Math.max(0, duration - len), drag.from + dx / pps));
-    setDrag({ ...drag, t, moved: true });
-  }
-  function up() {
-    const d = drag;
-    setDrag(null);
-    if (!d) return;
-    if (d.moved) on.moveCutout(l.id, d.t);
-    else on.select(l.id);
-  }
-
   return (
     <span
-      className={`fx-clip cut-clip${selected || drag ? ' on' : ''}`}
-      style={{ left: x(start), width: w, '--c': l.color } as CSSProperties}
+      className={`fx-clip cut-clip${selected || slide.dragging ? ' on' : ''}`}
+      style={{ left: x(start), width: w, '--c': l.color, ...slide.style } as CSSProperties}
     >
       <button
         type="button"
@@ -175,10 +190,7 @@ export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<Clip
         aria-pressed={selected}
         aria-label={`${l.name}: ${mmss(l.range.s)} to ${mmss(l.range.e)}${from}. Tap to select, drag to place it.`}
         onClick={e => e.stopPropagation()}
-        onPointerDown={down}
-        onPointerMove={move}
-        onPointerUp={up}
-        onPointerCancel={() => setDrag(null)}
+        {...slide.handlers(() => on.select(l.id))}
       >
         {l.spans.map((sp, i) => (
           <span
@@ -198,7 +210,7 @@ export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<Clip
           {w > 90 ? `${l.name}${from}` : l.name}
         </span>
       </button>
-      {selected && !drag && <Grips lane={l} scale={scale} duration={duration} on={on} />}
+      {selected && !slide.dragging && <Grips lane={l} scale={scale} duration={duration} on={on} />}
     </span>
   );
 }

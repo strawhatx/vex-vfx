@@ -5,8 +5,6 @@
 // - an impact goes off at one moment (its start), at a spot tapped in the scene; nothing is
 //   tracked. It starts as long as its style's burst; stretching it plays the burst slower,
 //   squeezing it faster.
-// - a path (an effect of type path): a strand anchored on the object tapped, or drawn freehand
-//   (then pinned to the scene like a spot effect), its far end optionally held (see PathAnchor)
 // - a cutout: an object rotoscoped out of the footage into a layer of its own (see cutout.ts). Its
 //   object is tracked like an effect's over its range (the frames it's cut from); the layer can then
 //   be placed at another time, and moved about.
@@ -22,14 +20,6 @@ import { inSpan, type FrameSpan, type Key } from './keyframes';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
-// where a path is anchored besides its object: drawn freehand at frame i (work pixels; its first
-// point is the anchor, and it stays put in the scene), and where its far end is held: on another
-// clip's object (tapped at frame i), or a spot in the scene
-export interface PathAnchor {
-  drawn: { i: number; pts: { x: number; y: number }[] } | null;
-  end: { i: number; x: number; y: number; clip: number | null } | null;
-}
-
 export interface Track {
   id: number;
   name: string;
@@ -41,7 +31,12 @@ export interface Track {
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
   cutout: Cutout | null; // for cutouts: where the layer is placed, and how
-  path: PathAnchor | null; // for paths: drawn, and where the far end is held
+  // the size of the box drawn round the object when it was picked (work pixels): its outline is
+  // only looked for in a box that size around it, which keeps it from spilling onto what's nearby
+  focus: { w: number; h: number } | null;
+  // the timeline row it sits on (among the effect rows, or the cutout rows), as the user left it;
+  // null until it's first placed
+  row: number | null;
   range: { s: number; e: number }; // seconds; for an impact, s is the moment of the hit; for a cutout, the frames it's cut from
   shapes: (Shape | null)[]; // per clip frame
   frames: TrackFrame[]; // what gets drawn: the shapes in the tracked frames
@@ -100,7 +95,8 @@ function make(
     aim: { h: 90, v: 0, target: null },
     impact,
     cutout: null,
-    path: null,
+    focus: null,
+    row: null,
     range,
     shapes: new Array(clip.length).fill(null),
     frames: [],
@@ -120,7 +116,6 @@ export const newTrack = (
 
 // what a spot effect is called, if not Spot
 const SPOT_NAMES: Partial<Record<FxSettings['effect'], string>> = {
-  path: 'Path',
   glitch: 'Glitch',
   text: 'Text',
   water: 'Water',
@@ -332,26 +327,52 @@ export interface Lane {
   keys: number[]; // keyframe times inside the range
   // a cutout's: where it's cut from (seconds), what's left there, and its transform keyframes' times
   cutout: { from: number; bg: Background; moves: number[] } | null;
-  // a path's: whether it was drawn, and whether its far end is held
-  path: { drawn: boolean; end: boolean } | null;
 }
 
-// stacks clips into as few rows as possible, like a video editor's tracks: each goes on the
-// first row where it doesn't overlap anything, in order of start time
-export function packRows(ranges: readonly { s: number; e: number }[]) {
-  const order = ranges.map((_, k) => k).sort((a, b) => ranges[a].s - ranges[b].s || a - b);
-  const rowEnds: number[] = [],
-    rows = new Array<number>(ranges.length);
+// a copy of the clip, numbered id: the same look, timing and tracking, on the row below
+export function duplicate(t: Track, id: number, clip: ClipFrame[]): Track {
+  const suffix = ` ${t.id}`;
+  const d: Track = {
+    ...t,
+    id,
+    name: t.name.endsWith(suffix) ? `${t.name.slice(0, -suffix.length)} ${id}` : `${t.name} copy`,
+    color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length],
+    range: { ...t.range },
+    shapes: t.shapes.map(sh => sh && { ...sh, id }),
+    keys: t.keys.slice(),
+    frames: [],
+    row: t.row === null ? null : t.row + 1,
+  };
+  refreshFrames(d, clip);
+  return d;
+}
+
+// puts clips on timeline rows, like a video editor's tracks: each on the row it wants (where the
+// user put it) if nothing there overlaps it, else the next free row below; one that wants none goes
+// on the first free row. Rows left empty close up. Returns each clip's row, 0 at the top.
+export function assignRows(ranges: readonly { s: number; e: number }[], wanted: readonly (number | null)[]) {
+  const order = ranges
+    .map((_, k) => k)
+    .sort((a, b) => {
+      const wa = wanted[a],
+        wb = wanted[b];
+      if (wa !== null && wb !== null && wa !== wb) return wa - wb;
+      if ((wa === null) !== (wb === null)) return wa === null ? 1 : -1;
+      return ranges[a].s - ranges[b].s || a - b;
+    });
+  const taken = new Map<number, { s: number; e: number }[]>();
+  const free = (r: number, k: number) =>
+    !(taken.get(r) ?? []).some(o => o.s < ranges[k].e - 1e-6 && ranges[k].s < o.e - 1e-6);
+  const rows = new Array<number>(ranges.length);
   for (const k of order) {
-    let r = rowEnds.findIndex(end => end <= ranges[k].s + 1e-6);
-    if (r < 0) {
-      r = rowEnds.length;
-      rowEnds.push(0);
-    }
-    rowEnds[r] = ranges[k].e;
+    let r = wanted[k] ?? 0;
+    while (!free(r, k)) r++;
+    taken.set(r, [...(taken.get(r) ?? []), ranges[k]]);
     rows[k] = r;
   }
-  return rows;
+  // close up empty rows
+  const used = [...new Set(rows)].sort((a, b) => a - b);
+  return rows.map(r => used.indexOf(r));
 }
 
 export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
@@ -388,6 +409,5 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     spans,
     keys: t.keys.filter(k => inSpan(range, k.i)).map(k => clip[k.i].t + shift),
     cutout: c && { from: t.range.s, bg: c.bg, moves: c.keys.map(k => c.at + k.t) },
-    path: t.fx.effect === 'path' ? { drawn: !!t.path?.drawn, end: !!t.path?.end } : null,
   };
 }

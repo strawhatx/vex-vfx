@@ -5,6 +5,7 @@ export const MIN_PPS = 12; // zoomed out
 export const MAX_PPS = 480; // zoomed in
 export const THUMB_H = 56; // filmstrip tile height
 export const PAD = 16; // margin before 0:00
+export const ROW_PITCH = 42; // from one effect row to the next (its height and the gap)
 
 // what gesture handlers need to turn times into pixels and back
 export interface Scale {

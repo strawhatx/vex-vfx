@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_STRAND } from '../effects/strands';
 import type { ClipFrame, Shape } from '../tracking/types';
 import {
   hitFrame,
@@ -8,7 +7,7 @@ import {
   nearestOther,
   newImpact,
   newTrack,
-  packRows,
+  assignRows,
   rangeFrames,
   refreshFrames,
   setHit,
@@ -31,7 +30,6 @@ const FX = {
   textStyle: 'behind',
   font: 'anton',
   water: 'rain',
-  strand: DEFAULT_STRAND,
 } as const;
 // 10 frames at 10 fps
 const clip: ClipFrame[] = Array.from({ length: 10 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
@@ -70,10 +68,15 @@ describe('effect range', () => {
   });
 });
 
-describe('packRows', () => {
+describe('assignRows', () => {
+  const auto = (ranges: { s: number; e: number }[]) =>
+    assignRows(
+      ranges,
+      ranges.map(() => null),
+    );
   it('puts effects that follow each other on one row', () => {
     expect(
-      packRows([
+      auto([
         { s: 0, e: 2 },
         { s: 2, e: 4 },
         { s: 5, e: 6 },
@@ -82,7 +85,7 @@ describe('packRows', () => {
   });
   it('stacks overlapping effects on new rows, reusing a row once it is free', () => {
     expect(
-      packRows([
+      auto([
         { s: 0, e: 3 },
         { s: 1, e: 2 },
         { s: 2.5, e: 4 },
@@ -92,11 +95,44 @@ describe('packRows', () => {
   });
   it('goes by start time, not the order the effects were added', () => {
     expect(
-      packRows([
+      auto([
         { s: 4, e: 5 },
         { s: 0, e: 1 },
       ]),
     ).toEqual([0, 0]);
+  });
+  it('keeps each on the row it was put on, even with room above', () => {
+    expect(
+      assignRows(
+        [
+          { s: 0, e: 1 },
+          { s: 2, e: 3 },
+        ],
+        [0, 1],
+      ),
+    ).toEqual([0, 1]);
+  });
+  it('one put on a taken row goes to the next free one below', () => {
+    expect(
+      assignRows(
+        [
+          { s: 0, e: 2 },
+          { s: 1, e: 3 },
+        ],
+        [0, 0],
+      ),
+    ).toEqual([0, 1]);
+  });
+  it('empty rows close up; a new row on top comes first', () => {
+    expect(
+      assignRows(
+        [
+          { s: 0, e: 1 },
+          { s: 0, e: 1 },
+        ],
+        [3, -1],
+      ),
+    ).toEqual([1, 0]);
   });
 });
 

@@ -59,15 +59,8 @@ export const I = {
   key: 'M12 4l6 8-6 8-6-8z',
   scene: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4',
   place: 'M12 4v16M8 8l4-4 4 4M5 20h14',
+  copy: 'M9 9h10v10H9zM5 15V5h10',
   undo: 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
   redo: 'M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
-  path: 'M4 18c3-8 6 2 9-5s5-6 7-7M4 18h.01M20 6h.01',
-  attach: 'M5 12h3M16 12h3M8 12c2-4 6 4 8 0M5 9v6M19 9v6',
   // the forms a path can take
-  whip: 'M4 20l3-3M7 17c4-4 3-9 8-10s4 5 6 3',
-  rope: 'M5 4v2c0 6 4 9 7 9s7-3 7-9V4',
-  ribbon: 'M3 14c3-6 6 2 9-2s6-6 9-2M3 17c3-6 6 2 9-2s6-6 9-2',
-  tentacle: 'M6 21c0-6 2-9 5-11s4-5 2-6-4 1-3 3',
-  trail: 'M20 5a2 2 0 1 0 0 .01M17 7 4 18M16 5 7 12M18 10l-9 7',
-  beam: 'M5 12h14M5 9v6M19 12h.01',
 };

@@ -8,7 +8,6 @@
 //   text.ts         the Text effect (words behind the object first, labels and titles last)
 //   water.ts        the Water effect: rain or underwater, over the other effects
 //   impactLayer.ts  impacts and the camera jolt
-//   strandLayer.ts  paths: whips, ropes, ribbons… simulated from their anchor, in their look
 //   cutoutLayer.ts  cutouts: what's left where each was cut from, then the layers themselves
 //   outline.ts      outlines and targets while editing
 import type { CutFrame, EffectLayers, LayerSpec } from '@/application/ports';
@@ -25,7 +24,6 @@ import { drawOutline, drawSceneSpot } from './outline';
 import { drawOutlineFx } from './outlineFx';
 import { GlitchPainter } from './glitch';
 import { FALLBACK_FONTS, type Fonts } from './fonts';
-import { StrandPainter } from './strandLayer';
 import { TextPainter } from './text';
 import { WaterPainter } from './water';
 import type { Ctx2D } from './sprites';
@@ -35,6 +33,7 @@ export interface RenderOptions {
   outline: boolean; // draw outlines (not in exports)
   paused: boolean;
   selected: number | null;
+  isolate?: number | null; // a cutout to show on its own, on a checkerboard
 }
 
 export class Renderer implements EffectLayers {
@@ -53,9 +52,6 @@ export class Renderer implements EffectLayers {
   private glitch = new GlitchPainter(1, 1);
   private text = new TextPainter(1, 1);
   private water = new WaterPainter(1, 1);
-  private strands = new StrandPainter(1, 1);
-  // counts changes to anything a path's motion depends on, so it's worked out again
-  private epoch = 0;
   private fonts: Fonts = FALLBACK_FONTS;
   // a copy of the frame, redrawn shaken and zoomed while an impact jolts the camera
   private jolt = new OffscreenCanvas(1, 1);
@@ -77,7 +73,6 @@ export class Renderer implements EffectLayers {
     this.glitch = new GlitchPainter(this.CW, this.CH);
     this.text = new TextPainter(this.CW, this.CH);
     this.water = new WaterPainter(this.CW, this.CH);
-    this.strands = new StrandPainter(this.CW, this.CH);
     this.fire.resize(this.CW, this.CH);
     this.jolt = new OffscreenCanvas(this.CW, this.CH);
     for (const l of this.layers.values()) l.geo = this.newGeo();
@@ -95,7 +90,6 @@ export class Renderer implements EffectLayers {
 
   // adds, updates or removes layers to match
   setLayers(specs: LayerSpec[]) {
-    this.epoch++;
     const keep = new Set(specs.map(s => s.id));
     for (const id of this.layers.keys()) if (!keep.has(id)) this.layers.delete(id);
     this.cutouts.keepOnly(new Set(specs.filter(s => s.kind === 'cutout').map(s => s.id)));
@@ -116,7 +110,6 @@ export class Renderer implements EffectLayers {
   }
 
   changed(id: number) {
-    this.epoch++;
     this.layers.get(id)?.invalidate();
   }
 
@@ -142,6 +135,13 @@ export class Renderer implements EffectLayers {
 
     const v = this.view();
     const frameT = this.clip[idx].t;
+    const alone = opts.isolate != null ? this.layers.get(opts.isolate) : undefined;
+    if (alone?.spec.cutout) {
+      drawChecker(ctx, this.CW, this.CH);
+      const at = drawCutout(v, this.cutouts, alone, idx);
+      if (at && opts.outline && opts.paused) drawCutoutFrame(v, alone, at, true);
+      return idx;
+    }
     const all = [...this.layers.values()];
     const cutouts = all.filter(l => l.spec.kind === 'cutout' && l.spec.frames.length === this.clip.length);
     // effects and impacts on at this frame (a cutout shows where it's placed: see below)
@@ -159,15 +159,11 @@ export class Renderer implements EffectLayers {
     for (const l of showing)
       if (isText(l) && l.spec.settings.textStyle === 'behind') this.text.draw(v, l, idx);
 
-    // paths are worked out again when the track data or the camera's path changes
-    const strandKey = `${this.epoch}:${this.cam.reduce((n, c) => n + (c ? 1 : 0), 0)}`;
     for (const l of showing) {
       if (l.spec.kind === 'impact') continue; // just its burst, drawn below
       if (isText(l) || l.spec.settings.effect === 'water') continue;
       if (l.spec.settings.effect === 'glitch') continue; // below, over everything else
-      if (l.spec.settings.effect === 'path')
-        this.strands.draw(v, l, idx, this.layers, strandKey, { masks: this.masks, fire: this.fire });
-      else if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
+      if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
       else if (l.spec.settings.effect === 'outline') this.drawOutlineFx(l, idx);
       else this.drawParticles(l, idx);
     }
@@ -258,7 +254,15 @@ export class Renderer implements EffectLayers {
   }
 
   private invalidate() {
-    this.epoch++;
     for (const l of this.layers.values()) l.invalidate();
   }
+}
+
+// the grey and white squares behind something shown on its own, where nothing is
+function drawChecker(ctx: Ctx2D, W: number, H: number) {
+  const n = Math.max(8, Math.round(W / 48));
+  ctx.fillStyle = '#d6d6d6';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#9a9a9a';
+  for (let y = 0; y * n < H; y++) for (let x = y % 2; x * n < W; x += 2) ctx.fillRect(x * n, y * n, n, n);
 }

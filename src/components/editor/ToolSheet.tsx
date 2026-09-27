@@ -17,14 +17,6 @@ import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
 import { FONTS, MAX_TEXT, TEXT_STYLES, type TextStyle } from '@/domain/effects/text';
 import { WATER_STYLES, type WaterStyle } from '@/domain/effects/water';
-import {
-  DEFAULT_STRAND,
-  FORMS,
-  STRAND_LOOKS,
-  type Form,
-  type StrandLook,
-  type StrandSettings,
-} from '@/domain/effects/strands';
 import { BODY_PARTS, type BodyPart } from '@/domain/tracking/bodyParts';
 import { AimPanel } from './AimPanel';
 import { fontVar } from './fonts';
@@ -42,10 +34,7 @@ export type Tool =
   | 'parts'
   | 'aim'
   | 'background'
-  | 'transform'
-  | 'form'
-  | 'finish'
-  | 'shape';
+  | 'transform';
 // the effect categories: each continuous effect, and each family of impacts (listed together
 // under Impact)
 export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
@@ -74,7 +63,6 @@ export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'outline', label: 'Outline' },
   { id: 'glitch', label: 'Glitch' },
   { id: 'text', label: 'Text' },
-  { id: 'path', label: 'Path' },
 ];
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
 export const categoryName = (c: Category) =>
@@ -92,34 +80,6 @@ export const TOOL_TITLES: Record<Tool, string> = {
   aim: 'Aim',
   background: 'Where it was',
   transform: 'Transform',
-  form: 'Form',
-  finish: 'Look',
-  shape: 'Shape',
-};
-
-// each form's icon
-const FORM_ICONS: Record<Form, string> = {
-  whip: I.whip,
-  rope: I.rope,
-  ribbon: I.ribbon,
-  tentacle: I.tentacle,
-  trail: I.trail,
-  beam: I.beam,
-};
-
-// each look, for its tile
-const STRAND_ART: Record<StrandLook, string> = {
-  neon: 'linear-gradient(170deg, transparent 44%, #7fe0ff 46%, #fff 50%, #7fe0ff 54%, transparent 56%), radial-gradient(ellipse 80% 30%, #2f7bff55, transparent 70%), #26262a',
-  energy:
-    'radial-gradient(circle at 60% 48%, #fff 0 6%, #7fe0ff 12%, transparent 22%), linear-gradient(170deg, transparent 42%, #2f7bff 46%, #f0fbff 50%, #2f7bff 54%, transparent 58%), #26262a',
-  lightning:
-    'linear-gradient(120deg, transparent 47%, #fff 49%, transparent 51%), linear-gradient(60deg, transparent 47%, #d98bff 49%, transparent 51%), radial-gradient(ellipse, #8a2be244, transparent 70%), #26262a',
-  solid:
-    'linear-gradient(170deg, transparent 42%, #b3531e 44%, #ffc640 49%, #b3531e 56%, transparent 58%), #26262a',
-  fire: 'radial-gradient(ellipse 60% 30% at 50% 60%, #fff6d8 0 12%, #ffc640 30%, #ff6a1a 55%, transparent 75%), #26262a',
-  sparks:
-    'radial-gradient(circle at 30% 40%, #ffc640 0 3%, transparent 4%), radial-gradient(circle at 60% 30%, #fff 0 3%, transparent 4%), radial-gradient(circle at 70% 60%, #ff6a1a 0 3%, transparent 4%), linear-gradient(170deg, transparent 47%, #fff6d8 49%, transparent 51%), #26262a',
-  aura: 'radial-gradient(ellipse 70% 25%, #fbeaff 0 10%, #d98bff 30%, #8a2be255 60%, transparent 75%), #26262a',
 };
 
 // a picture of what each background choice leaves behind
@@ -295,9 +255,6 @@ export function ToolSheet({
   onTransform?(p: Partial<Transform>): void;
   onReset?(): void;
 }) {
-  // a path's form, look and shape
-  const strand = fx.strand ?? DEFAULT_STRAND;
-  const setStrand = (p: Partial<StrandSettings>) => onChange({ strand: { ...strand, ...p } });
   return (
     <div className="sheet" role="dialog" aria-label={title}>
       <div className="sheet-head">
@@ -377,148 +334,21 @@ export function ToolSheet({
           ))}
         </div>
       )}
-      {tool === 'styles' && category === 'path' && (
-        <div className="tiles" role="group" aria-label="Path forms">
-          {FORMS.map(f => (
+      {tool === 'styles' && category && !isImpactCategory(category) && !LOOKS[category] && (
+        <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
+          {PALETTES.map((p, i) => (
             <button
-              key={f.id}
-              type="button"
-              className="tile part-tile"
-              title={f.about}
-              onClick={() =>
-                onPick?.({
-                  kind: 'effect',
-                  effect: 'path',
-                  pal: DEFAULT_PAL.path,
-                  fx: { strand: { ...strand, form: f.id } },
-                })
-              }
-            >
-              <span className="tile-art">
-                <Icon d={FORM_ICONS[f.id]} size={30} />
-              </span>
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {tool === 'form' && (
-        <div className="tiles" role="group" aria-label="Form">
-          {FORMS.map(f => (
-            <button
-              key={f.id}
-              type="button"
-              className="tile part-tile"
-              title={f.about}
-              aria-pressed={strand.form === f.id}
-              onClick={() => setStrand({ form: f.id })}
-            >
-              <span className="tile-art">
-                <Icon d={FORM_ICONS[f.id]} size={30} />
-              </span>
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {tool === 'finish' && (
-        <div className="tiles" role="group" aria-label="Look">
-          {STRAND_LOOKS.map(l => (
-            <button
-              key={l.id}
+              key={p.name}
               type="button"
               className="tile"
-              aria-pressed={strand.look === l.id}
-              onClick={() => setStrand({ look: l.id })}
+              onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
             >
-              <span className="tile-art" style={{ background: STRAND_ART[l.id] }} />
-              {l.label}
+              <span className="tile-art" style={{ background: swatchBg(i) }} />
+              {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
             </button>
           ))}
         </div>
       )}
-      {tool === 'shape' && (
-        <div className="sliders">
-          <Slider
-            label={strand.form === 'trail' ? 'Trail' : 'Length'}
-            min={0.05}
-            max={1.5}
-            step={0.01}
-            value={strand.length}
-            show={v => (strand.form === 'trail' ? `${v.toFixed(1)}s` : `${Math.round(v * 100)}`)}
-            onChange={length => setStrand({ length })}
-          />
-          <Slider
-            label="Thickness"
-            min={0.3}
-            max={2.5}
-            step={0.05}
-            value={fx.size}
-            onChange={size => onChange({ size })}
-          />
-          <Slider
-            label="Flex"
-            min={0}
-            max={1}
-            step={0.01}
-            value={strand.flex}
-            onChange={flex => setStrand({ flex })}
-          />
-          <Slider
-            label="Weight"
-            min={0}
-            max={2}
-            step={0.05}
-            value={strand.weight}
-            onChange={weight => setStrand({ weight })}
-          />
-          <Slider
-            label="Points"
-            min={-180}
-            max={180}
-            step={1}
-            value={strand.dir}
-            show={v => `${Math.round(v)}°`}
-            onChange={dir => setStrand({ dir })}
-          />
-          <Slider
-            label="Intensity"
-            min={0.2}
-            max={2}
-            step={0.05}
-            value={fx.intensity}
-            onChange={intensity => onChange({ intensity })}
-          />
-          <Slider
-            label="Sound"
-            min={0}
-            max={1.5}
-            step={0.05}
-            value={fx.volume}
-            show={v => (v === 0 ? 'Off' : `${Math.round(v * 100)}`)}
-            onChange={volume => onChange({ volume })}
-          />
-        </div>
-      )}
-      {tool === 'styles' &&
-        category &&
-        category !== 'path' &&
-        !isImpactCategory(category) &&
-        !LOOKS[category] && (
-          <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-            {PALETTES.map((p, i) => (
-              <button
-                key={p.name}
-                type="button"
-                className="tile"
-                onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
-              >
-                <span className="tile-art" style={{ background: swatchBg(i) }} />
-                {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
-              </button>
-            ))}
-          </div>
-        )}
       {tool === 'words' && (
         <div className="words">
           <input
@@ -712,40 +542,5 @@ export function ToolSheet({
         </div>
       )}
     </div>
-  );
-}
-
-// a labelled slider with its value
-function Slider({
-  label,
-  min,
-  max,
-  step,
-  value,
-  show = v => `${Math.round(v * 100)}`,
-  onChange,
-}: {
-  label: string;
-  min: number;
-  max: number;
-  step: number;
-  value: number;
-  show?: (v: number) => string;
-  onChange(v: number): void;
-}) {
-  return (
-    <label className="slider">
-      <span>{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        style={pct(value, min, max)}
-        onChange={e => onChange(+e.target.value)}
-      />
-      <output>{show(value)}</output>
-    </label>
   );
 }

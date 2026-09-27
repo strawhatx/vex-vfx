@@ -3,8 +3,7 @@
 //   - the footage: split the film into scenes and delete the ones not wanted, and cut objects out
 //     of it into layers of their own (cutouts), placed, moved and animated however the user likes
 //   - add clips on tapped objects: effects for a stretch of the video (the user sets where each
-//     starts and ends) and impacts at a moment; and paths (strands like a whip or a rope, see
-//     domain/effects/strands), on a tapped object or drawn freehand, their far end held or free
+//     starts and ends) and impacts at a moment
 //   - fix the tracking with keyframes, change a clip's timing and look, aim lasers
 //   - undo and redo any of it
 // The analysis work goes through `Jobs`, one job at a time. The editor knows nothing about the
@@ -17,7 +16,6 @@
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
 import { DEFAULT_PAL, type Effect, type FxSettings } from '@/domain/effects/palettes';
-import { DEFAULT_STRAND } from '@/domain/effects/strands';
 import {
   clampAt,
   keyAt,
@@ -60,6 +58,7 @@ import {
   newImpact,
   newSpotTrack,
   newTrack,
+  duplicate,
   rangeFrames,
   refreshFrames,
   setHit,
@@ -81,6 +80,7 @@ export interface EditorState extends Timeline {
   scan: number | null; // progress 0..1 while the clip is being read
   job: JobStatus | null; // analysis work in progress
   scenes: Piece[]; // the films the clip is split into and kept (one, unsplit), back to back
+  scanned: boolean; // the clip's frames are known (so no films kept means all were deleted)
   length: number; // how long the film plays, as edited (seconds)
   canUndo: boolean;
   canRedo: boolean;
@@ -123,6 +123,7 @@ const EMPTY: EditorState = {
   cutRows: 0,
   hasEffects: false,
   scenes: [],
+  scanned: false,
   length: 0,
   canUndo: false,
   canRedo: false,
@@ -148,7 +149,6 @@ export const DEFAULT_FX: FxSettings = {
   textStyle: 'behind',
   font: 'anton',
   water: 'rain',
-  strand: DEFAULT_STRAND,
 };
 
 export class Editor {
@@ -328,15 +328,11 @@ export class Editor {
   }
 
   // deletes film k (of those kept): the ones either side then play one after the other. Whatever
-  // is on it stays in the project, just unseen, and comes back with undo.
+  // is on it stays in the project, just unseen, and comes back with undo. The last one can go too,
+  // leaving nothing to play.
   deleteScene(k: number) {
-    const pieces = this.pieces();
-    const p = pieces[k];
+    const p = this.pieces()[k];
     if (!p) return false;
-    if (pieces.length < 2) {
-      this.events.status('That’s the only film left. Split it first to delete part of it.');
-      return false;
-    }
     this.record();
     this.gone = [...this.gone, p.s];
     this.publish(true);
@@ -347,13 +343,15 @@ export class Editor {
   // ---------- the footage: cutouts ----------
 
   // a new cutout of the object tapped at frame i, cut from DEFAULT_EFFECT_S from there (within its
-  // scene); bg: what's left in the footage where it was
-  addCutout(i: number, sel: Selection, bg: Background) {
+  // scene); bg: what's left in the footage where it was; focus: the size of a box drawn round it
+  // (centred on sel), to look for it only in there
+  addCutout(i: number, sel: Selection, bg: Background, focus: { w: number; h: number } | null = null) {
     const f = this.clip[i];
     if (!f) return null;
     this.record();
     const range = { s: f.t, e: this.defaultEnd(f.t) };
     const t = newCutoutTrack(this.nextId++, this.clip, this.lastFx, range, newCutout(range.s, bg));
+    t.focus = focus && { w: Math.max(8, focus.w), h: Math.max(8, focus.h) };
     const id = this.start(t, i, sel);
     this.jobs.render(id);
     return id;
@@ -489,58 +487,6 @@ export class Editor {
     return t.id;
   }
 
-  // ---------- paths ----------
-
-  // a new path drawn freehand at frame i (pts: work pixels, the first is its anchor): it stays put
-  // in the scene as the camera moves, lasting DEFAULT_EFFECT_S from there
-  addDrawnPath(i: number, pts: Selection[], fx: Partial<FxSettings> = {}) {
-    const f = this.clip[i];
-    if (!f || pts.length < 2) return null;
-    this.record();
-    this.lastFx = { ...this.lastFx, ...fx, effect: 'path' };
-    this.jobs.needCamera();
-    const range = { s: f.t, e: this.defaultEnd(f.t) };
-    const t = newSpotTrack(this.nextId++, this.clip, this.lastFx, range);
-    t.path = { drawn: { i, pts }, end: null };
-    return this.start(t, i, pts[0]);
-  }
-
-  // draws a drawn path again, at frame i
-  redrawPath(id: number, i: number, pts: Selection[]) {
-    const t = this.track(id);
-    if (!t?.path?.drawn || pts.length < 2 || !this.clip[i]) return false;
-    this.record();
-    t.path = { ...t.path, drawn: { i, pts } };
-    return this.moveSpot(t, i, pts[0]);
-  }
-
-  // holds the path's far end where tapped at frame i: on another clip's object there (it follows
-  // it), or a spot in the scene
-  setPathEnd(id: number, i: number, sel: Selection) {
-    const t = this.track(id);
-    if (!t || !this.clip[i]) return;
-    const others = this.tracks.filter(o => o !== t);
-    const on = cutoutAt(others, this.clip, i, sel.x, sel.y)
-      ? null
-      : trackAt(others, this.clip, i, sel.x, sel.y);
-    if (!on) this.jobs.needCamera();
-    this.record();
-    t.path = { drawn: t.path?.drawn ?? null, end: { i, x: sel.x, y: sel.y, clip: on?.id ?? null } };
-    this.syncLayers();
-    this.publish(true);
-    this.events.status(on ? `${t.name}’s end holds on to ${on.name}.` : `${t.name}’s end is held here.`);
-  }
-
-  // lets the path's far end go
-  freePathEnd(id: number) {
-    const t = this.track(id);
-    if (!t?.path?.end) return;
-    this.record();
-    t.path = { ...t.path, end: null };
-    this.syncLayers();
-    this.publish(true);
-  }
-
   // ---------- fixing ----------
 
   // a tap on the clip's object at frame i: a keyframe that re-tracks the frames around it
@@ -564,17 +510,9 @@ export class Editor {
     return true;
   }
 
-  // an impact or spot effect tapped somewhere else goes there instead (the spot as seen at frame i)
+  // an impact or spot effect tapped somewhere else goes there instead (the spot as seen at frame
+  // i)
   private moveSpot(t: Track, i: number, sel: Selection) {
-    // a drawn path keeps its shape, starting at the tap
-    const d = t.path?.drawn;
-    if (d) {
-      const [p0] = d.pts;
-      t.path = {
-        ...t.path!,
-        drawn: { i, pts: d.pts.map(p => ({ x: p.x - p0.x + sel.x, y: p.y - p0.y + sel.y })) },
-      };
-    }
     t.keys = [{ i, x: sel.x, y: sel.y }];
     this.place(t);
     this.syncLayers();
@@ -746,9 +684,10 @@ export class Editor {
   setFx(id: number | null, p: Partial<FxSettings>) {
     const t = this.fxTarget(id);
     if (t) this.record(`fx:${t.id}:${Object.keys(p).join()}`);
-    this.lastFx = { ...(t?.fx ?? this.lastFx), ...p };
+    const fx = { ...(t?.fx ?? this.lastFx), ...p };
+    this.lastFx = fx;
     if (!t) return;
-    t.fx = this.lastFx;
+    t.fx = fx;
     this.syncLayers();
     this.publish(true);
   }
@@ -757,16 +696,38 @@ export class Editor {
     this.setFx(id, { effect, pal: DEFAULT_PAL[effect] });
   }
 
+  // a copy of the clip on the row below, at the same time: its tracking too (and whatever of it is
+  // still to do)
+  duplicate(id: number) {
+    const t = this.track(id);
+    if (!t) return null;
+    this.record();
+    const d = duplicate(t, this.nextId++, this.clip);
+    this.tracks.push(d);
+    this.tracked.set(d.id, this.tracked.get(t.id) ?? trackSpan(d, this.clip));
+    this.place(d);
+    this.syncLayers();
+    this.publish(true);
+    const todo = this.jobs.pending().filter(j => j.id === t.id);
+    if (todo.length) this.jobs.add(...todo.map(j => ({ id: d.id, key: j.key })));
+    if (d.cutout) this.jobs.render(d.id);
+    return d.id;
+  }
+
+  // puts the clip on timeline row `row` (among the effect rows, or the cutout rows; -1: a new row
+  // on top); if something there overlaps it, it goes on the next free row below
+  moveToRow(id: number, row: number) {
+    const t = this.track(id);
+    if (!t || t.row === row) return;
+    this.record();
+    t.row = row;
+    this.publish();
+  }
+
   deleteTrack(id: number) {
     if (!this.track(id)) return;
     this.record();
     this.tracks = this.tracks.filter(t => t.id !== id);
-    // paths holding on to it are held where they were instead
-    for (const t of this.tracks)
-      if (t.path?.end?.clip === id) {
-        t.path = { ...t.path, end: { ...t.path.end, clip: null } };
-        this.jobs.needCamera();
-      }
     this.tracked.delete(id);
     this.jobs.drop(j => j.id === id);
     this.jobs.dropRender(id);
@@ -870,6 +831,7 @@ export class Editor {
     const scenes = this.pieces();
     return {
       scenes,
+      scanned: this.clip.length > 0,
       length: lengthOf(scenes),
       canUndo: this.undos.length > 0,
       canRedo: this.redos.length > 0,
@@ -915,7 +877,13 @@ export class Editor {
 
   // the clips changed: tell the timeline
   private publish(drawn = false) {
-    this.update(timelineOf(this.tracks, this.clip, this.pieces()), drawn);
+    const tl = timelineOf(this.tracks, this.clip, this.pieces());
+    // each clip stays on the row it was put on
+    for (const l of tl.lanes) {
+      const t = this.track(l.id);
+      if (t) t.row = l.row;
+    }
+    this.update(tl, drawn);
   }
 
   // the clips' looks or timing changed: tell the renderer

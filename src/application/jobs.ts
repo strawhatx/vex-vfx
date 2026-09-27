@@ -233,6 +233,7 @@ export class Jobs {
       key: key.i - from,
       select: { x: key.x, y: key.y },
       part: t.part ?? undefined,
+      focus: t.focus ?? undefined,
     };
     this.analysis.track(source, req, {
       progress: (done, total) => host.showJob({ label, progress: done / total }),

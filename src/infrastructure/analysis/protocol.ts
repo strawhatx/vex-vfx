@@ -18,6 +18,7 @@ export type TrackRequest = {
   key: number;
   select: Selection;
   part?: BodyPart;
+  focus?: { w: number; h: number };
 };
 // times: every frame of the clip, in order
 export type CameraRequest = { type: 'camera'; jobId: number; clipId: number; file: Blob; times: number[] };

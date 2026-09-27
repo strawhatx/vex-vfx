@@ -9,8 +9,7 @@ export interface HintState {
   paused: boolean;
   choosing: boolean; // picking where a new effect comes from
   aiming: boolean; // the next tap sets a laser's target
-  attaching?: boolean; // the next tap holds a path's far end
-  adding: 'effect' | 'impact' | 'explosion' | 'shockwave' | 'word' | 'water' | 'cutout' | 'path' | null; // what the next tap adds
+  adding: 'effect' | 'impact' | 'explosion' | 'shockwave' | 'word' | 'water' | 'cutout' | null; // what the next tap adds
   selected: number | null; // the selected clip
 }
 
@@ -26,14 +25,12 @@ export function hintFor(s: HintState, ed: HintQueries, idx: number): string {
   if (!s.ready || s.scanning || s.exporting) return '';
   if (s.choosing) return 'Pick where it should come from.';
   if (s.aiming) return 'Tap where the laser should hit.';
-  if (s.attaching) return 'Tap what the far end should hold on to.';
-  if (s.adding === 'path') return 'Tap what it follows, or draw it.';
   if (s.adding === 'explosion') return 'Tap where the explosion should go off.';
   if (s.adding === 'shockwave') return 'Tap where the shockwave should start.';
   if (s.adding === 'impact') return 'Tap where the impact should hit.';
   if (s.adding === 'word') return 'Tap where the word should pop up.';
   if (s.adding === 'water') return 'Tap where the water should splash.';
-  if (s.adding === 'cutout') return 'Tap the object to cut out.';
+  if (s.adding === 'cutout') return 'Drag a box round the object to cut out (or tap it).';
   if (s.adding) return 'Tap what the effect should follow.';
   if (!ed.trackCount) return 'Tap what the effect should follow.';
   const sel = s.selected;

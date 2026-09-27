@@ -42,6 +42,8 @@ export function Timeline({
     moveImpact(id: number, t: number): void;
     // a cutout dragged to start at time t
     moveCutout(id: number, t: number): void;
+    // a clip dragged onto another row (-1: a new one on top)
+    moveRow(id: number, row: number): void;
   };
 }) {
   const dur = ui.duration || 0;
@@ -63,6 +65,8 @@ export function Timeline({
   }, [shownTime]);
 
   const scale: Scale = { pps, x: t => t * pps };
+  // every film deleted: nothing but the button to add a clip
+  const hasFilm = ui.ready && !(ui.scanned && !ui.scenes.length);
   const fxLanes = ui.lanes.filter(l => l.kind !== 'cutout'),
     cutLanes = ui.lanes.filter(l => l.kind === 'cutout');
   const rows = Array.from({ length: ui.rows }, (_, r) => fxLanes.filter(l => l.row === r));
@@ -73,6 +77,7 @@ export function Timeline({
     commitRange: on.commitRange,
     moveImpact: on.moveImpact,
     moveCutout: on.moveCutout,
+    moveRow: on.moveRow,
   };
 
   return (
@@ -93,7 +98,7 @@ export function Timeline({
             onChooseFile={on.chooseFile}
             makeThumbs={makeThumbs}
           />
-          {ui.ready && (
+          {hasFilm && (
             <AudioRow
               ui={ui}
               scale={scale}
@@ -137,7 +142,7 @@ export function Timeline({
             </div>
           ))}
 
-          {ui.ready && (
+          {hasFilm && (
             <div className="tl-row add-row">
               <button
                 type="button"
@@ -149,7 +154,11 @@ export function Timeline({
                 }}
               >
                 <Icon d={I.plus} size={16} />
-                {ui.adding ? 'Tap the object in the preview' : 'Add effect'}
+                {ui.adding?.kind === 'cutout'
+                  ? 'Drag a box round the object'
+                  : ui.adding
+                    ? 'Tap the object in the preview'
+                    : 'Add effect'}
               </button>
             </div>
           )}

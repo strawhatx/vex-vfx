@@ -138,7 +138,7 @@ async function makeFollower(c: Clip, job: TrackRequest): Promise<() => Follower>
   }
   const seg = await (segmenter ??= createSegmenter());
   return () => {
-    const t = new ObjectTracker(c.W, c.H, (x, y) => seg.segment(c.work, x, y));
+    const t = new ObjectTracker(c.W, c.H, (x, y, region) => seg.segment(c.work, x, y, region), job.focus);
     return { start: (rgba, sel) => t.start(rgba, sel), step: rgba => t.step(rgba) };
   };
 }

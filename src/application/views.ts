@@ -1,7 +1,7 @@
 // What the editor's clips look like from outside: lanes for the timeline, and layers for the
 // renderer. Pure functions of the tracks.
 import { pieceAt, toProgram, type Piece } from '@/domain/project/edit';
-import { hitFrame, isPinned, packRows, toLane, type Lane, type Track } from '@/domain/project/track';
+import { assignRows, hitFrame, isPinned, toLane, type Lane, type Track } from '@/domain/project/track';
 import type { ClipFrame } from '@/domain/tracking/types';
 import type { LayerSpec } from './ports';
 
@@ -14,7 +14,8 @@ export interface Timeline {
 
 // The clips as the timeline shows them, in program time (the film as edited: see edit.ts). A clip
 // that runs over a deleted film closes up round it; one wholly inside a deleted film isn't shown.
-// Effects and impacts stack on their rows, cutouts (placed where they're placed) on theirs.
+// Effects and impacts go on their rows, cutouts (placed where they're placed) on theirs: each on
+// the row the user put it on, where it fits (see assignRows).
 export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly Piece[]): Timeline {
   const P = (t: number) => toProgram(pieces, t);
   // an impact shows if it goes off in a kept film; anything else if some of it is kept
@@ -37,8 +38,15 @@ export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly 
   const isCut = (l: Lane) => l.kind === 'cutout';
   const fx = shown.filter(l => !isCut(l)),
     cuts = shown.filter(isCut);
-  const fxRows = packRows(fx.map(l => l.range)),
-    cutRows = packRows(cuts.map(l => l.range));
+  const wanted = (l: Lane) => tracks.find(t => t.id === l.id)?.row ?? null;
+  const fxRows = assignRows(
+      fx.map(l => l.range),
+      fx.map(wanted),
+    ),
+    cutRows = assignRows(
+      cuts.map(l => l.range),
+      cuts.map(wanted),
+    );
   fx.forEach((l, k) => (l.row = fxRows[k]));
   cuts.forEach((l, k) => (l.row = cutRows[k]));
   const count = (rows: number[]) => (rows.length ? Math.max(...rows) + 1 : 0);
@@ -66,6 +74,5 @@ export function layersOf(tracks: Track[], clip: ClipFrame[]): LayerSpec[] {
         ? [{ id: t.id, i: hitFrame(t, clip), style: t.impact, tap: t.keys[0] }]
         : [],
     cutout: t.cutout,
-    path: t.path,
   }));
 }
