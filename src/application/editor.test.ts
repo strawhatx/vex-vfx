@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { FAMILY_STYLES } from '@/domain/effects/impacts';
 import type { ClipFrame, Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
 import type { Analysis, EffectLayers, LayerSpec } from './ports';
@@ -22,10 +23,11 @@ class FakeAnalysis implements Analysis {
   probe: Analysis['probe'] = (_s, req, on) => {
     this.calls.push({ kind: 'probe', req, on });
   };
-  // the camera's path is worked out at once: it held still
+  // the camera's path is worked out at once: it held still, or panned `pan` pixels a frame
+  pan = 0;
   camera: Analysis['camera'] = (_s, times, on) => {
     this.calls.push({ kind: 'camera', times });
-    on.path(times.map((_, i) => ({ i, s: 1, tx: 0, ty: 0 })));
+    on.path(times.map((_, i) => ({ i, s: 1, tx: i * this.pan, ty: 0 })));
     on.done();
   };
   cancel() {
@@ -243,16 +245,14 @@ describe('impacts', () => {
     expect(spec.impacts).toEqual([{ id, i: 20, style: 'slam', tap: { i: 20, x: 50, y: 50 } }]);
   });
 
-  it('tracks the object from a little before the hit to the end of the burst', () => {
-    editor.addImpact(20, { x: 50, y: 50 }, 'punch');
-    const c = trackCall();
+  it('a hit goes off at the tapped spot without tracking anything, pinned to the scene by the camera path', () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch')!;
+    expect(analysis.calls.filter(k => k.kind === 'track')).toHaveLength(0);
     // impacts stay put in the scene, so the camera's path is worked out once for the clip
     expect(analysis.calls.filter(k => k.kind === 'camera')).toHaveLength(1);
     expect(layers.camera).toHaveLength(60);
     expect(layers.camera[30]).toEqual({ s: 1, tx: 0, ty: 0 });
-    expect(c.req.times[0]).toBe(1.8);
-    expect(c.req.times[c.req.times.length - 1]).toBe(2.4);
-    expect(c.req.times[c.req.key]).toBe(2);
+    expect(editor.pinned(id)).toBe(true);
   });
 
   it('the next impact gets the last style chosen', () => {
@@ -264,27 +264,20 @@ describe('impacts', () => {
     expect(editor.impactStyle).toBe('blast');
   });
 
-  it('moving an impact tracks the new moment, from where the object was tapped', () => {
+  it('moving an impact moves when it goes off, keeping its spot', () => {
     const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch')!;
-    finishTrack();
     editor.moveImpactTo(id, 3);
     expect(state.lanes[0].range.s).toBe(3);
-    expect(layers.specs[0].impacts[0].i).toBe(30);
-    const c = trackCall();
-    expect(c.req.times[c.req.key]).toBe(2);
-    expect(c.req.times[c.req.times.length - 1]).toBe(3.4);
+    expect(layers.specs[0].impacts[0]).toMatchObject({ i: 30, tap: { i: 20, x: 50, y: 50 } });
   });
 
   it('stretching an impact slows its burst and tells the renderer its new length', () => {
     const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch')!;
-    finishTrack();
     editor.setRange(id, { e: 2.9 });
     editor.commitRange(id);
     const lane = state.lanes.find(l => l.id === id)!;
     expect(lane.speed).toBeCloseTo(0.5);
     expect(layers.specs[0].range).toEqual({ s: 2, e: 2.9 });
-    // the new frames are tracked
-    expect(trackCall().req.times.at(-1)).toBe(2.8);
   });
 
   it('impacts and effects stack on rows together', () => {
@@ -292,6 +285,12 @@ describe('impacts', () => {
     editor.addImpact(20, { x: 20, y: 20 }, 'punch'); // 2..2.45, overlaps
     editor.addImpact(40, { x: 20, y: 20 }, 'punch'); // 4..4.45, free
     expect(state.lanes.map(l => l.row)).toEqual([0, 1, 0]);
+  });
+  it('every style in every family can be added', () => {
+    for (const st of Object.values(FAMILY_STYLES).flat()) {
+      const id = editor.addImpact(20, { x: 50, y: 50 }, st)!;
+      expect(state.lanes.find(l => l.id === id)!.impact).toBe(st);
+    }
   });
 });
 
@@ -324,40 +323,176 @@ describe('body parts', () => {
     expect(trackCall().req.part).toBe('eyes');
     expect(state.lanes[0].name).toBe('Eyes');
   });
+});
 
-  it('an impact on a body part tracks the part', () => {
-    editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, 'handL');
-    const c = trackCall();
-    expect(c.req.part).toBe('handL');
-    expect(state.lanes[0].name).toBe('Left hand');
+describe('outlines', () => {
+  it('trace the tapped object in the style picked, which can be changed later', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, { effect: 'outline', outline: 'glitch' })!;
+    expect(trackCall().req.times).toEqual(times(14, 44));
+    expect(layers.specs[0].settings).toMatchObject({ effect: 'outline', outline: 'glitch' });
+    editor.setFx(id, { outline: 'pulse' });
+    expect(layers.specs[0].settings.outline).toBe('pulse');
+  });
+});
+
+describe('water', () => {
+  it('rains round the tapped object (its drops bounce off it), or goes underwater', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, { effect: 'water', water: 'rain' })!;
+    expect(trackCall().req.times).toEqual(times(14, 44));
+    expect(layers.specs[0].settings).toMatchObject({ effect: 'water', water: 'rain' });
+    editor.setFx(id, { water: 'underwater' });
+    expect(layers.specs[0].settings.water).toBe('underwater');
+  });
+
+  it('or over the whole frame, tracking nothing', () => {
+    const id = editor.addSpotEffect(14, { x: 50, y: 50 }, { effect: 'water', water: 'rain' })!;
+    expect(analysis.tracks).toBe(0);
+    expect(state.lanes[0]).toMatchObject({ name: `Water ${id}`, pinned: true });
+  });
+});
+
+describe('glitches', () => {
+  it('glitch the tapped object in the style picked', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, { effect: 'glitch', glitch: 'slices' })!;
+    expect(trackCall().req.times).toEqual(times(14, 44));
+    expect(layers.specs[0].settings).toMatchObject({ effect: 'glitch', glitch: 'slices' });
+    editor.setFx(id, { glitch: 'vhs' });
+    expect(layers.specs[0].settings.glitch).toBe('vhs');
+  });
+
+  it('or the whole frame, tracking nothing', () => {
+    const id = editor.addSpotEffect(14, { x: 50, y: 50 }, { effect: 'glitch', glitch: 'rgb' })!;
+    expect(analysis.tracks).toBe(0);
+    expect(state.lanes[0]).toMatchObject({ name: `Glitch ${id}`, pinned: true });
+    expect(layers.specs[0].pinned).toBe(true);
+  });
+});
+
+describe('text', () => {
+  it('behind or following an object tracks it, with the words and font picked', () => {
+    const id = editor.addTrack(
+      14,
+      { x: 50, y: 50 },
+      { effect: 'text', textStyle: 'behind', text: 'LEGEND' },
+    )!;
+    expect(trackCall().req.times).toEqual(times(14, 44));
+    expect(layers.specs[0].settings).toMatchObject({ effect: 'text', textStyle: 'behind', text: 'LEGEND' });
+    editor.setFx(id, { text: 'GOAT', font: 'bangers', textStyle: 'follow' });
+    expect(layers.specs[0].settings).toMatchObject({ text: 'GOAT', font: 'bangers', textStyle: 'follow' });
+  });
+
+  it('a title goes at the tapped spot, tracking nothing', () => {
+    const id = editor.addSpotEffect(14, { x: 50, y: 50 }, { effect: 'text', textStyle: 'title' })!;
+    expect(analysis.tracks).toBe(0);
+    expect(state.lanes[0]).toMatchObject({ name: `Text ${id}`, pinned: true });
+  });
+});
+
+describe('effects from a spot', () => {
+  const box = (i: number) => layers.specs[0].frames[i].shapes[0];
+
+  it('sparks can come from the tapped spot: nothing tracked, a small box there all through', () => {
+    const id = editor.addSpotEffect(14, { x: 30, y: 40 }, { effect: 'sparks' })!;
+    expect(analysis.tracks).toBe(0);
+    expect(analysis.calls.filter(k => k.kind === 'camera')).toHaveLength(1);
+    const lane = state.lanes.find(l => l.id === id)!;
+    expect(lane).toMatchObject({ name: `Spot ${id}`, pinned: true, range: { s: 1.4, e: 4.4 } });
+    expect(editor.pinned(id)).toBe(true);
+    expect(box(14)).toMatchObject({ cx: 30, cy: 40, w: 5, h: 5 });
+    expect(box(43)).toMatchObject({ cx: 30, cy: 40 });
+    expect(box(13)).toBeUndefined();
+    expect(box(44)).toBeUndefined();
+  });
+
+  it('stays put in the scene as the camera pans', () => {
+    analysis.pan = 2;
+    editor.addSpotEffect(14, { x: 30, y: 40 }, { effect: 'sparks' });
+    expect(box(14)!.cx).toBe(30);
+    expect(box(20)!.cx).toBe(42); // the camera moved 12 pixels between the two
+  });
+
+  it('a tap moves it, and stretching it covers the new frames, still without tracking', () => {
+    const id = editor.addSpotEffect(14, { x: 30, y: 40 }, { effect: 'sparks' })!;
+    expect(editor.fixAt(id, 30, { x: 70, y: 20 })).toBe(true);
+    expect(box(30)).toMatchObject({ cx: 70, cy: 20 });
+    editor.setRange(id, { e: 5 });
+    editor.commitRange(id);
+    expect(box(48)).toMatchObject({ cx: 70, cy: 20 });
+    expect(analysis.tracks).toBe(0);
+    expect(editor.removeFixAt(id, 30)).toBe(false);
+  });
+
+  it('only for effects that can come from a spot', () => {
+    expect(editor.addSpotEffect(14, { x: 30, y: 40 }, { effect: 'fire' })).toBeNull();
+    expect(state.lanes).toHaveLength(0);
   });
 });
 
 describe('lasers', () => {
   it('fires sideways by default, towards the side with more room', () => {
     editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
-    expect(layers.specs[0].aim).toEqual({ deg: 0, target: null });
+    expect(layers.specs[0].aim).toEqual({ h: 90, v: 0, target: null });
     editor.addTrack(40, { x: 90, y: 50 }, { effect: 'laser' });
-    expect(layers.specs[1].aim).toEqual({ deg: 180, target: null });
+    expect(layers.specs[1].aim).toEqual({ h: -90, v: 0, target: null });
     expect(layers.specs[1].tap).toEqual({ i: 40, x: 90, y: 50 });
   });
 
-  it('turns to a direction, kept between -180 and 180', () => {
+  it('turns left-right and up-down separately, kept in range', () => {
     editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
-    editor.setAimAngle(1, 270);
-    expect(layers.specs[0].aim.deg).toBe(-90);
+    editor.setAim(1, { h: 0 }); // at the camera
+    editor.setAim(1, { v: -12 }); // a little up
+    expect(layers.specs[0].aim).toMatchObject({ h: 0, v: -12 });
+    editor.setAim(1, { h: 270, v: 200 });
+    expect(layers.specs[0].aim).toMatchObject({ h: -90, v: 90 });
   });
 
   it('can hit a tapped spot instead, which needs the camera path; clearing it goes back to its direction', () => {
     editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
-    editor.setAimAngle(1, 45);
+    editor.setAim(1, { h: 45, v: 10 });
     editor.aimAt(1, 20, { x: 70, y: 20 });
-    expect(layers.specs[0].aim).toEqual({ deg: 45, target: { i: 20, x: 70, y: 20 } });
+    expect(layers.specs[0].aim).toEqual({ h: 45, v: 10, target: { i: 20, x: 70, y: 20 } });
     // the camera's path is worked out once the laser's own tracking is done
     expect(analysis.calls.some(k => k.kind === 'camera')).toBe(false);
     finishTrack();
     expect(analysis.calls.some(k => k.kind === 'camera')).toBe(true);
     editor.clearAimTarget(1);
-    expect(layers.specs[0].aim).toEqual({ deg: 45, target: null });
+    expect(layers.specs[0].aim).toEqual({ h: 45, v: 10, target: null });
+  });
+});
+
+describe('explosions', () => {
+  it('go off at the tapped spot without tracking anything, pinned to the scene by the camera path', () => {
+    const id = editor.addImpact(20, { x: 30, y: 40 }, 'fireball')!;
+    expect(analysis.calls.filter(k => k.kind === 'track')).toHaveLength(0);
+    expect(analysis.calls.filter(k => k.kind === 'camera')).toHaveLength(1);
+    const lane = state.lanes.find(l => l.id === id)!;
+    expect(lane.name).toBe(`Explosion ${id}`);
+    expect(lane.range).toEqual({ s: 2, e: 3.6 });
+    expect(layers.specs[0].impacts).toEqual([{ id, i: 20, style: 'fireball', tap: { i: 20, x: 30, y: 40 } }]);
+    expect(editor.pinned(id)).toBe(true);
+  });
+
+  it('can be exported on their own: nothing to follow, but something to draw from the moment they go off', () => {
+    editor.addImpact(20, { x: 30, y: 40 }, 'grenade');
+    expect(state.hasEffects).toBe(true);
+    expect(editor.firstEffectTime()).toBe(2);
+  });
+
+  it('a tap while one is selected moves it there, still without tracking', () => {
+    const id = editor.addImpact(20, { x: 30, y: 40 }, 'fireball')!;
+    expect(editor.fixAt(id, 35, { x: 80, y: 10 })).toBe(true);
+    expect(layers.specs[0].impacts[0].tap).toEqual({ i: 35, x: 80, y: 10 });
+    expect(analysis.calls.filter(k => k.kind === 'track')).toHaveLength(0);
+    // and there are no fixes to remove
+    expect(editor.removeFixAt(id, 35)).toBe(false);
+  });
+
+  it('moving or stretching one needs no tracking', () => {
+    const id = editor.addImpact(20, { x: 30, y: 40 }, 'bigboom')!;
+    editor.moveImpactTo(id, 4);
+    editor.setRange(id, { e: 5.9 });
+    editor.commitRange(id);
+    expect(analysis.calls.filter(k => k.kind === 'track')).toHaveLength(0);
+    expect(state.lanes[0].range.s).toBe(4); // moved
   });
 });

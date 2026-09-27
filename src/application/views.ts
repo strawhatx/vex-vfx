@@ -1,13 +1,13 @@
 // What the editor's clips look like from outside: lanes for the timeline, and layers for the
 // renderer. Pure functions of the tracks.
-import { hitFrame, packRows, toLane, type Lane, type Track } from '@/domain/project/track';
+import { hitFrame, isPinned, packRows, toLane, type Lane, type Track } from '@/domain/project/track';
 import type { ClipFrame } from '@/domain/tracking/types';
 import type { LayerSpec } from './ports';
 
 export interface Timeline {
   lanes: Lane[];
   rows: number; // timeline rows the clips are stacked on
-  hasEffects: boolean; // some clip has something to follow
+  hasEffects: boolean; // some clip has something to draw: an explosion, or an object found
 }
 
 export function timelineOf(tracks: Track[], clip: ClipFrame[]): Timeline {
@@ -15,7 +15,7 @@ export function timelineOf(tracks: Track[], clip: ClipFrame[]): Timeline {
   return {
     lanes: tracks.map((t, k) => toLane(t, clip, rows[k])),
     rows: rows.length ? Math.max(...rows) + 1 : 0,
-    hasEffects: tracks.some(t => t.frames.some(f => f.shapes.length)),
+    hasEffects: tracks.some(t => isPinned(t) || t.frames.some(f => f.shapes.length)),
   };
 }
 
@@ -23,6 +23,7 @@ export function layersOf(tracks: Track[], clip: ClipFrame[]): LayerSpec[] {
   return tracks.map(t => ({
     id: t.id,
     kind: t.kind,
+    pinned: isPinned(t),
     frames: t.frames,
     settings: t.fx,
     color: t.color,

@@ -1,8 +1,10 @@
-// A laser at a frame: a beam from each of the part's source spots (both eyes, a fingertip), or the
-// tapped spot on an object, in its direction to the frame's edge, or to its target in the scene.
-import { beams } from '@/domain/effects/laser';
+// A laser at a frame. From the eyes it's one thick beam spanning both eyes, each eye blazing with a
+// starburst on top (like Cyclops); from a hand or foot it comes from the fingertip or toe; on an
+// object, from the spot tapped. It goes in its 3D direction (swelling as it comes at the camera),
+// or straight to its target in the scene.
+import { beamPath, type BeamPoint } from '@/domain/effects/laser';
 import { PALETTES } from '@/domain/effects/palettes';
-import { drawBeam } from './laser';
+import { drawBeam, drawEyeBurst } from './laser';
 import type { Layer } from './layer';
 import { sceneSpotAt, tapAt, type View } from './view';
 
@@ -13,21 +15,35 @@ export function drawLaser(v: View, l: Layer, idx: number) {
   const s = l.spec.settings;
   const aim = l.spec.aim;
 
-  const points = shape.points ?? [];
-  const tapped = l.spec.tap && tapAt(v, l.spec.frames, l.spec.tap, idx);
-  const sources = points.length
-    ? points.map(p => ({ x: p.x * q, y: p.y * q }))
-    : [tapped ?? { x: shape.cx * q, y: shape.cy * q }];
-  const target = aim.target && sceneSpotAt(v, aim.target, idx);
+  // where it starts, and how wide it is there
+  const points = (shape.points ?? []).map(p => ({ x: p.x * q, y: p.y * q }));
+  let source;
+  let width;
+  const eyes = points.length >= 2 ? points.slice(0, 2) : [];
+  const eyeGap = eyes.length ? Math.hypot(eyes[1].x - eyes[0].x, eyes[1].y - eyes[0].y) : 0;
+  if (eyes.length) {
+    // both eyes: one beam from between them, wide enough to take both in
+    source = { x: (eyes[0].x + eyes[1].x) / 2, y: (eyes[0].y + eyes[1].y) / 2 };
+    width = eyeGap * 0.85;
+  } else {
+    const tapped = l.spec.tap && tapAt(v, l.spec.frames, l.spec.tap, idx);
+    source = points[0] ?? tapped ?? { x: shape.cx * q, y: shape.cy * q };
+    width = (Math.sqrt(shape.w * shape.h) * q) / 8;
+  }
+  width = Math.max(v.CW / 90, width) * s.size;
 
-  // sized to the part, but never thinner than a sliver of the frame, so a beam from a small part
-  // (the eyes) still reads; thinner when there are several
-  const width =
-    Math.max(v.CW / 260, (Math.sqrt(shape.w * shape.h) * q) / 14) * s.size * (points.length > 1 ? 0.6 : 1);
+  const target = aim.target && sceneSpotAt(v, aim.target, idx);
+  const path: BeamPoint[] = target
+    ? [
+        { ...source, w: 1 },
+        { ...target, w: 1 },
+      ]
+    : beamPath(source, aim.h, aim.v, v.CW, v.CH);
 
   const colors = PALETTES[s.pal].c;
   const t = v.clip[idx].t;
-  beams(sources, aim.deg, target, v.CW, v.CH).forEach((b, k) =>
-    drawBeam(v.ctx, b.a, b.b, width, colors, s.intensity, t, l.spec.id * 13 + k, !!target),
-  );
+  drawBeam(v.ctx, path, width, colors, s.intensity, t, l.spec.id * 13, !!target);
+  // each eye blazing, on top of the beam
+  const burst = Math.max(v.CW / 45, eyeGap * 1.1) * s.size;
+  eyes.forEach((e, k) => drawEyeBurst(v.ctx, e, burst, colors, s.intensity, t, l.spec.id * 31 + k));
 }

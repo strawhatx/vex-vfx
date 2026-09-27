@@ -32,6 +32,9 @@ describe('soundingAt', () => {
   it('leaves out effects turned all the way down', () => {
     expect(soundingAt([effect(1, 0, 2, 0)], 1)).toEqual([]);
   });
+  it('leaves out text, which makes no sound', () => {
+    expect(soundingAt([{ ...effect(1, 0, 2), effect: 'text' }], 1)).toEqual([]);
+  });
 });
 
 describe('hitsBetween', () => {

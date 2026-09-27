@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Anton, Inter } from 'next/font/google';
+import { Anton, Bangers, Bebas_Neue, Inter } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({
@@ -9,6 +9,19 @@ const inter = Inter({
 
 const anton = Anton({
   variable: '--font-anton',
+  weight: '400',
+  subsets: ['latin'],
+});
+
+// text effects' fonts (all SIL Open Font License)
+const bebas = Bebas_Neue({
+  variable: '--font-bebas',
+  weight: '400',
+  subsets: ['latin'],
+});
+
+const bangers = Bangers({
+  variable: '--font-bangers',
   weight: '400',
   subsets: ['latin'],
 });
@@ -27,7 +40,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${inter.variable} ${anton.variable}`}>
+    <html lang="en" className={`${inter.variable} ${anton.variable} ${bebas.variable} ${bangers.variable}`}>
       <body>{children}</body>
     </html>
   );

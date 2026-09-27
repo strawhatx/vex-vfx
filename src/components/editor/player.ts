@@ -3,7 +3,8 @@
 // into editing actions, and exports. React drives it through its methods and gets UI state back
 // through onUi. It is the only UI module that imports infrastructure/.
 import { Editor, type EditorState } from '@/application/editor';
-import type { ImpactStyle } from '@/domain/effects/impacts';
+import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
+import { canPin } from '@/domain/project/spot';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
 import type { Lane } from '@/domain/project/track';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
@@ -12,6 +13,7 @@ import { AnalysisClient } from '@/infrastructure/analysis/client';
 import { Mixer } from '@/infrastructure/audio/mixer';
 import { clipPeaks, laneSound, type ClipWave } from '@/infrastructure/audio/waveform';
 import { Renderer } from '@/infrastructure/rendering/renderer';
+import { loadFonts } from './fonts';
 import { makeFilmstrip } from '@/infrastructure/video/filmstrip';
 import { onEachFrame, seekVideo, settleDuration } from '@/infrastructure/video/playback';
 import {
@@ -20,7 +22,7 @@ import {
   startCanvasRecording,
   type Recording,
 } from '@/infrastructure/video/recorder';
-import { hintFor } from '@/application/hints';
+import { hintFor, type HintState } from '@/application/hints';
 
 export type { Lane };
 
@@ -34,8 +36,10 @@ export interface UiState extends Omit<EditorState, 'hasEffects'> {
   status: string;
   selected: number | null; // selected clip; taps on the preview fix its tracking
   adding: AddChoice | null; // what the next tap on the preview adds
-  // a person was tapped while adding: which body part should it follow? (suggested: the nearest)
-  choosing: { suggested: BodyPart } | null;
+  // where a new effect should come from, asked after the tap: a person's body part (suggested:
+  // the nearest; null when it isn't a person), or (spot) the spot tapped, for effects that can
+  // (for a glitch, the whole frame)
+  choosing: { suggested: BodyPart | null; spot: boolean; effect: Effect } | null;
   aiming: number | null; // a laser whose target the next tap on the preview sets
   camera: boolean;
   recording: boolean;
@@ -59,10 +63,20 @@ export type MakeThumbs = (
   onThumb: (i: number, url: string) => void,
 ) => Promise<void>;
 
+// where a new effect comes from: a body part, the object tapped, or the spot tapped
+export type Source = BodyPart | 'object' | 'spot';
+
 // what to add on the next tap: an effect with these settings, or an impact of this style
 export type AddChoice =
   | { kind: 'effect'; fx: Partial<FxSettings> }
   | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings> };
+
+// what the next tap adds, for the hint
+const addingWhat = (a: AddChoice | null): HintState['adding'] => {
+  if (!a || a.kind === 'effect') return a?.kind ?? null;
+  const family = familyOf(a.style);
+  return family === 'hit' ? 'impact' : family;
+};
 
 export const INITIAL_UI: UiState = {
   ready: false,
@@ -140,6 +154,11 @@ export class Player {
       },
     });
     this.listen();
+    void loadFonts().then(fonts => {
+      if (this.destroyed) return;
+      this.renderer.setFonts(fonts);
+      this.redraw();
+    });
     onEachFrame(
       video,
       t => this.draw(t),
@@ -251,12 +270,19 @@ export class Player {
     this.redraw();
   }
 
-  // the body part picked for the person tapped ('body' = the whole person)
-  choosePart(part: BodyPart) {
+  // where the new effect comes from: the spot tapped, the object there, or a body part of the
+  // person there ('body' = the whole person)
+  choosePart(from: Source) {
     const p = this.pendingAdd;
     this.pendingAdd = null;
     this.set({ choosing: null });
-    if (p) this.addNow(p.choice, p.i, p.at, part === 'body' ? null : part);
+    if (!p) return;
+    if (from === 'spot' && p.choice.kind === 'effect') {
+      const id = this.editor.addSpotEffect(p.i, p.at, p.choice.fx);
+      if (id !== null) this.select(id);
+      return;
+    }
+    this.addNow(p.choice, p.i, p.at, from === 'body' || from === 'object' || from === 'spot' ? null : from);
   }
 
   deleteTrack(id: number) {
@@ -337,8 +363,8 @@ export class Player {
 
   // ---------- lasers ----------
 
-  setAimAngle(id: number, deg: number) {
-    this.editor.setAimAngle(id, deg);
+  setAim(id: number, p: { h?: number; v?: number }) {
+    this.editor.setAim(id, p);
     this.redraw();
   }
 
@@ -509,7 +535,7 @@ export class Player {
       paused,
       choosing: !!ui.choosing,
       aiming: ui.aiming !== null,
-      adding: ui.adding?.kind ?? null,
+      adding: addingWhat(ui.adding),
       selected: ui.selected,
     };
     const hint = hintFor(state, this.editor, idx);
@@ -594,14 +620,22 @@ export class Player {
     else this.togglePlay();
   }
 
-  // a person? then ask which part it should follow; anything else is added straight away
+  // a person, or an effect that can come from a spot? then ask where it comes from; anything else
+  // is added straight away
   private tapToAdd(choice: AddChoice, i: number, at: Selection) {
+    // an impact goes off at the spot, whatever's there
+    if (choice.kind === 'impact') {
+      this.addNow(choice, i, at, null);
+      return;
+    }
+    const effect = choice.fx.effect ?? this.editor.fx(null).effect;
+    const spot = canPin(effect);
     const adding = this.ui.adding;
     void this.editor.probe(i, at).then(part => {
       if (this.destroyed || this.ui.adding !== adding) return;
-      if (part) {
+      if (part || spot) {
         this.pendingAdd = { choice, i, at };
-        this.set({ choosing: { suggested: part } });
+        this.set({ choosing: { suggested: part, spot, effect } });
       } else {
         this.addNow(choice, i, at, null);
       }
@@ -612,7 +646,7 @@ export class Player {
     const ed = this.editor;
     const id =
       choice.kind === 'impact'
-        ? ed.addImpact(i, at, choice.style, choice.fx, part)
+        ? ed.addImpact(i, at, choice.style, choice.fx)
         : ed.addTrack(i, at, choice.fx, part);
     if (id !== null) this.select(id);
   }

@@ -3,6 +3,10 @@
 // be rendered in any order and comes out the same. The drawing itself lives in the layer modules:
 //   layer.ts        particle effects (fire, lightning, aura, sparks) and their simulation
 //   laserLayer.ts   lasers
+//   outlineFx.ts    the Outline effect
+//   glitch.ts       the Glitch effect (after the others, so they glitch too)
+//   text.ts         the Text effect (words behind the object first, labels and titles last)
+//   water.ts        the Water effect: rain or underwater, over the other effects
 //   impactLayer.ts  impacts and the camera jolt
 //   outline.ts      outlines and targets while editing
 import type { EffectLayers, LayerSpec } from '@/application/ports';
@@ -14,7 +18,12 @@ import { drawImpacts } from './impactLayer';
 import { drawLaser } from './laserLayer';
 import { Layer } from './layer';
 import { MaskPainter } from './masks';
-import { drawLaserTarget, drawOutline } from './outline';
+import { drawOutline, drawSceneSpot } from './outline';
+import { drawOutlineFx } from './outlineFx';
+import { GlitchPainter } from './glitch';
+import { FALLBACK_FONTS, type Fonts } from './fonts';
+import { TextPainter } from './text';
+import { WaterPainter } from './water';
 import type { Ctx2D } from './sprites';
 import type { View } from './view';
 
@@ -36,6 +45,10 @@ export class Renderer implements EffectLayers {
   private layers = new Map<number, Layer>();
   private masks = new MaskPainter(1, 1);
   private fire = new GpuFire();
+  private glitch = new GlitchPainter(1, 1);
+  private text = new TextPainter(1, 1);
+  private water = new WaterPainter(1, 1);
+  private fonts: Fonts = FALLBACK_FONTS;
   // a copy of the frame, redrawn shaken and zoomed while an impact jolts the camera
   private jolt = new OffscreenCanvas(1, 1);
 
@@ -53,6 +66,9 @@ export class Renderer implements EffectLayers {
     this.canvas.width = this.CW;
     this.canvas.height = this.CH;
     this.masks = new MaskPainter(this.CW, this.CH);
+    this.glitch = new GlitchPainter(this.CW, this.CH);
+    this.text = new TextPainter(this.CW, this.CH);
+    this.water = new WaterPainter(this.CW, this.CH);
     this.fire.resize(this.CW, this.CH);
     this.jolt = new OffscreenCanvas(this.CW, this.CH);
     for (const l of this.layers.values()) l.geo = this.newGeo();
@@ -76,6 +92,11 @@ export class Renderer implements EffectLayers {
       if (l) l.update(s);
       else this.layers.set(s.id, new Layer(s, this.newGeo()));
     }
+  }
+
+  // the fonts text is drawn in, once they're loaded
+  setFonts(fonts: Fonts) {
+    this.fonts = fonts;
   }
 
   setCamera(path: (Cam | null)[]) {
@@ -102,18 +123,35 @@ export class Renderer implements EffectLayers {
     const frameT = this.clip[idx].t;
     const showing = [...this.layers.values()].filter(l => l.isOn(frameT, this.clip.length));
 
+    const isText = (l: Layer) => l.spec.kind === 'effect' && l.spec.settings.effect === 'text';
+    // words behind the object go under every other effect
+    for (const l of showing)
+      if (isText(l) && l.spec.settings.textStyle === 'behind') this.text.draw(v, l, idx);
+
     for (const l of showing) {
       if (l.spec.kind === 'impact') continue; // just its burst, drawn below
+      if (isText(l) || l.spec.settings.effect === 'water') continue;
+      if (l.spec.settings.effect === 'glitch') continue; // below, over everything else
       if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
+      else if (l.spec.settings.effect === 'outline') this.drawOutlineFx(l, idx);
       else this.drawParticles(l, idx);
     }
 
+    for (const l of showing) {
+      if (l.spec.kind === 'effect' && l.spec.settings.effect === 'glitch') this.drawGlitch(l, idx);
+    }
+    for (const l of showing) {
+      if (l.spec.kind === 'effect' && l.spec.settings.effect === 'water') this.drawWater(l, idx);
+    }
+    // labels and titles on top
+    for (const l of showing)
+      if (isText(l) && l.spec.settings.textStyle !== 'behind') this.text.draw(v, l, idx);
+
     if (opts.outline) {
-      for (const l of showing) {
-        const selected = opts.selected === l.spec.id;
-        drawOutline(v, this.masks, l, idx, selected, opts.paused);
-        if (selected && opts.paused) drawLaserTarget(v, l, idx);
-      }
+      for (const l of showing) drawOutline(v, this.masks, l, idx, opts.selected === l.spec.id, opts.paused);
+      // the selected clip's spot in the scene, even outside its range, to show where it will be
+      const sel = opts.selected !== null && this.layers.get(opts.selected);
+      if (sel && opts.paused) drawSceneSpot(v, sel, idx);
     }
 
     drawImpacts(v, this.layers.values(), idx, this.canvas, this.jolt);
@@ -131,6 +169,34 @@ export class Renderer implements EffectLayers {
     });
   }
 
+  private drawOutlineFx(l: Layer, idx: number) {
+    const f = l.fxFrame(idx, this.shot);
+    l.geo.prepareCanvas(l.spec.frames[idx]);
+    drawOutlineFx(this.ctx, this.masks, l.geo.maskCanvas, f, l.spec.settings, l.spec.id);
+  }
+
+  // rain or underwater, over the whole frame (from a spot) or round the object
+  private drawWater(l: Layer, idx: number) {
+    const t = this.clip[idx].t;
+    const tgt = l.spec.pinned ? null : l.fxFrame(idx, this.shot).tgt;
+    const box = tgt?.active ? tgt : null;
+    this.water.draw(this.ctx, this.canvas, box, l.spec.settings, t, l.spec.id);
+  }
+
+  // a glitch over the whole frame (from a spot), or on the object
+  private drawGlitch(l: Layer, idx: number) {
+    const t = this.clip[idx].t;
+    if (l.spec.pinned) {
+      this.glitch.draw(this.ctx, this.canvas, null, l.spec.settings, t, l.spec.id);
+      return;
+    }
+    const f = l.fxFrame(idx, this.shot);
+    if (!f.tgt.active) return;
+    l.geo.prepareCanvas(l.spec.frames[idx]);
+    const area = { mask: f.hasShape ? l.geo.maskCanvas : null, box: f.tgt };
+    this.glitch.draw(this.ctx, this.canvas, area, l.spec.settings, t, l.spec.id);
+  }
+
   private view(): View {
     return {
       ctx: this.ctx,
@@ -140,6 +206,7 @@ export class Renderer implements EffectLayers {
       clip: this.clip,
       shot: this.shot,
       cam: this.cam,
+      fonts: this.fonts,
     };
   }
 

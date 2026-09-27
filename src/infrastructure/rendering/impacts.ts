@@ -10,14 +10,14 @@ export interface Hit {
   age: number; // seconds since the hit
   x: number;
   y: number; // where it hit
-  size: number; // the object's size
-  dir: number | null; // direction the object was moving (radians), if it was moving
+  size: number; // the burst's size
   look: ImpactLook;
   colors: readonly string[]; // hottest to coolest
   seed: number;
 }
 
 const FLASH_S = 0.12;
+const RING_S = 0.7; // longest a shockwave ring lasts
 const hot = (h: Hit) => (h.look.palette ? h.colors[0] : '#ffffff');
 const mid = (h: Hit) => (h.look.palette ? h.colors[1] : '#ffe9b0');
 
@@ -45,7 +45,7 @@ export function drawHit(ctx: Ctx2D, h: Hit) {
   // shockwave rings, one after another, growing and thinning out
   for (let k = 0; k < look.rings; k++) {
     const a = age - k * 0.06,
-      life = look.duration * 0.8;
+      life = Math.min(look.duration * 0.8, RING_S); // a long explosion still has a quick shockwave
     if (a < 0 || a > life) continue;
     const q = a / life,
       r = size * (0.5 + q * (3 + k)),
@@ -57,13 +57,11 @@ export function drawHit(ctx: Ctx2D, h: Hit) {
     ctx.stroke();
   }
 
-  // sparks thrown out the way the object was going (all round if it wasn't moving)
-  const r = rngFor(h.seed, 7),
-    base = h.dir ?? -Math.PI / 2,
-    spread = h.dir === null ? Math.PI : look.spread;
+  // sparks thrown out all round
+  const r = rngFor(h.seed, 7);
   ctx.lineCap = 'round';
   for (let n = 0; n < look.sparks; n++) {
-    const ang = base + (r() * 2 - 1) * spread,
+    const ang = r() * Math.PI * 2,
       sp = look.speed * size * (0.35 + r() * 0.9),
       life = look.duration * (0.45 + r() * 0.55);
     const w = 0.6 + r(),

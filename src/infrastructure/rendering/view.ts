@@ -3,6 +3,7 @@
 // (carried along with the camera). Output pixels unless noted.
 import { carry, type Cam } from '@/domain/effects/laser';
 import type { TrackFrame } from '@/domain/tracking/types';
+import type { Fonts } from './fonts';
 import type { Ctx2D } from './sprites';
 
 export interface View {
@@ -13,6 +14,7 @@ export interface View {
   clip: TrackFrame[];
   shot: Int32Array; // each frame's first frame of its shot
   cam: (Cam | null)[]; // the camera's path through the clip (analysis pixels), as far as it's known
+  fonts: Fonts; // for text
 }
 
 export type Spot = { i: number; x: number; y: number }; // frame, and analysis pixels

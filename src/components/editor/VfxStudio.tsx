@@ -4,15 +4,27 @@
 // panels). It keeps what's selected and which panel is open; all editing goes through the Player.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_FX } from '@/application/editor';
-import type { FxSettings } from '@/domain/effects/palettes';
+import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
+import type { Effect, FxSettings } from '@/domain/effects/palettes';
 import { ExportResult } from './ExportResult';
 import { Icon, I } from './icons';
 import { INITIAL_UI, Player, type Lane, type MakeThumbs, type UiState } from './player';
 import { Preview } from './Preview';
 import { Timeline } from './timeline/Timeline';
 import { Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
-import { TOOL_TITLES, ToolSheet, categoryName, type Category, type Pick, type Tool } from './ToolSheet';
+import {
+  TOOL_TITLES,
+  ToolSheet,
+  categoryName,
+  hasLooks,
+  type Category,
+  type Pick,
+  type Tool,
+} from './ToolSheet';
 import { Transport } from './Transport';
+
+// which list of categories the toolbar shows, if any
+type Catalog = 'effects' | 'elements' | 'impacts' | null;
 
 export default function VfxStudio() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,7 +36,8 @@ export default function VfxStudio() {
   // what the dock shows
   const [tool, setTool] = useState<Tool | null>(null); // the open panel
   const [clipSel, setClipSel] = useState(false); // the video clip itself is selected
-  const [catalog, setCatalog] = useState(false); // the toolbar lists the effect categories
+  // the toolbar lists the effect categories, or the impact families
+  const [catalog, setCatalog] = useState<Catalog>(null);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
 
   const [full, setFull] = useState(false);
@@ -88,14 +101,14 @@ export default function VfxStudio() {
 
   function deselect() {
     setClipSel(false);
-    setCatalog(false);
+    setCatalog(null);
     setTool(null);
     player()?.select(null);
   }
 
   function selectClip() {
     setTool(null);
-    setCatalog(false);
+    setCatalog(null);
     player()?.select(null);
     setClipSel(c => !c);
   }
@@ -103,7 +116,7 @@ export default function VfxStudio() {
   function selectLane(id: number) {
     setTool(null);
     setClipSel(false);
-    setCatalog(false);
+    setCatalog(null);
     player()?.select(ui.selected === id ? null : id);
   }
 
@@ -113,17 +126,23 @@ export default function VfxStudio() {
     setTool(null);
     player()?.select(null);
     if (ui.adding) player()?.cancelAdding();
-    else setCatalog(true);
+    else setCatalog('effects');
+  }
+
+  // Back from the Elements or Impact menu: the effect categories again
+  function backToCatalog() {
+    setTool(null);
+    setCatalog('effects');
   }
 
   // a style picked in a category: the next tap on the preview adds it there
   function pick(p: Pick) {
     setTool(null);
-    setCatalog(false);
+    setCatalog(null);
     player()?.startAdding(
       p.kind === 'impact'
-        ? { kind: 'impact', style: p.style }
-        : { kind: 'effect', fx: { effect: p.effect, pal: p.pal } },
+        ? { kind: 'impact', style: p.style, fx: startPal(p.style) }
+        : { kind: 'effect', fx: { effect: p.effect, pal: p.pal, ...p.fx } },
     );
   }
 
@@ -137,8 +156,13 @@ export default function VfxStudio() {
     muted: ui.muted,
     open: tool,
     hasKeys: !!lane?.keys.length,
-    objects: ui.lanes.filter(l => l.kind === 'effect').length,
+    pinned: !!lane?.pinned,
+    objects: ui.lanes.filter(l => l.kind === 'effect' && !l.pinned).length,
     laser: lane?.kind === 'effect' && lane.fx.effect === 'laser',
+    looks: lane?.kind === 'effect' && hasLooks(lane.fx.effect),
+    words: lane?.kind === 'effect' && lane.fx.effect === 'text',
+    colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
+    impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
   });
 
   // a toolbar button pressed
@@ -157,6 +181,10 @@ export default function VfxStudio() {
         return;
       case 'catalog':
         return addEffect();
+      case 'elements':
+      case 'impacts':
+        setTool(null);
+        return setCatalog(key);
       case 'cancel':
         return pl?.cancelAdding();
       case 'replace':
@@ -177,6 +205,8 @@ export default function VfxStudio() {
       case 'color':
       case 'adjust':
       case 'impact':
+      case 'look':
+      case 'words':
       case 'aim':
         return setTool(cur => (cur === key ? null : key));
     }
@@ -259,16 +289,17 @@ export default function VfxStudio() {
           label={toolbarLabel(mode, lane)}
           buttons={buttons}
           onPress={runTool}
-          onBack={mode ? deselect : undefined}
+          onBack={mode === 'impacts' || mode === 'elements' ? backToCatalog : mode ? deselect : undefined}
         />
         {ui.choosing && (
           <ToolSheet
             tool="parts"
-            title={TOOL_TITLES.parts}
+            title={ui.choosing.spot ? 'Comes from' : TOOL_TITLES.parts}
             fx={fx}
             onChange={changeFx}
             onClose={() => player()?.cancelAdding()}
             suggested={ui.choosing.suggested}
+            spot={ui.choosing.spot ? spotName(ui.choosing.effect) : undefined}
             onPart={p => player()?.choosePart(p)}
           />
         )}
@@ -291,7 +322,7 @@ export default function VfxStudio() {
             onAim={
               lane
                 ? {
-                    angle: deg => player()?.setAimAngle(lane.id, deg),
+                    set: p => player()?.setAim(lane.id, p),
                     target: () => {
                       setTool(null);
                       player()?.startAiming(lane.id);
@@ -324,17 +355,31 @@ export default function VfxStudio() {
   );
 }
 
+// what coming from the spot tapped means for this effect: the whole frame for a glitch or water
+const spotName = (effect: Effect) =>
+  effect === 'glitch' || effect === 'water' ? 'Whole frame' : 'This spot';
+
+// the palette a new impact of this style starts with, if it has its own
+function startPal(style: ImpactStyle): Partial<FxSettings> | undefined {
+  const pal = IMPACTS[style].pal;
+  return pal === undefined ? undefined : { pal };
+}
+
 // what the toolbar lists: a selected effect's or impact's tools, the video clip's, the effect
 // categories, or the main tools
-function modeFor(lane: Lane | null, clipSelected: boolean, catalog: boolean): Mode {
+function modeFor(lane: Lane | null, clipSelected: boolean, catalog: Catalog): Mode {
   if (lane) return lane.kind === 'impact' ? 'impact' : 'track';
   if (clipSelected) return 'clip';
+  if (catalog === 'impacts') return 'impacts';
+  if (catalog === 'elements') return 'elements';
   if (catalog) return 'catalog';
   return null;
 }
 
 function toolbarLabel(mode: Mode, lane: Lane | null) {
   if (mode === 'catalog') return 'Effects';
+  if (mode === 'impacts') return 'Impacts';
+  if (mode === 'elements') return 'Elements';
   if (mode === 'clip') return 'Clip tools';
   return lane ? `${lane.name} tools` : 'Tools';
 }

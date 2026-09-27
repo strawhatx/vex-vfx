@@ -1,12 +1,13 @@
-// A track: one clip on the timeline, on one tapped object. Two kinds:
-// - an effect (fire, lightning…) lasts from its start to its end, which the user sets to match
-//   the scene; the object is tracked only inside that range.
-// - an impact is a hit at one moment (its start). It starts as long as its style's burst;
-//   stretching it plays the burst slower, squeezing it faster. The object is also tracked a
-//   little before the hit, to know which way it was moving.
+// A track: one clip on the timeline. Two kinds:
+// - an effect (fire, lightning…) follows one tapped object from its start to its end, which the
+//   user sets to match the scene; the object is tracked only inside that range. Some effects can
+//   instead come from a spot in the scene (see spot.ts), and track nothing.
+// - an impact goes off at one moment (its start), at a spot tapped in the scene; nothing is
+//   tracked. It starts as long as its style's burst; stretching it plays the burst slower,
+//   squeezing it faster.
 // Clips can overlap, stacked on the timeline. Each keeps one shape per clip frame and the
 // keyframes it was tracked from.
-import { IMPACTS, type ImpactStyle } from '../effects/impacts';
+import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
 import type { Aim } from '../effects/laser';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
@@ -21,6 +22,7 @@ export interface Track {
   color: string;
   kind: TrackKind;
   part: BodyPart | null; // a body part of the person tapped, or null for the object under the tap
+  spot: boolean; // an effect pinned to the tapped spot in the scene, not following anything
   fx: FxSettings; // look: effect type, colors, size, intensity (impacts use the colors and size)
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
@@ -35,8 +37,6 @@ export const TRACK_COLORS = ['#ff6a3d', '#3fb6ff', '#b6ff4a', '#d98bff', '#ffc64
 export const DEFAULT_EFFECT_S = 3;
 // an effect has to last at least this long
 export const MIN_RANGE_S = 0.1;
-// an impact's object is tracked this long before the hit, for its direction
-export const IMPACT_LEAD_S = 0.2;
 // how far an impact can be squeezed or stretched: 4x faster to 8x slower than its style
 export const IMPACT_MIN_SPEED = 1 / 8,
   IMPACT_MAX_SPEED = 4;
@@ -44,6 +44,21 @@ export const IMPACT_MIN_SPEED = 1 / 8,
 // how fast an impact plays its burst: 1 = its style's own timing, 0.5 = half speed
 export const impactSpeed = (t: { impact: ImpactStyle | null; range: { s: number; e: number } }) =>
   t.impact ? IMPACTS[t.impact].duration / Math.max(1e-3, t.range.e - t.range.s) : 1;
+
+// what a new clip is called, before its number
+const FAMILY_NAMES = {
+  hit: 'Impact',
+  explosion: 'Explosion',
+  shockwave: 'Shockwave',
+  word: 'Word',
+  water: 'Splash',
+} as const;
+const kindName = (kind: TrackKind, impact: ImpactStyle | null) =>
+  kind === 'effect' ? 'Object' : FAMILY_NAMES[impact ? familyOf(impact) : 'hit'];
+
+// an impact, or an effect from a spot: pinned to the scene rather than following an object, so
+// never tracked
+export const isPinned = (t: { kind: TrackKind; spot: boolean }) => t.kind === 'impact' || t.spot;
 
 function make(
   id: number,
@@ -56,12 +71,13 @@ function make(
 ): Track {
   const t: Track = {
     id,
-    name: part && part !== 'body' ? partLabel(part) : `${kind === 'impact' ? 'Impact' : 'Object'} ${id}`,
+    name: part && part !== 'body' ? partLabel(part) : `${kindName(kind, impact)} ${id}`,
     color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length],
     kind,
     part,
+    spot: false,
     fx: { ...fx },
-    aim: { deg: 0, target: null },
+    aim: { h: 90, v: 0, target: null },
     impact,
     range,
     shapes: new Array(clip.length).fill(null),
@@ -80,7 +96,22 @@ export const newTrack = (
   part: BodyPart | null = null,
 ) => make(id, 'effect', clip, fx, range, null, part);
 
-// an impact hitting at frame i
+// what a spot effect is called, if not Spot
+const SPOT_NAMES: Partial<Record<FxSettings['effect'], string>> = {
+  glitch: 'Glitch',
+  text: 'Text',
+  water: 'Water',
+};
+
+// an effect coming from the spot tapped (placed with placeAtSpot); a glitch covers the whole frame
+export function newSpotTrack(id: number, clip: ClipFrame[], fx: FxSettings, range: { s: number; e: number }) {
+  const t = make(id, 'effect', clip, fx, range, null, null);
+  t.spot = true;
+  t.name = `${SPOT_NAMES[fx.effect] ?? 'Spot'} ${id}`;
+  return t;
+}
+
+// an impact going off at frame i
 export function newImpact(
   id: number,
   clip: ClipFrame[],
@@ -88,9 +119,8 @@ export function newImpact(
   style: ImpactStyle,
   i: number,
   duration: number,
-  part: BodyPart | null = null,
 ) {
-  return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style, part);
+  return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style, null);
 }
 
 const impactRange = (clip: ClipFrame[], i: number, style: ImpactStyle, duration: number) => ({
@@ -107,20 +137,8 @@ export function rangeFrames(t: Track, clip: ClipFrame[]): FrameSpan {
   return { s, e };
 }
 
-// the frames the object is tracked in: the range, and for an impact also the lead-up to the hit
-// and wherever it was tapped (so a moved impact still follows the object from the tap)
-export function trackSpan(t: Track, clip: ClipFrame[]): FrameSpan {
-  const r = rangeFrames(t, clip);
-  if (t.kind !== 'impact') return r;
-  let s = r.s,
-    e = r.e;
-  while (s > 0 && clip[s - 1].t >= t.range.s - IMPACT_LEAD_S - 1e-6) s--;
-  for (const k of t.keys) {
-    s = Math.min(s, k.i);
-    e = Math.max(e, k.i + 1);
-  }
-  return { s, e };
-}
+// the frames the object is tracked in: the range (an impact tracks nothing, but keeps its range)
+export const trackSpan = (t: Track, clip: ClipFrame[]): FrameSpan => rangeFrames(t, clip);
 
 // the frame an impact hits on
 export const hitFrame = (t: Track, clip: ClipFrame[]) => rangeFrames(t, clip).s;
@@ -183,7 +201,7 @@ export function nearestOther(tracks: readonly Track[], a: Track, i: number) {
     bd = Infinity;
   for (const t of tracks) {
     const sb = t.frames[i]?.shapes[0];
-    if (t === a || !sb) continue;
+    if (t === a || !sb || isPinned(t)) continue;
     const d = sa ? Math.hypot(sa.cx - sb.cx, sa.cy - sb.cy) : 0;
     if (d < bd) {
       bd = d;
@@ -230,6 +248,7 @@ export interface Lane {
   name: string;
   color: string;
   kind: TrackKind;
+  pinned: boolean; // at a spot in the scene: moved by tapping, nothing to fix
   fx: FxSettings;
   impact: ImpactStyle | null;
   aim: Aim;
@@ -275,6 +294,7 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     name: t.name,
     color: t.color,
     kind: t.kind,
+    pinned: isPinned(t),
     fx: t.fx,
     impact: t.impact,
     aim: t.aim,

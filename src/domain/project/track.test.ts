@@ -3,6 +3,7 @@ import type { ClipFrame, Shape } from '../tracking/types';
 import {
   hitFrame,
   impactSpeed,
+  isPinned,
   nearestOther,
   newImpact,
   newTrack,
@@ -17,7 +18,19 @@ import {
   trackSpan,
 } from './track';
 
-const FX = { effect: 'fire', pal: 0, size: 1, intensity: 1, volume: 1 } as const;
+const FX = {
+  effect: 'fire',
+  pal: 0,
+  size: 1,
+  intensity: 1,
+  volume: 1,
+  outline: 'neon',
+  glitch: 'chaos',
+  text: 'HI',
+  textStyle: 'behind',
+  font: 'anton',
+  water: 'rain',
+} as const;
 // 10 frames at 10 fps
 const clip: ClipFrame[] = Array.from({ length: 10 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
 const shape = (cx: number, lost = false): Shape => ({
@@ -158,17 +171,11 @@ describe('impacts', () => {
     expect(t.range.e).toBeCloseTo(0.85);
     expect(hitFrame(t, clip)).toBe(4);
   });
-  it('are tracked a little before the hit, to know which way the object was moving', () => {
-    const t = newImpact(1, clip, FX, 'punch', 4, 1);
-    t.keys = [{ i: 4, x: 0, y: 0 }];
-    expect(trackSpan(t, clip)).toEqual({ s: 2, e: 9 });
-  });
-  it('a moved impact still tracks from where the object was tapped', () => {
+  it('move to a new moment, keeping their length', () => {
     const t = newImpact(1, clip, FX, 'punch', 2, 1);
-    t.keys = [{ i: 2, x: 0, y: 0 }];
     setHit(t, clip, 1, 7);
     expect(t.range.s).toBe(0.7);
-    expect(trackSpan(t, clip)).toEqual({ s: 2, e: 10 });
+    expect(trackSpan(t, clip)).toEqual({ s: 7, e: 10 });
   });
   it('a new style changes how long it lasts, not when it hits', () => {
     const t = newImpact(1, clip, FX, 'punch', 2, 1);
@@ -196,5 +203,20 @@ describe('impacts', () => {
     setHit(t, clip, 2, 5, 'blast');
     expect(t.range.s).toBe(0.5);
     expect(t.range.e).toBeCloseTo(1.4);
+  });
+});
+
+describe('impact families', () => {
+  it('are all pinned to the scene, named by what they are', () => {
+    const boom = newImpact(3, clip, FX, 'grenade', 5, 3);
+    expect(boom.name).toBe('Explosion 3');
+    expect(isPinned(boom)).toBe(true);
+    const hit = newImpact(4, clip, FX, 'punch', 5, 3);
+    expect(hit.name).toBe('Impact 4');
+    expect(isPinned(hit)).toBe(true);
+    expect(isPinned(newTrack(6, clip, FX, { s: 0, e: 1 }))).toBe(false);
+    const wave = newImpact(5, clip, FX, 'ground', 5, 3);
+    expect(wave.name).toBe('Shockwave 5');
+    expect(isPinned(wave)).toBe(true);
   });
 });

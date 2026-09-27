@@ -7,7 +7,7 @@
 // page: it talks to the outside only through the Analysis and EffectLayers ports, and reports
 // back through `events`.
 import type { ImpactStyle } from '@/domain/effects/impacts';
-import { defaultAim, type Aim, type Cam } from '@/domain/effects/laser';
+import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
 import { DEFAULT_PAL, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import {
   inSpan,
@@ -23,8 +23,10 @@ import {
   DEFAULT_EFFECT_S,
   clearShapes,
   hitFrame,
+  isPinned,
   nearestOther,
   newImpact,
+  newSpotTrack,
   newTrack,
   rangeFrames,
   setHit,
@@ -34,6 +36,7 @@ import {
   trackSpan,
   type Track,
 } from '@/domain/project/track';
+import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { frameIndexAt, type ClipFrame, type Selection, type TrackMeta } from '@/domain/tracking/types';
 import { Jobs, type JobHost, type JobStatus } from './jobs';
@@ -53,7 +56,19 @@ export interface EditorEvents {
   meta(meta: TrackMeta): void;
 }
 
-export const DEFAULT_FX: FxSettings = { effect: 'fire', pal: 0, size: 1, intensity: 1, volume: 1 };
+export const DEFAULT_FX: FxSettings = {
+  effect: 'fire',
+  pal: 0,
+  size: 1,
+  intensity: 1,
+  volume: 1,
+  outline: 'neon',
+  glitch: 'chaos',
+  text: 'LEGEND',
+  textStyle: 'behind',
+  font: 'anton',
+  water: 'rain',
+};
 
 export class Editor {
   // the clip
@@ -104,6 +119,11 @@ export class Editor {
   kind(id: number) {
     return this.track(id)?.kind ?? null;
   }
+  // an impact: pinned to a spot in the scene, not following an object
+  pinned(id: number) {
+    const t = this.track(id);
+    return !!t && isPinned(t);
+  }
   // settings for the given clip, or the only one, or the next one added
   fx(id: number | null) {
     return this.fxTarget(id)?.fx ?? this.lastFx;
@@ -123,7 +143,9 @@ export class Editor {
   }
   // the first time any clip has something to follow
   firstEffectTime() {
-    const times = this.tracks.map(t => t.frames.find(f => f.shapes.length)?.t ?? Infinity);
+    const times = this.tracks.map(t =>
+      isPinned(t) ? t.range.s : (t.frames.find(f => f.shapes.length)?.t ?? Infinity),
+    );
     const first = Math.min(Infinity, ...times);
     return first === Infinity ? null : first;
   }
@@ -188,19 +210,26 @@ export class Editor {
     return this.start(newTrack(this.nextId++, this.clip, this.lastFx, range, part), i, sel);
   }
 
-  // a new impact hitting what was tapped at frame i
-  addImpact(
-    i: number,
-    sel: Selection,
-    style: ImpactStyle = this.lastImpact,
-    fx: Partial<FxSettings> = {},
-    part: BodyPart | null = null,
-  ) {
+  // a new effect coming from the spot tapped at frame i (only for effects that can: see canPin),
+  // lasting DEFAULT_EFFECT_S from there
+  addSpotEffect(i: number, sel: Selection, fx: Partial<FxSettings> = {}) {
+    const f = this.clip[i];
+    if (!f) return null;
+    this.lastFx = { ...this.lastFx, ...fx };
+    if (!canPin(this.lastFx.effect)) return null;
+    // the spot stays put in the scene as the camera moves
+    this.jobs.needCamera();
+    const range = { s: f.t, e: Math.min(this.duration, f.t + DEFAULT_EFFECT_S) };
+    return this.start(newSpotTrack(this.nextId++, this.clip, this.lastFx, range), i, sel);
+  }
+
+  // a new impact going off at the spot tapped at frame i
+  addImpact(i: number, sel: Selection, style: ImpactStyle = this.lastImpact, fx: Partial<FxSettings> = {}) {
     if (!this.clip[i]) return null;
     this.lastImpact = style;
     // impacts stay put in the scene as the camera moves
     this.jobs.needCamera();
-    const t = newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration, part);
+    const t = newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration);
     return this.start(t, i, sel);
   }
 
@@ -210,9 +239,10 @@ export class Editor {
     t.keys = [key];
     this.tracks.push(t);
     this.tracked.set(t.id, trackSpan(t, this.clip));
+    this.place(t);
     this.syncLayers();
     this.publish();
-    this.jobs.add({ id: t.id, key });
+    if (!isPinned(t)) this.jobs.add({ id: t.id, key });
     return t.id;
   }
 
@@ -222,12 +252,9 @@ export class Editor {
   fixAt(id: number, i: number, sel: Selection) {
     const t = this.track(id);
     if (!t) return false;
+    if (isPinned(t)) return this.moveSpot(t, i, sel);
     if (!inSpan(trackSpan(t, this.clip), i)) {
-      this.events.status(
-        t.kind === 'impact'
-          ? `This moment is outside ${t.name}.`
-          : `This moment is outside ${t.name}’s effect. Drag its ends to include it.`,
-      );
+      this.events.status(`This moment is outside ${t.name}’s effect. Drag its ends to include it.`);
       return false;
     }
     const key: Key = { i, x: sel.x, y: sel.y };
@@ -237,12 +264,21 @@ export class Editor {
     return true;
   }
 
+  // an impact or spot effect tapped somewhere else goes there instead (the spot as seen at frame i)
+  private moveSpot(t: Track, i: number, sel: Selection) {
+    t.keys = [{ i, x: sel.x, y: sel.y }];
+    this.place(t);
+    this.syncLayers();
+    this.publish(true);
+    return true;
+  }
+
   // removes the keyframe that tracks frame i; its neighbours take its frames over
   removeFixAt(id: number, i: number) {
     const t = this.track(id);
     const span = t && trackSpan(t, this.clip);
     const key = t && span && ownerOf(t.keys, span, i);
-    if (!t || !span || !key) return false;
+    if (!t || !span || !key || isPinned(t)) return false;
 
     const [a, b] = ownedRange(t.keys, key, span);
     t.keys = t.keys.filter(k => k !== key);
@@ -280,6 +316,7 @@ export class Editor {
   setRange(id: number, r: { s?: number; e?: number }) {
     const t = this.track(id);
     if (!t || !setRange(t, r, this.duration, this.clip)) return;
+    this.place(t);
     this.syncLayers();
     this.layers.changed(id);
     this.publish(true);
@@ -291,6 +328,7 @@ export class Editor {
     const before = this.tracked.get(id) ?? { s: 0, e: 0 };
     const after = trackSpan(t, this.clip);
     this.tracked.set(id, after);
+    if (isPinned(t)) return; // nothing to track
     const redo = keysToRetrack(t.keys, before, after);
     if (!redo.length) return;
     this.jobs.drop(j => redo.includes(j.key));
@@ -323,10 +361,9 @@ export class Editor {
 
   // ---------- lasers ----------
 
-  // the direction a laser fires in, in degrees (0 = right, 90 = down), kept in -180..180
-  setAimAngle(id: number, deg: number) {
-    const wrapped = 180 - ((((180 - deg) % 360) + 360) % 360);
-    this.changeAim(id, aim => ({ ...aim, deg: wrapped }));
+  // the direction a laser fires in (see Aim): left-right h and up-down v, in degrees
+  setAim(id: number, p: { h?: number; v?: number }) {
+    this.changeAim(id, aim => ({ ...aim, ...normalAim(p.h ?? aim.h, p.v ?? aim.v) }));
   }
 
   // a spot for the laser to hit, tapped at frame i: it stays put in the scene as the camera moves
@@ -377,6 +414,13 @@ export class Editor {
 
   // ---------- internals ----------
 
+  // a spot effect's box in each frame of its range, where the camera has carried the spot
+  private place(t: Track) {
+    if (!t.spot) return;
+    placeAtSpot(t, this.clip, this.camPath, this.W);
+    this.layers.changed(t.id);
+  }
+
   private track(id: number | null) {
     return this.tracks.find(t => t.id === id) ?? null;
   }
@@ -421,6 +465,7 @@ export class Editor {
       },
       cameraMoved: path => {
         for (const { i, ...c } of path) this.camPath[i] = c;
+        for (const t of this.tracks) this.place(t);
         this.update({}, true);
       },
       status: message => this.events.status(message),

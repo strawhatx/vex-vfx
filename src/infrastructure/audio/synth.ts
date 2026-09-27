@@ -98,6 +98,56 @@ export function effectLoop(effect: Effect, sr: number): Float32Array {
       out[i] =
         lp(buzz) * 0.35 + whine * 0.12 * (0.85 + 0.15 * Math.sin(2 * Math.PI * 7 * t)) + (w - lp(w)) * 0.03;
     }
+  } else if (effect === 'water') {
+    // rushing water: a soft, swelling hiss with bubbles popping in it
+    const lp = lowpass(0.08),
+      lp2 = lowpass(0.01);
+    for (let i = 0; i < n; i++) {
+      const w = r() * 2 - 1;
+      const swell = 0.75 + 0.25 * Math.sin(((2 * Math.PI * i) / n) * 3);
+      out[i] = (lp(w) * 1.2 + lp2(w) * 2) * swell;
+    }
+    // bubbles: short rising blips
+    for (let b = 0; b < 40; b++) {
+      const at = Math.floor(r() * (n - sr * 0.05)),
+        len = Math.floor(sr * (0.01 + r() * 0.03)),
+        f0 = 400 + r() * 900;
+      for (let k = 0; k < len; k++) {
+        const t = k / sr;
+        out[at + k] += Math.sin(2 * Math.PI * f0 * t * (1 + t * 30)) * 0.25 * (1 - k / len);
+      }
+    }
+  } else if (effect === 'glitch') {
+    // digital breakup: short bursts of crushed noise and stuttering square chirps, with silence
+    // between
+    let until = 0,
+      on = false,
+      pitch = 0,
+      phase = 0;
+    for (let i = 0; i < n; i++) {
+      if (i >= until) {
+        on = r() < 0.45;
+        pitch = 200 + r() * 1800;
+        until = i + Math.floor((0.03 + r() * 0.12) * sr);
+      }
+      if (!on) {
+        out[i] = 0;
+        continue;
+      }
+      phase = (phase + pitch / sr) % 1;
+      const square = phase < 0.5 ? 1 : -1;
+      const crushed = Math.round((r() * 2 - 1) * 4) / 4;
+      out[i] = square * 0.25 + crushed * 0.2;
+    }
+  } else if (effect === 'outline') {
+    // a neon tube's hum: a soft mains buzz with a faint flicker (whole cycles, so it loops cleanly)
+    const lp = lowpass(0.1);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const buzz = ((120 * t) % 1) * 2 - 1;
+      const flicker = 0.85 + 0.15 * Math.sin(2 * Math.PI * 3 * t);
+      out[i] = lp(buzz) * 0.3 * flicker + Math.sin(2 * Math.PI * 60 * t) * 0.15;
+    }
   } else {
     // a sizzle with lots of tiny snaps
     const lp = lowpass(0.5);
@@ -116,7 +166,8 @@ export function effectLoop(effect: Effect, sr: number): Float32Array {
   return normalize(out, 0.5);
 }
 
-// how each hit sounds: thump (a falling low tone), crack (a snap of noise), rumble, shimmer
+// how each hit sounds: thump (a falling low tone), crack (a snap of noise), rumble (and how long it
+// rolls on), shimmer. Explosions are mostly thump and a long rumble.
 const HITS: Record<
   ImpactStyle,
   {
@@ -125,6 +176,7 @@ const HITS: Record<
     thumpDecay: number;
     crack: number;
     rumble: number;
+    rumbleDecay?: number; // seconds; 0.45 if not given
     shing: number;
     from: number;
     to: number;
@@ -134,6 +186,82 @@ const HITS: Record<
   slam: { len: 1.3, thump: 1, thumpDecay: 0.3, crack: 0.6, rumble: 0.6, shing: 0, from: 120, to: 38 },
   blast: { len: 1.6, thump: 0.9, thumpDecay: 0.45, crack: 0.4, rumble: 0.5, shing: 0.2, from: 140, to: 42 },
   anime: { len: 1.0, thump: 0.7, thumpDecay: 0.14, crack: 1, rumble: 0, shing: 0.35, from: 180, to: 60 },
+  fireball: {
+    len: 2.2,
+    thump: 1,
+    thumpDecay: 0.5,
+    crack: 0.7,
+    rumble: 1,
+    rumbleDecay: 0.9,
+    shing: 0,
+    from: 90,
+    to: 32,
+  },
+  grenade: {
+    len: 1.5,
+    thump: 1,
+    thumpDecay: 0.22,
+    crack: 1,
+    rumble: 0.7,
+    rumbleDecay: 0.5,
+    shing: 0,
+    from: 150,
+    to: 45,
+  },
+  bigboom: {
+    len: 4,
+    thump: 1,
+    thumpDecay: 0.9,
+    crack: 0.5,
+    rumble: 1.2,
+    rumbleDecay: 1.6,
+    shing: 0,
+    from: 70,
+    to: 24,
+  },
+  // shockwaves: a deep whump with a rushing tail (energy ones ring as they go)
+  ring: { len: 1.1, thump: 0.7, thumpDecay: 0.15, crack: 0.3, rumble: 0.35, shing: 0.35, from: 200, to: 60 },
+  ground: {
+    len: 1.6,
+    thump: 1,
+    thumpDecay: 0.3,
+    crack: 0.5,
+    rumble: 0.9,
+    rumbleDecay: 0.7,
+    shing: 0,
+    from: 110,
+    to: 35,
+  },
+  pulse: { len: 1.6, thump: 0.8, thumpDecay: 0.2, crack: 0.2, rumble: 0.4, shing: 0.6, from: 180, to: 50 },
+  nova: { len: 1.9, thump: 0.9, thumpDecay: 0.2, crack: 0.4, rumble: 0.5, shing: 0.8, from: 220, to: 55 },
+  // words: a cartoon whack, with a springy boing on top
+  pow: { len: 0.6, thump: 0.9, thumpDecay: 0.1, crack: 0.7, rumble: 0.1, shing: 0.3, from: 320, to: 120 },
+  boom: { len: 1.2, thump: 1, thumpDecay: 0.25, crack: 0.6, rumble: 0.6, shing: 0.2, from: 160, to: 50 },
+  ko: { len: 1, thump: 1, thumpDecay: 0.18, crack: 0.9, rumble: 0.3, shing: 0.5, from: 260, to: 70 },
+  bam: { len: 0.55, thump: 0.9, thumpDecay: 0.09, crack: 0.8, rumble: 0.1, shing: 0.25, from: 300, to: 110 },
+  // splashes: a wet slap, then the water falling back in a rush
+  splash: {
+    len: 1.2,
+    thump: 0.5,
+    thumpDecay: 0.08,
+    crack: 0.9,
+    rumble: 0.7,
+    rumbleDecay: 0.5,
+    shing: 0,
+    from: 180,
+    to: 90,
+  },
+  bigsplash: {
+    len: 2,
+    thump: 0.8,
+    thumpDecay: 0.15,
+    crack: 1,
+    rumble: 1,
+    rumbleDecay: 0.9,
+    shing: 0,
+    from: 120,
+    to: 50,
+  },
 };
 
 // one hit; speed below 1 (a stretched, slowed-down impact) makes it longer and deeper
@@ -156,7 +284,7 @@ export function impactHit(style: ImpactStyle, speed: number, sr: number): Float3
     let v = Math.sin(ph) * h.thump * Math.exp(-ts / h.thumpDecay);
     const w = r() * 2 - 1;
     v += (w - lpCrack(w)) * h.crack * Math.exp(-ts / 0.025);
-    if (h.rumble) v += lpRumble(w) * 6 * h.rumble * Math.exp(-ts / 0.45);
+    if (h.rumble) v += lpRumble(w) * 6 * h.rumble * Math.exp(-ts / (h.rumbleDecay ?? 0.45));
     if (h.shing) {
       ph2 += (2 * Math.PI * (900 + 1500 * Math.exp(-ts / 0.08)) * pitch) / sr;
       v += Math.sin(ph2) * h.shing * Math.exp(-ts / 0.3);

@@ -1,5 +1,5 @@
 // What the editor draws over the effects while editing: each clip's object outlined in its color
-// (the selected one tinted while paused), and the selected laser's target.
+// (the selected one tinted while paused), and the selected laser's target or explosion's spot.
 import type { Layer } from './layer';
 import type { MaskPainter } from './masks';
 import { sceneSpotAt, type View } from './view';
@@ -16,6 +16,9 @@ export function drawOutline(
 ) {
   const frames = l.spec.frames;
   if (!frames[idx].shapes.length) return;
+  // an Outline, Glitch or Text shows its object itself, and a spot effect shows its crosshair
+  const fx = l.spec.settings.effect;
+  if (fx === 'outline' || fx === 'glitch' || fx === 'text' || fx === 'water' || l.spec.pinned) return;
   const ctx = v.ctx;
   const o = l.geo.outline(frames, idx);
   const col = o.lost ? LOST : l.spec.color;
@@ -38,11 +41,15 @@ export function drawOutline(
   ctx.restore();
 }
 
-// a crosshair on a laser's target
-export function drawLaserTarget(v: View, l: Layer, idx: number) {
-  const target = l.spec.aim.target;
-  if (!target) return;
-  const at = sceneSpotAt(v, target, idx);
+// a crosshair on the selected clip's spot in the scene: a laser's target, or where an impact goes
+// off
+export function drawSceneSpot(v: View, l: Layer, idx: number) {
+  // (a glitch or water from a spot covers the whole frame: no spot to show)
+  const whole = l.spec.settings.effect === 'glitch' || l.spec.settings.effect === 'water';
+  if (l.spec.pinned && whole && l.spec.kind === 'effect') return;
+  const spot = l.spec.pinned ? l.spec.tap : l.spec.aim.target;
+  if (!spot) return;
+  const at = sceneSpotAt(v, spot, idx);
   const ctx = v.ctx;
   const r = Math.max(8, v.CW / 60);
   ctx.save();

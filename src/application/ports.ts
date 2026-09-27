@@ -47,6 +47,7 @@ export interface Analysis {
 export interface LayerSpec {
   id: number;
   kind: 'effect' | 'impact';
+  pinned: boolean; // at a spot in the scene (an impact, or an effect from a spot)
   frames: TrackFrame[];
   settings: FxSettings;
   color: string;
