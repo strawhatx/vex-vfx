@@ -4,8 +4,10 @@
 // through onUi. It is the only UI module that imports infrastructure/.
 import { Editor, type EditorState } from '@/application/editor';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
+import type { Background, Transform } from '@/domain/project/cutout';
 import { canPin } from '@/domain/project/spot';
-import type { Effect, FxSettings } from '@/domain/effects/palettes';
+import { PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
+import { soundOf } from '@/domain/effects/strands';
 import type { Lane } from '@/domain/project/track';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { workSize, type Selection } from '@/domain/tracking/types';
@@ -40,7 +42,13 @@ export interface UiState extends Omit<EditorState, 'hasEffects'> {
   // the nearest; null when it isn't a person), or (spot) the spot tapped, for effects that can
   // (for a glitch, the whole frame)
   choosing: { suggested: BodyPart | null; spot: boolean; effect: Effect } | null;
+  // a new cutout was tapped: what to leave in the footage where it's cut from is being picked
+  cutting: boolean;
+  // the selected cutout at the playhead: its transform, whether a keyframe is there, and whether
+  // it has any
+  cutoutNow: { transform: Transform; onKey: boolean; keyed: boolean } | null;
   aiming: number | null; // a laser whose target the next tap on the preview sets
+  attaching: number | null; // a path whose far end the next tap on the preview holds
   camera: boolean;
   recording: boolean;
   muted: boolean; // the clip's own sound is off
@@ -69,11 +77,13 @@ export type Source = BodyPart | 'object' | 'spot';
 // what to add on the next tap: an effect with these settings, or an impact of this style
 export type AddChoice =
   | { kind: 'effect'; fx: Partial<FxSettings> }
-  | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings> };
+  | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings> }
+  | { kind: 'cutout' };
 
 // what the next tap adds, for the hint
 const addingWhat = (a: AddChoice | null): HintState['adding'] => {
-  if (!a || a.kind === 'effect') return a?.kind ?? null;
+  if (a?.kind === 'effect' && a.fx.effect === 'path') return 'path';
+  if (!a || a.kind === 'effect' || a.kind === 'cutout') return a?.kind ?? null;
   const family = familyOf(a.style);
   return family === 'hit' ? 'impact' : family;
 };
@@ -90,10 +100,15 @@ export const INITIAL_UI: UiState = {
   job: null,
   lanes: [],
   rows: 0,
+  cutRows: 0,
+  scenes: [],
   selected: null,
   adding: null,
   choosing: null,
+  cutting: false,
+  cutoutNow: null,
   aiming: null,
+  attaching: null,
   camera: false,
   recording: false,
   muted: false,
@@ -129,8 +144,14 @@ export class Player {
   // tapping
   private press: { x: number; y: number; cx: number; cy: number } | null = null;
   private fingers = new Set<number>();
-  // what's waiting for a body part to be picked
+  // what's waiting for a body part (or a cutout's background) to be picked
   private pendingAdd: { choice: AddChoice; i: number; at: Selection } | null = null;
+  // a path being drawn on the preview: where it's been so far (analysis pixels), on frame i; id:
+  // the drawn path being drawn again, or null for a new one
+  private stroke: { pts: Selection[]; i: number; id: number | null; fx: Partial<FxSettings> } | null = null;
+  // the selected cutout being dragged about the preview: where the press started (analysis
+  // pixels) and its move then
+  private grab: { id: number; x: number; y: number; from: Transform; moved: boolean } | null = null;
 
   private camera: Awaited<ReturnType<typeof startCameraCapture>> | null = null;
   private recorder: ReturnType<typeof startCanvasRecording> | null = null;
@@ -253,7 +274,7 @@ export class Player {
   // ---------- adding and selecting clips ----------
 
   select(id: number | null) {
-    this.set({ selected: id, adding: null, aiming: null });
+    this.set({ selected: id, adding: null, aiming: null, attaching: null });
     this.redraw();
   }
 
@@ -266,7 +287,8 @@ export class Player {
 
   cancelAdding() {
     this.pendingAdd = null;
-    this.set({ adding: null, choosing: null, aiming: null });
+    this.stroke = null;
+    this.set({ adding: null, choosing: null, cutting: false, aiming: null, attaching: null });
     this.redraw();
   }
 
@@ -283,6 +305,56 @@ export class Player {
       return;
     }
     this.addNow(p.choice, p.i, p.at, from === 'body' || from === 'object' || from === 'spot' ? null : from);
+  }
+
+  // ---------- the footage ----------
+
+  // splits the film at the playhead into two
+  splitHere() {
+    this.video.pause();
+    if (this.editor.split(this.frameNow())) this.say('Split into two films.');
+  }
+
+  // the scene playing at the playhead
+  sceneNow() {
+    return this.editor.sceneAt(this.time());
+  }
+
+  // what the new cutout leaves in the footage where it's cut from: it's added now
+  chooseBackground(bg: Background) {
+    const p = this.pendingAdd;
+    this.pendingAdd = null;
+    this.set({ cutting: false, adding: null });
+    if (!p) return;
+    const id = this.editor.addCutout(p.i, p.at, bg);
+    if (id !== null) this.select(id);
+  }
+
+  setBackground(id: number, bg: Background) {
+    this.editor.setBackground(id, bg);
+    this.redraw();
+  }
+
+  setTransform(id: number, p: Partial<Transform>) {
+    this.editor.setTransform(id, this.time(), p);
+    this.redraw();
+  }
+
+  toggleMoveKey(id: number) {
+    this.video.pause();
+    this.editor.toggleMoveKey(id, this.time());
+    this.redraw();
+  }
+
+  resetTransform(id: number) {
+    this.editor.resetTransform(id);
+    this.redraw();
+  }
+
+  // the cutout starts at time t (the playhead, or where it was dragged on the timeline)
+  placeCutout(id: number, t = this.time()) {
+    this.editor.placeAt(id, t);
+    this.redraw();
   }
 
   deleteTrack(id: number) {
@@ -375,6 +447,20 @@ export class Player {
     this.redraw();
   }
 
+  // ---------- paths ----------
+
+  // the next tap on the preview holds the path's far end there (on an object: it follows it)
+  startAttaching(id: number) {
+    this.video.pause();
+    this.set({ attaching: id });
+    this.redraw();
+  }
+
+  freePathEnd(id: number) {
+    this.editor.freePathEnd(id);
+    this.redraw();
+  }
+
   clearAimTarget(id: number) {
     this.editor.clearAimTarget(id);
     this.redraw();
@@ -424,16 +510,18 @@ export class Player {
     const { hasEffects, ...rest } = s;
     this.set({ ...rest, canRecord: hasEffects && canRecord(this.view) });
     this.mixer.setClips(
-      s.lanes.map(l => ({
-        id: l.id,
-        kind: l.kind,
-        effect: l.fx.effect,
-        impact: l.impact,
-        s: l.range.s,
-        e: l.range.e,
-        volume: l.fx.volume,
-        speed: l.speed,
-      })),
+      s.lanes
+        .filter(l => l.kind !== 'cutout')
+        .map(l => ({
+          id: l.id,
+          kind: l.kind as 'effect' | 'impact',
+          effect: l.fx.effect === 'path' ? soundOf(l.fx.strand.look) : l.fx.effect,
+          impact: l.impact,
+          s: l.range.s,
+          e: l.range.e,
+          volume: l.fx.volume,
+          speed: l.speed,
+        })),
     );
     if (drawn && this.video.paused) this.redraw();
   }
@@ -466,7 +554,10 @@ export class Player {
       'pointerup',
       e => {
         this.fingers.delete(e.pointerId);
-        this.pointerUp();
+        const dragged = this.grab?.moved;
+        this.grab = null;
+        if (this.finishStroke()) return;
+        if (!dragged) this.pointerUp();
       },
       { signal },
     );
@@ -475,6 +566,8 @@ export class Player {
       e => {
         this.fingers.delete(e.pointerId);
         this.press = null;
+        this.grab = null;
+        this.stroke = null;
       },
       { signal },
     );
@@ -533,13 +626,34 @@ export class Player {
       camera: !!this.camera,
       exporting: !!this.recorder,
       paused,
-      choosing: !!ui.choosing,
+      choosing: !!ui.choosing || ui.cutting,
       aiming: ui.aiming !== null,
+      attaching: ui.attaching !== null,
       adding: addingWhat(ui.adding),
       selected: ui.selected,
     };
     const hint = hintFor(state, this.editor, idx);
     if (hint !== ui.hint) this.set({ hint });
+    this.showCutoutNow(t - this.start);
+  }
+
+  // the selected cutout's transform at clip time t, for its panel
+  private showCutoutNow(t: number) {
+    const id = this.ui.selected,
+      ed = this.editor;
+    const transform = id !== null ? ed.transformAt(id, t) : null;
+    const now = transform && { transform, onKey: ed.moveKeyAt(id!, t), keyed: ed.hasMoveKeys(id!) };
+    const was = this.ui.cutoutNow;
+    const same =
+      now === was ||
+      (!!now &&
+        !!was &&
+        now.onKey === was.onKey &&
+        now.keyed === was.keyed &&
+        (Object.keys(now.transform) as (keyof Transform)[]).every(
+          k => now.transform[k] === was.transform[k],
+        ));
+    if (!same) this.set({ cutoutNow: now });
   }
 
   // ---------- tapping the preview ----------
@@ -563,10 +677,55 @@ export class Player {
     if (!this.ui.ready || this.camera || this.recorder) return;
     const [x, y] = this.canvasPt(e);
     this.press = { x, y, cx: e.clientX, cy: e.clientY };
+    // adding a path, or the selected drawn path: a drag draws it (rather than moving the zoomed
+    // preview)
+    const sel = this.ui.selected;
+    const q0 = this.renderer.CW / (this.workW || 1);
+    this.stroke = null;
+    const add = this.ui.adding;
+    const drawnSel = sel !== null && !!this.ui.lanes.find(l => l.id === sel)?.path?.drawn;
+    if (this.video.paused && ((add?.kind === 'effect' && add.fx.effect === 'path') || drawnSel)) {
+      const fx = add?.kind === 'effect' ? add.fx : {};
+      this.stroke = { pts: [{ x: x / q0, y: y / q0 }], i: this.frameNow(), id: add ? null : sel, fx };
+      e.stopPropagation();
+      return;
+    }
+    // the selected cutout, showing here: a drag moves it (rather than the zoomed preview)
+    this.grab = null;
+    if (sel !== null && this.video.paused && this.editor.cutoutShowing(sel, this.frameNow())) {
+      const from = this.editor.transformAt(sel, this.time());
+      if (from) {
+        const q = this.renderer.CW / (this.workW || 1);
+        this.grab = { id: sel, x: x / q, y: y / q, from, moved: false };
+        e.stopPropagation();
+        this.view.setPointerCapture?.(e.pointerId);
+      }
+    }
   }
 
   private pointerMove(e: PointerEvent) {
     const p = this.press;
+    const g = this.grab;
+    const st = this.stroke;
+    if (st && (st.pts.length > 1 || (p && Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP))) {
+      this.press = null;
+      const [x, y] = this.canvasPt(e);
+      const q = this.renderer.CW / (this.workW || 1);
+      const last = st.pts[st.pts.length - 1];
+      if (Math.hypot(x / q - last.x, y / q - last.y) > 1.5) st.pts.push({ x: x / q, y: y / q });
+      this.redraw();
+      this.drawStroke(st.pts);
+      return;
+    }
+    if (g && p && (g.moved || Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP)) {
+      g.moved = true;
+      this.press = null;
+      const [x, y] = this.canvasPt(e);
+      const q = this.renderer.CW / (this.workW || 1);
+      this.editor.setTransform(g.id, this.time(), { x: g.from.x + x / q - g.x, y: g.from.y + y / q - g.y });
+      this.redraw();
+      return;
+    }
     if (p && Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP) this.press = null;
   }
 
@@ -589,8 +748,16 @@ export class Player {
     const q = this.renderer.CW / (this.workW || 1);
     const at: Selection = { x: p.x / q, y: p.y / q };
 
-    // picking a body part first
-    if (this.ui.choosing) return;
+    // picking a body part (or a cutout's background) first
+    if (this.ui.choosing || this.ui.cutting) return;
+
+    // holding a path's far end
+    if (this.ui.attaching !== null) {
+      ed.setPathEnd(this.ui.attaching, i, at);
+      this.set({ attaching: null });
+      this.redraw();
+      return;
+    }
 
     // setting where a laser hits
     if (this.ui.aiming !== null) {
@@ -628,6 +795,12 @@ export class Player {
       this.addNow(choice, i, at, null);
       return;
     }
+    // a cutout: the object under the tap, once what to leave behind is picked
+    if (choice.kind === 'cutout') {
+      this.pendingAdd = { choice, i, at };
+      this.set({ cutting: true });
+      return;
+    }
     const effect = choice.fx.effect ?? this.editor.fx(null).effect;
     const spot = canPin(effect);
     const adding = this.ui.adding;
@@ -644,11 +817,47 @@ export class Player {
 
   private addNow(choice: AddChoice, i: number, at: Selection, part: BodyPart | null) {
     const ed = this.editor;
+    if (choice.kind === 'cutout') return;
     const id =
       choice.kind === 'impact'
         ? ed.addImpact(i, at, choice.style, choice.fx)
         : ed.addTrack(i, at, choice.fx, part);
     if (id !== null) this.select(id);
+  }
+
+  // ---------- drawing paths ----------
+
+  // a path drawn on the preview: added, or the selected one drawn again. False if it was a tap.
+  private finishStroke() {
+    const st = this.stroke;
+    this.stroke = null;
+    if (!st || st.pts.length < 3) return false;
+    if (st.id !== null) this.editor.redrawPath(st.id, st.i, st.pts);
+    else {
+      const id = this.editor.addDrawnPath(st.i, st.pts, st.fx);
+      if (id !== null) this.select(id);
+    }
+    this.redraw();
+    return true;
+  }
+
+  // the line being drawn, over the preview
+  private drawStroke(pts: Selection[]) {
+    const ctx = this.renderer.ctx,
+      q = this.renderer.CW / (this.workW || 1);
+    const col = PALETTES[this.editor.fx(null).pal]?.c[1] ?? '#fff';
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = Math.max(2, this.renderer.CW / 240);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    pts.forEach((p, k) => (k ? ctx.lineTo(p.x * q, p.y * q) : ctx.moveTo(p.x * q, p.y * q)));
+    ctx.stroke();
+    ctx.restore();
   }
 
   // ---------- recording ----------

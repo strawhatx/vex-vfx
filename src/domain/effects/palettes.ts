@@ -1,10 +1,11 @@
 import type { GlitchStyle } from './glitches';
 import type { OutlineStyle } from './outlines';
+import type { StrandSettings } from './strands';
 import type { FontId, TextStyle } from './text';
 import type { WaterStyle } from './water';
 
 export type Effect =
-  'fire' | 'lightning' | 'aura' | 'water' | 'sparks' | 'laser' | 'outline' | 'glitch' | 'text';
+  'fire' | 'lightning' | 'aura' | 'water' | 'sparks' | 'laser' | 'outline' | 'glitch' | 'text' | 'path';
 
 export const PALETTES = [
   { name: 'Ember', c: ['#fff6d8', '#ffc640', '#ff6a1a', '#b3200e'] },
@@ -27,6 +28,7 @@ export const DEFAULT_PAL: Record<Effect, number> = {
   outline: palIndex('Prism'),
   glitch: 0, // uses the video's own colors
   text: 0,
+  path: palIndex('Blue'),
 };
 
 // volume: how loud the clip's sound effect is, 0 (off) to 1.5
@@ -42,4 +44,5 @@ export interface FxSettings {
   textStyle: TextStyle;
   font: FontId;
   water: WaterStyle; // how a water effect looks
+  strand: StrandSettings; // a path's form, look and shape
 }

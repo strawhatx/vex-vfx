@@ -21,6 +21,8 @@ const clips = (count = 1): HintQueries => ({
   hasShapeAt: (_id, i) => i >= 10 && i < 15,
   lostAt: i => i === 30,
   pinned: () => false,
+  kind: () => 'effect' as const,
+  cutoutShowing: () => false,
 });
 
 describe('hints', () => {

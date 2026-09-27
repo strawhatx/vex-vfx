@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow } from './ClipRows';
-import { EffectClip, ImpactClip } from './FxClips';
+import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
 import { PAD, type Scale } from './layout';
 import { Ruler } from './Ruler';
 import { usePlayhead } from './usePlayhead';
@@ -15,7 +15,7 @@ import { useTimelineZoom } from './useTimelineZoom';
 
 export function Timeline({
   ui,
-  clipSelected,
+  scene,
   busy,
   currentTime,
   soundShape,
@@ -23,7 +23,7 @@ export function Timeline({
   on,
 }: {
   ui: UiState;
-  clipSelected: boolean;
+  scene: number | null; // the film selected
   busy: boolean;
   soundShape(l: Lane): number[]; // each clip's sound effect, for its waveform
   makeThumbs: MakeThumbs; // the clip's filmstrip
@@ -31,7 +31,7 @@ export function Timeline({
   on: {
     seek(t: number): void;
     deselect(): void;
-    selectClip(): void;
+    selectScene(scene: number): void;
     selectLane(id: number): void;
     chooseFile(): void;
     addEffect(): void;
@@ -40,6 +40,8 @@ export function Timeline({
     commitRange(id: number): void;
     // an impact dragged to hit at time t
     moveImpact(id: number, t: number): void;
+    // a cutout dragged to start at time t
+    moveCutout(id: number, t: number): void;
   };
 }) {
   const dur = ui.duration || 0;
@@ -61,12 +63,16 @@ export function Timeline({
   }, [shownTime]);
 
   const scale: Scale = { pps, x: t => t * pps };
-  const rows = Array.from({ length: ui.rows }, (_, r) => ui.lanes.filter(l => l.row === r));
+  const fxLanes = ui.lanes.filter(l => l.kind !== 'cutout'),
+    cutLanes = ui.lanes.filter(l => l.kind === 'cutout');
+  const rows = Array.from({ length: ui.rows }, (_, r) => fxLanes.filter(l => l.row === r));
+  const cutRows = Array.from({ length: ui.cutRows }, (_, r) => cutLanes.filter(l => l.row === r));
   const clipActions = {
     select: on.selectLane,
     setRange: on.setRange,
     commitRange: on.commitRange,
     moveImpact: on.moveImpact,
+    moveCutout: on.moveCutout,
   };
 
   return (
@@ -82,12 +88,35 @@ export function Timeline({
           <VideoRow
             ui={ui}
             scale={scale}
-            selected={clipSelected}
-            onSelect={on.selectClip}
+            selected={scene}
+            onSelect={on.selectScene}
             onChooseFile={on.chooseFile}
             makeThumbs={makeThumbs}
           />
-          {ui.ready && <AudioRow ui={ui} scale={scale} selected={clipSelected} onSelect={on.selectClip} />}
+          {ui.ready && (
+            <AudioRow
+              ui={ui}
+              scale={scale}
+              selected={scene !== null}
+              onSelect={() => on.selectScene(scene ?? 0)}
+            />
+          )}
+
+          {/* cutouts: layers cut out of the footage, with it */}
+          {cutRows.map((lanes, r) => (
+            <div key={`c${r}`} className="tl-row fx-row cut-row">
+              {lanes.map(l => (
+                <CutoutClip
+                  key={l.id}
+                  lane={l}
+                  scale={scale}
+                  selected={l.id === ui.selected}
+                  duration={dur}
+                  on={clipActions}
+                />
+              ))}
+            </div>
+          ))}
 
           {rows.map((lanes, r) => (
             <div key={r} className="tl-row fx-row">

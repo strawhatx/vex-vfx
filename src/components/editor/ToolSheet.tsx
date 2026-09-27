@@ -11,18 +11,41 @@ import {
   type ImpactStyle,
 } from '@/domain/effects/impacts';
 import type { Aim } from '@/domain/effects/laser';
+import { BACKGROUNDS, MAX_SCALE, MIN_SCALE, type Background, type Transform } from '@/domain/project/cutout';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
 import { FONTS, MAX_TEXT, TEXT_STYLES, type TextStyle } from '@/domain/effects/text';
 import { WATER_STYLES, type WaterStyle } from '@/domain/effects/water';
+import {
+  DEFAULT_STRAND,
+  FORMS,
+  STRAND_LOOKS,
+  type Form,
+  type StrandLook,
+  type StrandSettings,
+} from '@/domain/effects/strands';
 import { BODY_PARTS, type BodyPart } from '@/domain/tracking/bodyParts';
 import { AimPanel } from './AimPanel';
 import { fontVar } from './fonts';
 import type { Source } from './player';
 import { Icon, I } from './icons';
 
-export type Tool = 'styles' | 'effects' | 'color' | 'adjust' | 'impact' | 'look' | 'words' | 'parts' | 'aim';
+export type Tool =
+  | 'styles'
+  | 'effects'
+  | 'color'
+  | 'adjust'
+  | 'impact'
+  | 'look'
+  | 'words'
+  | 'parts'
+  | 'aim'
+  | 'background'
+  | 'transform'
+  | 'form'
+  | 'finish'
+  | 'shape';
 // the effect categories: each continuous effect, and each family of impacts (listed together
 // under Impact)
 export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
@@ -51,6 +74,7 @@ export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'outline', label: 'Outline' },
   { id: 'glitch', label: 'Glitch' },
   { id: 'text', label: 'Text' },
+  { id: 'path', label: 'Path' },
 ];
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
 export const categoryName = (c: Category) =>
@@ -66,6 +90,45 @@ export const TOOL_TITLES: Record<Tool, string> = {
   words: 'Text',
   parts: 'Which part?',
   aim: 'Aim',
+  background: 'Where it was',
+  transform: 'Transform',
+  form: 'Form',
+  finish: 'Look',
+  shape: 'Shape',
+};
+
+// each form's icon
+const FORM_ICONS: Record<Form, string> = {
+  whip: I.whip,
+  rope: I.rope,
+  ribbon: I.ribbon,
+  tentacle: I.tentacle,
+  trail: I.trail,
+  beam: I.beam,
+};
+
+// each look, for its tile
+const STRAND_ART: Record<StrandLook, string> = {
+  neon: 'linear-gradient(170deg, transparent 44%, #7fe0ff 46%, #fff 50%, #7fe0ff 54%, transparent 56%), radial-gradient(ellipse 80% 30%, #2f7bff55, transparent 70%), #26262a',
+  energy:
+    'radial-gradient(circle at 60% 48%, #fff 0 6%, #7fe0ff 12%, transparent 22%), linear-gradient(170deg, transparent 42%, #2f7bff 46%, #f0fbff 50%, #2f7bff 54%, transparent 58%), #26262a',
+  lightning:
+    'linear-gradient(120deg, transparent 47%, #fff 49%, transparent 51%), linear-gradient(60deg, transparent 47%, #d98bff 49%, transparent 51%), radial-gradient(ellipse, #8a2be244, transparent 70%), #26262a',
+  solid:
+    'linear-gradient(170deg, transparent 42%, #b3531e 44%, #ffc640 49%, #b3531e 56%, transparent 58%), #26262a',
+  fire: 'radial-gradient(ellipse 60% 30% at 50% 60%, #fff6d8 0 12%, #ffc640 30%, #ff6a1a 55%, transparent 75%), #26262a',
+  sparks:
+    'radial-gradient(circle at 30% 40%, #ffc640 0 3%, transparent 4%), radial-gradient(circle at 60% 30%, #fff 0 3%, transparent 4%), radial-gradient(circle at 70% 60%, #ff6a1a 0 3%, transparent 4%), linear-gradient(170deg, transparent 47%, #fff6d8 49%, transparent 51%), #26262a',
+  aura: 'radial-gradient(ellipse 70% 25%, #fbeaff 0 10%, #d98bff 30%, #8a2be255 60%, transparent 75%), #26262a',
+};
+
+// a picture of what each background choice leaves behind
+const BACKGROUND_ART: Record<Background, string> = {
+  keep: 'radial-gradient(ellipse 18% 30% at 38% 55%, #ffc640 0 95%, transparent 100%), radial-gradient(ellipse 18% 30% at 66% 55%, #ffc640 0 95%, transparent 100%), linear-gradient(#3a4a5a, #26303a)',
+  clean:
+    'radial-gradient(ellipse 18% 30% at 66% 55%, #ffc640 0 95%, transparent 100%), linear-gradient(#3a4a5a, #26303a)',
+  clear:
+    'radial-gradient(ellipse 18% 30% at 38% 55%, #111 0 95%, transparent 100%), radial-gradient(ellipse 18% 30% at 66% 55%, #ffc640 0 95%, transparent 100%), linear-gradient(#3a4a5a, #26303a)',
 };
 
 const PART_ICONS: Record<BodyPart, string> = {
@@ -198,6 +261,12 @@ export function ToolSheet({
   onPart,
   aim,
   onAim,
+  bg,
+  onBackground,
+  transform,
+  keyed,
+  onTransform,
+  onReset,
 }: {
   tool: Tool;
   title: string;
@@ -217,7 +286,18 @@ export function ToolSheet({
   // aim: a laser's direction, and whether it hits a tapped spot instead
   aim?: Aim;
   onAim?: { set(p: { h?: number; v?: number }): void; target(): void; clear(): void };
+  // background: what a cutout leaves where it was cut from
+  bg?: Background | null;
+  onBackground?(bg: Background): void;
+  // transform: a cutout's at the playhead (keyed: it has keyframes, so changes set the one here)
+  transform?: Transform | null;
+  keyed?: boolean;
+  onTransform?(p: Partial<Transform>): void;
+  onReset?(): void;
 }) {
+  // a path's form, look and shape
+  const strand = fx.strand ?? DEFAULT_STRAND;
+  const setStrand = (p: Partial<StrandSettings>) => onChange({ strand: { ...strand, ...p } });
   return (
     <div className="sheet" role="dialog" aria-label={title}>
       <div className="sheet-head">
@@ -297,21 +377,148 @@ export function ToolSheet({
           ))}
         </div>
       )}
-      {tool === 'styles' && category && !isImpactCategory(category) && !LOOKS[category] && (
-        <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-          {PALETTES.map((p, i) => (
+      {tool === 'styles' && category === 'path' && (
+        <div className="tiles" role="group" aria-label="Path forms">
+          {FORMS.map(f => (
             <button
-              key={p.name}
+              key={f.id}
               type="button"
-              className="tile"
-              onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
+              className="tile part-tile"
+              title={f.about}
+              onClick={() =>
+                onPick?.({
+                  kind: 'effect',
+                  effect: 'path',
+                  pal: DEFAULT_PAL.path,
+                  fx: { strand: { ...strand, form: f.id } },
+                })
+              }
             >
-              <span className="tile-art" style={{ background: swatchBg(i) }} />
-              {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
+              <span className="tile-art">
+                <Icon d={FORM_ICONS[f.id]} size={30} />
+              </span>
+              {f.label}
             </button>
           ))}
         </div>
       )}
+      {tool === 'form' && (
+        <div className="tiles" role="group" aria-label="Form">
+          {FORMS.map(f => (
+            <button
+              key={f.id}
+              type="button"
+              className="tile part-tile"
+              title={f.about}
+              aria-pressed={strand.form === f.id}
+              onClick={() => setStrand({ form: f.id })}
+            >
+              <span className="tile-art">
+                <Icon d={FORM_ICONS[f.id]} size={30} />
+              </span>
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tool === 'finish' && (
+        <div className="tiles" role="group" aria-label="Look">
+          {STRAND_LOOKS.map(l => (
+            <button
+              key={l.id}
+              type="button"
+              className="tile"
+              aria-pressed={strand.look === l.id}
+              onClick={() => setStrand({ look: l.id })}
+            >
+              <span className="tile-art" style={{ background: STRAND_ART[l.id] }} />
+              {l.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tool === 'shape' && (
+        <div className="sliders">
+          <Slider
+            label={strand.form === 'trail' ? 'Trail' : 'Length'}
+            min={0.05}
+            max={1.5}
+            step={0.01}
+            value={strand.length}
+            show={v => (strand.form === 'trail' ? `${v.toFixed(1)}s` : `${Math.round(v * 100)}`)}
+            onChange={length => setStrand({ length })}
+          />
+          <Slider
+            label="Thickness"
+            min={0.3}
+            max={2.5}
+            step={0.05}
+            value={fx.size}
+            onChange={size => onChange({ size })}
+          />
+          <Slider
+            label="Flex"
+            min={0}
+            max={1}
+            step={0.01}
+            value={strand.flex}
+            onChange={flex => setStrand({ flex })}
+          />
+          <Slider
+            label="Weight"
+            min={0}
+            max={2}
+            step={0.05}
+            value={strand.weight}
+            onChange={weight => setStrand({ weight })}
+          />
+          <Slider
+            label="Points"
+            min={-180}
+            max={180}
+            step={1}
+            value={strand.dir}
+            show={v => `${Math.round(v)}°`}
+            onChange={dir => setStrand({ dir })}
+          />
+          <Slider
+            label="Intensity"
+            min={0.2}
+            max={2}
+            step={0.05}
+            value={fx.intensity}
+            onChange={intensity => onChange({ intensity })}
+          />
+          <Slider
+            label="Sound"
+            min={0}
+            max={1.5}
+            step={0.05}
+            value={fx.volume}
+            show={v => (v === 0 ? 'Off' : `${Math.round(v * 100)}`)}
+            onChange={volume => onChange({ volume })}
+          />
+        </div>
+      )}
+      {tool === 'styles' &&
+        category &&
+        category !== 'path' &&
+        !isImpactCategory(category) &&
+        !LOOKS[category] && (
+          <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
+            {PALETTES.map((p, i) => (
+              <button
+                key={p.name}
+                type="button"
+                className="tile"
+                onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
+              >
+                <span className="tile-art" style={{ background: swatchBg(i) }} />
+                {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
+              </button>
+            ))}
+          </div>
+        )}
       {tool === 'words' && (
         <div className="words">
           <input
@@ -391,6 +598,73 @@ export function ToolSheet({
           ))}
         </div>
       )}
+      {tool === 'background' && (
+        <div className="tiles" role="group" aria-label="What's left where it was cut from">
+          {BACKGROUNDS.map(b => (
+            <button
+              key={b.id}
+              type="button"
+              className="tile"
+              aria-pressed={bg === b.id}
+              title={b.about}
+              onClick={() => onBackground?.(b.id)}
+            >
+              <span className="tile-art" style={{ background: BACKGROUND_ART[b.id] }} />
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tool === 'transform' && transform && (
+        <div className="sliders">
+          <label className="slider">
+            <span>Scale</span>
+            <input
+              type="range"
+              min={MIN_SCALE}
+              max={MAX_SCALE}
+              step={0.01}
+              value={transform.scale}
+              style={pct(transform.scale, MIN_SCALE, MAX_SCALE)}
+              onChange={e => onTransform?.({ scale: +e.target.value })}
+            />
+            <output>{Math.round(transform.scale * 100)}</output>
+          </label>
+          <label className="slider">
+            <span>Rotate</span>
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={1}
+              value={transform.rot}
+              style={pct(transform.rot, -180, 180)}
+              onChange={e => onTransform?.({ rot: +e.target.value })}
+            />
+            <output>{Math.round(transform.rot)}°</output>
+          </label>
+          <label className="slider">
+            <span>Opacity</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={transform.opacity}
+              style={pct(transform.opacity, 0, 1)}
+              onChange={e => onTransform?.({ opacity: +e.target.value })}
+            />
+            <output>{Math.round(transform.opacity * 100)}</output>
+          </label>
+          <p className="sheet-note">
+            Drag it in the preview to move it.
+            {keyed ? ' Changes set the keyframe at the playhead.' : ' Add a keyframe to animate it.'}
+          </p>
+          <button type="button" className="sheet-btn" onClick={onReset}>
+            Reset
+          </button>
+        </div>
+      )}
       {tool === 'aim' && aim && onAim && (
         <AimPanel aim={aim} onChange={onAim.set} onTarget={onAim.target} onClear={onAim.clear} />
       )}
@@ -438,5 +712,40 @@ export function ToolSheet({
         </div>
       )}
     </div>
+  );
+}
+
+// a labelled slider with its value
+function Slider({
+  label,
+  min,
+  max,
+  step,
+  value,
+  show = v => `${Math.round(v * 100)}`,
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  show?: (v: number) => string;
+  onChange(v: number): void;
+}) {
+  return (
+    <label className="slider">
+      <span>{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        style={pct(value, min, max)}
+        onChange={e => onChange(+e.target.value)}
+      />
+      <output>{show(value)}</output>
+    </label>
   );
 }

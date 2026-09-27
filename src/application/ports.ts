@@ -3,8 +3,10 @@
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { Aim, Cam } from '@/domain/effects/laser';
+import type { Cutout } from '@/domain/project/cutout';
+import type { PathAnchor } from '@/domain/project/track';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
-import type { ClipFrame, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
+import type { ClipFrame, Rle, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
 interface JobEvents {
   progress(done: number, total: number): void;
@@ -36,7 +38,34 @@ export interface Analysis {
   ): void;
   // the camera's path through the clip (frames `times`, in order), from the first frame
   camera(source: Blob, times: number[], on: JobEvents & { path(path: ({ i: number } & Cam)[]): void }): void;
+  // cuts the object out of frames `times` along its outlines (`masks`, one per frame; null where it
+  // wasn't found) and, with `plate`, rebuilds the background behind it from the frames around
+  // (`cam`: the camera's path at each frame, to line them up). Frames come back with i indexing times.
+  cutout(
+    source: Blob,
+    req: { times: number[]; masks: (Rle | null)[]; plate: boolean; cam: (Cam | null)[] },
+    on: JobEvents & { frames(frames: CutFrame[]): void },
+  ): void;
   cancel(): void;
+}
+
+// a picture cut from a frame, and where it sits in that frame (work pixels; the picture itself can
+// be sharper than that)
+export interface Sprite {
+  image: ImageBitmap;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// one frame of a cutout: the object cut out, and the background rebuilt where it was (for a
+// cutout that removes it). Either can come on its own: left out, what the frame had stays; null,
+// there's none.
+export interface CutFrame {
+  i: number;
+  cut?: Sprite | null;
+  plate?: Sprite | null;
 }
 
 // one clip for the renderer: an effect (drawn continuously) or an impact (just its burst); its
@@ -44,9 +73,10 @@ export interface Analysis {
 // outside that it draws nothing at all), and its impacts (frame of the hit and style; each plays
 // out for its style's duration; tap: where on the object it was tapped, frame and work pixels,
 // so the burst lands on that spot rather than the middle of the object)
+// A cutout's range is the frames it's cut from; `cutout` says where the layer is placed and how.
 export interface LayerSpec {
   id: number;
-  kind: 'effect' | 'impact';
+  kind: 'effect' | 'impact' | 'cutout';
   pinned: boolean; // at a spot in the scene (an impact, or an effect from a spot)
   frames: TrackFrame[];
   settings: FxSettings;
@@ -55,12 +85,14 @@ export interface LayerSpec {
   aim: Aim; // for a laser
   tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
   impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
+  cutout: Cutout | null;
+  path: PathAnchor | null; // a path's drawn shape and held end
 }
 
 // Draws each effect over the video.
 export interface EffectLayers {
-  // every frame of the clip, and for each frame the first frame of its segment (effects restart
-  // at a segment's first frame; the whole clip is one segment)
+  // every frame of the clip, and for each frame the first frame of its scene (effects restart
+  // at a scene's first frame; unsplit, the whole clip is one scene)
   setClip(frames: TrackFrame[], segmentStart: Int32Array): void;
   setLayers(specs: LayerSpec[]): void;
   // the camera's path through the clip (one entry per clip frame, filled in as it's worked out), so
@@ -68,4 +100,8 @@ export interface EffectLayers {
   setCamera(path: (Cam | null)[]): void;
   // a layer's track data changed in place
   changed(id: number): void;
+  // a cutout's frames, as they're cut out (i: clip frame); they replace any it had for those frames
+  cutoutFrames(id: number, frames: CutFrame[]): void;
+  // drops a cutout's frames outside [s, e) (clip frames), when it's cut from fewer
+  trimCutout(id: number, span: { s: number; e: number }): void;
 }

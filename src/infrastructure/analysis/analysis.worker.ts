@@ -2,12 +2,16 @@
 // - scan: decodes the whole clip tiny and lists every frame, in clip time
 // - probe: says whether a tap landed on a person, and which body part is nearest
 // - camera: the camera's movement through the whole clip
+// - cutout: cuts an object out of its frames along its outlines, at output size, and rebuilds the
+//   background behind it (a clean plate) when asked
 // - track: from the frame the object (or body part) was tapped on, follows it forward to the end
 //   of the given frames, then backward to their start, streaming the track data back in batches
 import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from 'mediabunny';
 import { toClipTime } from '@/domain/tracking/timeline';
 import { BodyPartTracker, modelsFor } from './bodyTracker';
 import { CameraTracker } from './camera';
+import { cleanPlate, holeOf, type PlateFrame } from './cleanPlate';
+import { NO_MOVE } from '@/domain/effects/laser';
 import {
   createFaces,
   createHands,
@@ -19,6 +23,8 @@ import {
 import { ObjectTracker } from './objectTracker';
 import type {
   CameraRequest,
+  CutoutRequest,
+  SpriteMsg,
   JobRequest,
   ProbeRequest,
   ScanRequest,
@@ -27,18 +33,22 @@ import type {
   WorkerRequest,
 } from './protocol';
 import { partNearest, person, personAt } from '@/domain/tracking/bodyParts';
-import { workSize, type ClipFrame, type Selection, type Shape } from '@/domain/tracking/types';
+import { paintRle, workSize, type ClipFrame, type Selection, type Shape } from '@/domain/tracking/types';
 
 const POST_EVERY_MS = 120,
   BACK_CHUNK = 24,
-  SCAN_W = 16;
+  SCAN_W = 16,
+  // cutouts are cut at the size the editor draws at (see Renderer.setup)
+  CUT_MAX_W = 960,
+  // a clean plate borrows from frames up to this many either side
+  PLATE_REACH = 30;
 
 let current = 0;
 let segmenter: Promise<Segmenter> | null = null;
 let poses: Promise<Landmarks> | null = null,
   hands: Promise<Landmarks> | null = null,
   faces: Promise<Landmarks> | null = null;
-const post = (m: WorkerMessage) => self.postMessage(m);
+const post = (m: WorkerMessage, transfer: Transferable[] = []) => self.postMessage(m, { transfer });
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   const m = e.data;
@@ -60,7 +70,9 @@ function run(job: JobRequest) {
       ? probe(job)
       : job.type === 'camera'
         ? camera(job)
-        : track(job);
+        : job.type === 'cutout'
+          ? cutout(job)
+          : track(job);
 }
 
 // ---------- the open clip, reused across jobs ----------
@@ -286,6 +298,137 @@ async function camera(job: CameraRequest) {
     i++;
     if (performance.now() - lastPost > POST_EVERY_MS) flush();
   }
+  flush();
+  post({ type: 'done', jobId: job.jobId });
+}
+
+// ---------- cutout ----------
+// Each frame is decoded at output size. The object is cut out of it along its outline (drawn up from
+// analysis size, so its edge comes out softened), and with a clean plate the frame is also kept at
+// analysis size, for PLATE_REACH frames either side, to borrow the background from.
+async function cutout(job: CutoutRequest) {
+  const c = await open(job),
+    { W, H } = c;
+  const ow = Math.min(c.vw, CUT_MAX_W),
+    oh = Math.round((c.vh * ow) / c.vw),
+    q = ow / W;
+  const sink = new CanvasSink(c.track, { width: ow, height: oh, fit: 'fill', poolSize: 2 });
+  const frame = new OffscreenCanvas(ow, oh),
+    fctx = frame.getContext('2d') as OffscreenCanvasRenderingContext2D;
+  // the outline as a white-on-clear picture, at analysis size
+  const maskCan = new OffscreenCanvas(W, H),
+    mctx = maskCan.getContext('2d') as OffscreenCanvasRenderingContext2D,
+    maskImg = mctx.createImageData(W, H),
+    m32 = new Uint32Array(maskImg.data.buffer),
+    mask = new Uint8Array(W * H);
+  const total = job.times.length;
+
+  let batch: { i: number; cut?: SpriteMsg | null; plate?: SpriteMsg | null }[] = [],
+    transfer: Transferable[] = [],
+    done = 0,
+    lastPost = 0;
+  const flush = () => {
+    if (!batch.length) return;
+    post({ type: 'cutout', jobId: job.jobId, frames: batch }, transfer);
+    post({ type: 'progress', jobId: job.jobId, done, total });
+    batch = [];
+    transfer = [];
+    lastPost = performance.now();
+  };
+  // what's been made for frame i: its cutout, or its plate
+  const emit = (i: number, part: { cut: SpriteMsg | null } | { plate: SpriteMsg | null }) => {
+    const at = batch.find(b => b.i === i);
+    if (at) Object.assign(at, part);
+    else batch.push({ i, ...part });
+    const s = 'cut' in part ? part.cut : part.plate;
+    if (s) transfer.push(s.image);
+  };
+
+  // the object cut out of the frame on `frame`
+  const cutOut = (i: number): SpriteMsg | null => {
+    const rle = job.masks[i];
+    if (!rle) return null;
+    mask.fill(0);
+    const b = paintRle(rle, mask, W, H);
+    if (b.bx1 < 0) return null;
+    m32.fill(0);
+    for (let y = b.by0; y <= b.by1; y++)
+      for (let x = b.bx0; x <= b.bx1; x++) if (mask[y * W + x]) m32[y * W + x] = 0xffffffff;
+    mctx.putImageData(maskImg, 0, 0);
+    // the box in output pixels, a pixel of room round it for the soft edge
+    const x0 = Math.max(0, Math.floor((b.bx0 - 1) * q)),
+      y0 = Math.max(0, Math.floor((b.by0 - 1) * q)),
+      x1 = Math.min(ow, Math.ceil((b.bx1 + 2) * q)),
+      y1 = Math.min(oh, Math.ceil((b.by1 + 2) * q));
+    const cw = x1 - x0,
+      ch = y1 - y0;
+    if (cw < 1 || ch < 1) return null;
+    const out = new OffscreenCanvas(cw, ch),
+      g = out.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    g.drawImage(frame, -x0, -y0);
+    g.globalCompositeOperation = 'destination-in';
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(maskCan, -x0, -y0, W * q, H * q);
+    return { image: out.transferToImageBitmap(), x: x0 / q, y: y0 / q, w: cw / q, h: ch / q };
+  };
+
+  // the frames kept for clean plates, by index; each is made once PLATE_REACH frames past it are in
+  const kept = new Map<number, PlateFrame & { box: ReturnType<typeof holeOf> }>();
+  const work = new OffscreenCanvas(W, H),
+    wctx = work.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+  const plateFor = (i: number): SpriteMsg | null => {
+    const f = kept.get(i);
+    if (!f?.box || !f.hole) return null;
+    const others: PlateFrame[] = [];
+    for (let d = 1; d <= PLATE_REACH; d++)
+      for (const j of [i - d, i + d]) {
+        const o = kept.get(j);
+        if (o) others.push(o);
+      }
+    const p = cleanPlate(f, f.box.box, others, W, H);
+    const pc = new OffscreenCanvas(p.w, p.h);
+    (pc.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(
+      new ImageData(p.rgba, p.w, p.h),
+      0,
+      0,
+    );
+    return { image: pc.transferToImageBitmap(), x: p.x, y: p.y, w: p.w, h: p.h };
+  };
+  let plated = 0; // the next frame to make a plate for
+  const platesUpTo = (end: number) => {
+    for (; plated < end; plated++) {
+      emit(plated, { plate: plateFor(plated) });
+      kept.delete(plated - PLATE_REACH);
+    }
+  };
+
+  const at_ = (t: number) => at(c, t);
+  let i = 0;
+  for await (const wc of sink.canvasesAtTimestamps(job.times.map(at_))) {
+    if (current !== job.jobId) return;
+    if (wc) {
+      fctx.drawImage(wc.canvas, 0, 0, ow, oh);
+      emit(i, { cut: cutOut(i) });
+      if (job.plate) {
+        wctx.drawImage(frame, 0, 0, W, H);
+        const rle = job.masks[i];
+        const box = rle ? holeOf(rle, W, H) : null;
+        kept.set(i, {
+          rgba: wctx.getImageData(0, 0, W, H).data,
+          hole: box?.hole ?? null,
+          cam: job.cam[i] ?? NO_MOVE,
+          box,
+        });
+        platesUpTo(i - PLATE_REACH);
+      }
+    }
+    i++;
+    done = job.plate ? plated : i;
+    if (performance.now() - lastPost > POST_EVERY_MS) flush();
+  }
+  if (job.plate) platesUpTo(total);
+  done = total;
   flush();
   post({ type: 'done', jobId: job.jobId });
 }

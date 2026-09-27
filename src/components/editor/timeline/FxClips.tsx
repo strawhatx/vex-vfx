@@ -1,5 +1,5 @@
-// The effect and impact clips on the timeline. Each covers the stretch it lasts; when selected,
-// grips on its ends drag its start and end.
+// The effect, impact and cutout clips on the timeline. Each covers the stretch it lasts; when
+// selected, grips on its ends drag its start and end.
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { IMPACTS } from '@/domain/effects/impacts';
 import { Icon, I } from '../icons';
@@ -17,6 +17,8 @@ export interface ClipActions {
   commitRange(id: number): void;
   // an impact dragged to hit at time t
   moveImpact(id: number, t: number): void;
+  // a cutout dragged to start at time t
+  moveCutout(id: number, t: number): void;
 }
 
 interface ClipProps {
@@ -124,6 +126,77 @@ export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: Cl
             {speed && <b>{speed}</b>}
           </span>
         )}
+      </button>
+      {selected && !drag && <Grips lane={l} scale={scale} duration={duration} on={on} />}
+    </span>
+  );
+}
+
+// a cutout: where it's placed, with where its object was found and its keyframes (tracking fixes as
+// on an effect, and its transform keyframes). Drag to place it at another time; its ends change
+// which frames it's cut from.
+export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<ClipProps, 'sound'>) {
+  const { x, pps } = scale;
+  const [drag, setDrag] = useState<{ x: number; from: number; t: number; moved: boolean } | null>(null);
+  const len = l.range.e - l.range.s;
+  const start = drag ? drag.t : l.range.s;
+  const w = x(len);
+  const cut = l.cutout;
+  const from = cut && Math.abs(cut.from - start) > 0.05 ? ` · from ${mmss(cut.from)}` : '';
+
+  function down(e: PointerEvent) {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDrag({ x: e.clientX, from: l.range.s, t: l.range.s, moved: false });
+  }
+  function move(e: PointerEvent) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 4) return;
+    const t = Math.max(0, Math.min(Math.max(0, duration - len), drag.from + dx / pps));
+    setDrag({ ...drag, t, moved: true });
+  }
+  function up() {
+    const d = drag;
+    setDrag(null);
+    if (!d) return;
+    if (d.moved) on.moveCutout(l.id, d.t);
+    else on.select(l.id);
+  }
+
+  return (
+    <span
+      className={`fx-clip cut-clip${selected || drag ? ' on' : ''}`}
+      style={{ left: x(start), width: w, '--c': l.color } as CSSProperties}
+    >
+      <button
+        type="button"
+        className="fx-body"
+        aria-pressed={selected}
+        aria-label={`${l.name}: ${mmss(l.range.s)} to ${mmss(l.range.e)}${from}. Tap to select, drag to place it.`}
+        onClick={e => e.stopPropagation()}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={() => setDrag(null)}
+      >
+        {l.spans.map((sp, i) => (
+          <span
+            key={i}
+            className={`span${sp.weak ? ' weak' : ''}`}
+            style={{ left: x(sp.s - l.range.s), width: Math.max(2, x(sp.e - sp.s)) }}
+          />
+        ))}
+        {l.keys.map((k, i) => (
+          <i key={i} className="key" style={{ left: x(k - l.range.s) }} />
+        ))}
+        {cut?.moves.map((k, i) => (
+          <i key={`m${i}`} className="key move" style={{ left: x(k - l.range.s) }} />
+        ))}
+        <span className="fx-label">
+          <Icon d={I.cutout} size={12} />
+          {w > 90 ? `${l.name}${from}` : l.name}
+        </span>
       </button>
       {selected && !drag && <Grips lane={l} scale={scale} duration={duration} on={on} />}
     </span>

@@ -431,6 +431,12 @@ button.primary {
   right: 0;
   border-radius: 0 6px 6px 0;
 }
+/* a split film: each scene its own block, with a gap between */
+.lane.clip.scene {
+  box-shadow:
+    inset -2px 0 0 var(--dock),
+    inset 2px 0 0 var(--dock);
+}
 .add-end {
   position: absolute;
   top: 8px;
@@ -945,6 +951,33 @@ input[type='range']::-moz-range-thumb {
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+/* ---------- cutouts on the timeline: layers cut out of the footage, placed where they play ---------- */
+.cut-clip .fx-body {
+  touch-action: none;
+  cursor: grab;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--c) 14%, var(--dock)) 0 5px,
+    color-mix(in srgb, var(--c) 24%, var(--dock)) 5px 10px
+  );
+}
+/* a transform keyframe */
+.key.move {
+  background: var(--brand);
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+}
+.sheet-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.sheet-btn {
+  justify-self: start;
+  padding: 8px 16px;
 }
 
 /* ---------- impacts on the timeline: a short clip at the moment of the hit ---------- */

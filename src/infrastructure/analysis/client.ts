@@ -57,6 +57,17 @@ export class AnalysisClient implements Analysis {
       },
     );
 
+  cutout: Analysis['cutout'] = (file, req, on) =>
+    this.start(
+      { type: 'cutout', clipId: this.clipId(file), file, ...req },
+      {
+        progress: m => on.progress(m.done, m.total),
+        cutout: m => on.frames(m.frames),
+        done: on.done,
+        error: m => on.error(m.message),
+      },
+    );
+
   cancel() {
     this.handlers = null;
     this.jobId++;

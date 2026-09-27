@@ -1,7 +1,9 @@
 'use client';
 
 // The editor page: top bar, preview, playback controls, and the dock (timeline, toolbar and tool
-// panels). It keeps what's selected and which panel is open; all editing goes through the Player.
+// panels). It keeps what's selected (a film, or a clip on it) and which panel is open; all editing
+// goes through the Player. The toolbar's two menus keep effects and the footage apart: Effects
+// adds effects and impacts; Footage splits the film and cuts objects out of it.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_FX } from '@/application/editor';
 import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
@@ -35,7 +37,7 @@ export default function VfxStudio() {
 
   // what the dock shows
   const [tool, setTool] = useState<Tool | null>(null); // the open panel
-  const [clipSel, setClipSel] = useState(false); // the video clip itself is selected
+  const [scene, setScene] = useState<number | null>(null); // the film (scene) selected
   // the toolbar lists the effect categories, or the impact families
   const [catalog, setCatalog] = useState<Catalog>(null);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
@@ -74,7 +76,8 @@ export default function VfxStudio() {
   // the settings the panels show and change: the selected clip's, or the only clip's
   const fxLane = lane ?? (ui.lanes.length === 1 ? ui.lanes[0] : null);
   const fx = fxLane?.fx ?? draftFx;
-  const mode = modeFor(lane, clipSel, catalog);
+  const mode = modeFor(lane, scene !== null, catalog);
+  const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
 
@@ -89,7 +92,7 @@ export default function VfxStudio() {
 
   function fileChosen(f: File) {
     player()?.loadFile(f);
-    setClipSel(false);
+    setScene(null);
     setTool(null);
   }
 
@@ -100,29 +103,34 @@ export default function VfxStudio() {
   }
 
   function deselect() {
-    setClipSel(false);
+    setScene(null);
     setCatalog(null);
     setTool(null);
     player()?.select(null);
   }
 
-  function selectClip() {
+  // a film tapped on the timeline: its footage tools, with the playhead moved into it
+  function selectScene(k: number) {
     setTool(null);
     setCatalog(null);
     player()?.select(null);
-    setClipSel(c => !c);
+    if (scene === k) return setScene(null);
+    setScene(k);
+    const sc = ui.scenes[k],
+      t = player()?.time() ?? 0;
+    if (sc && (t < sc.s || t >= sc.e)) player()?.seek(sc.s);
   }
 
   function selectLane(id: number) {
     setTool(null);
-    setClipSel(false);
+    setScene(null);
     setCatalog(null);
     player()?.select(ui.selected === id ? null : id);
   }
 
   // Effects: list the categories in the toolbar; Cancel while waiting for the tap
   function addEffect() {
-    setClipSel(false);
+    setScene(null);
     setTool(null);
     player()?.select(null);
     if (ui.adding) player()?.cancelAdding();
@@ -151,7 +159,7 @@ export default function VfxStudio() {
     busy,
     recording: ui.recording,
     camera: ui.camera,
-    adding: !!ui.adding || !!ui.choosing || ui.aiming !== null,
+    adding: !!ui.adding || !!ui.choosing || ui.aiming !== null || ui.attaching !== null,
     outline: showOutline,
     muted: ui.muted,
     open: tool,
@@ -163,6 +171,9 @@ export default function VfxStudio() {
     words: lane?.kind === 'effect' && lane.fx.effect === 'text',
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
+    moveKey: !!cutout && !!ui.cutoutNow?.onKey,
+    path: !!lane?.path,
+    pathEnd: !!lane?.path?.end,
   });
 
   // a toolbar button pressed
@@ -176,9 +187,17 @@ export default function VfxStudio() {
     switch (key) {
       case 'edit':
         if (!ui.ready) return chooseFile();
-        setClipSel(true);
+        setScene(pl?.sceneNow() ?? 0);
         pl?.select(null);
         return;
+      case 'split':
+        pl?.splitHere();
+        return setScene(pl?.sceneNow() ?? null);
+      case 'cutout':
+        if (lane) break; // (a cutout's own tools don't have this)
+        setTool(null);
+        setScene(null);
+        return pl?.startAdding({ kind: 'cutout' });
       case 'catalog':
         return addEffect();
       case 'elements':
@@ -191,7 +210,7 @@ export default function VfxStudio() {
         return chooseFile();
       case 'camera':
         void pl?.toggleCamera();
-        setClipSel(false);
+        setScene(null);
         return;
       case 'outline':
         return toggleOutline();
@@ -208,10 +227,22 @@ export default function VfxStudio() {
       case 'look':
       case 'words':
       case 'aim':
+      case 'transform':
+      case 'background':
+      case 'form':
+      case 'finish':
+      case 'shape':
         return setTool(cur => (cur === key ? null : key));
     }
     if (!lane) return;
     switch (key) {
+      case 'movekey':
+        return pl?.toggleMoveKey(lane.id);
+      case 'attach':
+        setTool(null);
+        return lane.path?.end ? pl?.freePathEnd(lane.id) : pl?.startAttaching(lane.id);
+      case 'place':
+        return pl?.placeCutout(lane.id);
       case 'hithere':
         return pl?.moveImpact(lane.id);
       case 'start':
@@ -268,7 +299,7 @@ export default function VfxStudio() {
       <div className="dock">
         <Timeline
           ui={ui}
-          clipSelected={clipSel}
+          scene={scene}
           busy={busy}
           currentTime={currentTime}
           soundShape={l => player()?.soundShape(l) ?? []}
@@ -276,13 +307,14 @@ export default function VfxStudio() {
           on={{
             seek: t => player()?.seek(t),
             deselect,
-            selectClip,
+            selectScene,
             selectLane,
             chooseFile,
             addEffect,
             setRange: (id, r) => player()?.setRange(id, r),
             commitRange: id => player()?.commitRange(id),
             moveImpact: (id, t) => player()?.moveImpact(id, t),
+            moveCutout: (id, t) => player()?.placeCutout(id, t),
           }}
         />
         <Toolbar
@@ -303,7 +335,17 @@ export default function VfxStudio() {
             onPart={p => player()?.choosePart(p)}
           />
         )}
-        {tool && !ui.choosing && (
+        {ui.cutting && (
+          <ToolSheet
+            tool="background"
+            title="Where it was cut from"
+            fx={fx}
+            onChange={changeFx}
+            onClose={() => player()?.cancelAdding()}
+            onBackground={bg => player()?.chooseBackground(bg)}
+          />
+        )}
+        {tool && !ui.choosing && !ui.cutting && (
           <ToolSheet
             tool={tool}
             title={
@@ -331,6 +373,12 @@ export default function VfxStudio() {
                   }
                 : undefined
             }
+            bg={cutout?.cutout?.bg}
+            onBackground={bg => cutout && player()?.setBackground(cutout.id, bg)}
+            transform={cutout ? ui.cutoutNow?.transform : null}
+            keyed={!!ui.cutoutNow?.keyed}
+            onTransform={p => cutout && player()?.setTransform(cutout.id, p)}
+            onReset={() => cutout && player()?.resetTransform(cutout.id)}
           />
         )}
       </div>
@@ -365,10 +413,10 @@ function startPal(style: ImpactStyle): Partial<FxSettings> | undefined {
   return pal === undefined ? undefined : { pal };
 }
 
-// what the toolbar lists: a selected effect's or impact's tools, the video clip's, the effect
-// categories, or the main tools
+// what the toolbar lists: a selected effect's, impact's or cutout's tools, the footage tools (a
+// film selected), the effect categories, or the main tools
 function modeFor(lane: Lane | null, clipSelected: boolean, catalog: Catalog): Mode {
-  if (lane) return lane.kind === 'impact' ? 'impact' : 'track';
+  if (lane) return lane.kind === 'impact' ? 'impact' : lane.kind === 'cutout' ? 'cutout' : 'track';
   if (clipSelected) return 'clip';
   if (catalog === 'impacts') return 'impacts';
   if (catalog === 'elements') return 'elements';
@@ -380,6 +428,6 @@ function toolbarLabel(mode: Mode, lane: Lane | null) {
   if (mode === 'catalog') return 'Effects';
   if (mode === 'impacts') return 'Impacts';
   if (mode === 'elements') return 'Elements';
-  if (mode === 'clip') return 'Clip tools';
+  if (mode === 'clip') return 'Footage';
   return lane ? `${lane.name} tools` : 'Tools';
 }

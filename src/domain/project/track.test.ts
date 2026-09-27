@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_STRAND } from '../effects/strands';
 import type { ClipFrame, Shape } from '../tracking/types';
 import {
   hitFrame,
@@ -30,6 +31,7 @@ const FX = {
   textStyle: 'behind',
   font: 'anton',
   water: 'rain',
+  strand: DEFAULT_STRAND,
 } as const;
 // 10 frames at 10 fps
 const clip: ClipFrame[] = Array.from({ length: 10 }, (_, i) => ({ t: i / 10, dur: 0.1 }));

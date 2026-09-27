@@ -5,16 +5,30 @@
 // - an impact goes off at one moment (its start), at a spot tapped in the scene; nothing is
 //   tracked. It starts as long as its style's burst; stretching it plays the burst slower,
 //   squeezing it faster.
+// - a path (an effect of type path): a strand anchored on the object tapped, or drawn freehand
+//   (then pinned to the scene like a spot effect), its far end optionally held (see PathAnchor)
+// - a cutout: an object rotoscoped out of the footage into a layer of its own (see cutout.ts). Its
+//   object is tracked like an effect's over its range (the frames it's cut from); the layer can then
+//   be placed at another time, and moved about.
 // Clips can overlap, stacked on the timeline. Each keeps one shape per clip frame and the
 // keyframes it was tracked from.
 import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
 import type { Aim } from '../effects/laser';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
-import type { ClipFrame, Shape, TrackFrame } from '../tracking/types';
+import { frameIndexAt, type ClipFrame, type Shape, type TrackFrame } from '../tracking/types';
+import { placedRange, sourceTime, transformAt, type Background, type Cutout } from './cutout';
 import { inSpan, type FrameSpan, type Key } from './keyframes';
 
-export type TrackKind = 'effect' | 'impact';
+export type TrackKind = 'effect' | 'impact' | 'cutout';
+
+// where a path is anchored besides its object: drawn freehand at frame i (work pixels; its first
+// point is the anchor, and it stays put in the scene), and where its far end is held: on another
+// clip's object (tapped at frame i), or a spot in the scene
+export interface PathAnchor {
+  drawn: { i: number; pts: { x: number; y: number }[] } | null;
+  end: { i: number; x: number; y: number; clip: number | null } | null;
+}
 
 export interface Track {
   id: number;
@@ -26,7 +40,9 @@ export interface Track {
   fx: FxSettings; // look: effect type, colors, size, intensity (impacts use the colors and size)
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
-  range: { s: number; e: number }; // seconds; for an impact, s is the moment of the hit
+  cutout: Cutout | null; // for cutouts: where the layer is placed, and how
+  path: PathAnchor | null; // for paths: drawn, and where the far end is held
+  range: { s: number; e: number }; // seconds; for an impact, s is the moment of the hit; for a cutout, the frames it's cut from
   shapes: (Shape | null)[]; // per clip frame
   frames: TrackFrame[]; // what gets drawn: the shapes in the tracked frames
   keys: Key[]; // in frame order
@@ -54,7 +70,11 @@ const FAMILY_NAMES = {
   water: 'Splash',
 } as const;
 const kindName = (kind: TrackKind, impact: ImpactStyle | null) =>
-  kind === 'effect' ? 'Object' : FAMILY_NAMES[impact ? familyOf(impact) : 'hit'];
+  kind === 'effect'
+    ? 'Object'
+    : kind === 'cutout'
+      ? 'Cutout'
+      : FAMILY_NAMES[impact ? familyOf(impact) : 'hit'];
 
 // an impact, or an effect from a spot: pinned to the scene rather than following an object, so
 // never tracked
@@ -79,6 +99,8 @@ function make(
     fx: { ...fx },
     aim: { h: 90, v: 0, target: null },
     impact,
+    cutout: null,
+    path: null,
     range,
     shapes: new Array(clip.length).fill(null),
     frames: [],
@@ -98,6 +120,7 @@ export const newTrack = (
 
 // what a spot effect is called, if not Spot
 const SPOT_NAMES: Partial<Record<FxSettings['effect'], string>> = {
+  path: 'Path',
   glitch: 'Glitch',
   text: 'Text',
   water: 'Water',
@@ -121,6 +144,20 @@ export function newImpact(
   duration: number,
 ) {
   return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style, null);
+}
+
+// a new cutout of the object tapped at frame i, cut from `range`; the layer starts where it was
+// cut from
+export function newCutoutTrack(
+  id: number,
+  clip: ClipFrame[],
+  fx: FxSettings,
+  range: { s: number; e: number },
+  cutout: Cutout,
+) {
+  const t = make(id, 'cutout', clip, fx, range, null, null);
+  t.cutout = cutout;
+  return t;
 }
 
 const impactRange = (clip: ClipFrame[], i: number, style: ImpactStyle, duration: number) => ({
@@ -226,14 +263,50 @@ export function swapFrom(a: Track, b: Track, i: number, clip: ClipFrame[]) {
   refreshFrames(b, clip);
 }
 
-// the clip whose object's box contains (x, y) at frame i, while that clip is on
+// the clip whose object's box contains (x, y) at frame i, while that clip is on (a cutout's
+// object is looked for where the layer is placed; see cutoutAt)
 export const trackAt = (tracks: readonly Track[], clip: ClipFrame[], i: number, x: number, y: number) =>
   tracks.find(t => {
     const s = t.frames[i]?.shapes[0];
     return (
-      !!s && inSpan(rangeFrames(t, clip), i) && Math.abs(x - s.cx) < s.w / 2 && Math.abs(y - s.cy) < s.h / 2
+      t.kind !== 'cutout' &&
+      !!s &&
+      inSpan(rangeFrames(t, clip), i) &&
+      Math.abs(x - s.cx) < s.w / 2 &&
+      Math.abs(y - s.cy) < s.h / 2
     );
   }) ?? null;
+
+// the cutout frame j shows at frame i (the source frame, where the layer is placed at another
+// time), or -1 if the layer isn't showing then
+export function cutoutSource(t: Track, clip: ClipFrame[], i: number) {
+  const c = t.cutout,
+    f = clip[i];
+  if (!c || !f) return -1;
+  const p = placedRange(t.range, c);
+  if (f.t < p.s - 1e-6 || f.t >= p.e - 1e-6) return -1;
+  const j = frameIndexAt(clip, sourceTime(t.range, c, f.t));
+  return j >= 0 && inSpan(rangeFrames(t, clip), j) ? j : -1;
+}
+
+// the top cutout whose object, as placed (moved, scaled and turned), is under (x, y) at frame i
+export function cutoutAt(tracks: readonly Track[], clip: ClipFrame[], i: number, x: number, y: number) {
+  for (let n = tracks.length - 1; n >= 0; n--) {
+    const t = tracks[n],
+      j = cutoutSource(t, clip, i),
+      s = j >= 0 ? t.frames[j].shapes[0] : null;
+    if (!s || !t.cutout) continue;
+    const tf = transformAt(t.cutout, clip[i].t - t.cutout.at);
+    // the point in the object's own box: undo the move, the turn and the scale
+    const a = (-tf.rot * Math.PI) / 180,
+      dx = x - (s.cx + tf.x),
+      dy = y - (s.cy + tf.y);
+    const u = (dx * Math.cos(a) - dy * Math.sin(a)) / tf.scale,
+      v = (dx * Math.sin(a) + dy * Math.cos(a)) / tf.scale;
+    if (Math.abs(u) < s.w / 2 && Math.abs(v) < s.h / 2) return t;
+  }
+  return null;
+}
 
 // ---------- timeline view ----------
 // a stretch where the object was found; weak = the tracker was searching
@@ -253,10 +326,14 @@ export interface Lane {
   impact: ImpactStyle | null;
   aim: Aim;
   speed: number; // impacts: how fast the burst plays (1 = its style's own timing)
-  range: { s: number; e: number };
-  row: number; // which timeline row it sits on
+  range: { s: number; e: number }; // when it shows (a cutout: where it's placed)
+  row: number; // which timeline row it sits on (cutouts have rows of their own)
   spans: Span[]; // inside the range
   keys: number[]; // keyframe times inside the range
+  // a cutout's: where it's cut from (seconds), what's left there, and its transform keyframes' times
+  cutout: { from: number; bg: Background; moves: number[] } | null;
+  // a path's: whether it was drawn, and whether its far end is held
+  path: { drawn: boolean; end: boolean } | null;
 }
 
 // stacks clips into as few rows as possible, like a video editor's tracks: each goes on the
@@ -280,6 +357,9 @@ export function packRows(ranges: readonly { s: number; e: number }[]) {
 export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
   const range = rangeFrames(t, clip),
     spans: Span[] = [];
+  // a cutout shows where it's placed: its tracking is shifted there too
+  const c = t.cutout,
+    shift = c ? c.at - t.range.s : 0;
   for (let i = range.s; i < range.e; i++) {
     const sh = t.frames[i].shapes[0];
     if (!sh) continue;
@@ -288,6 +368,10 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
       last = spans[spans.length - 1];
     if (last && last.weak === weak && f.t - last.e < f.dur * 1.5) last.e = Math.min(t.range.e, f.t + f.dur);
     else spans.push({ s: f.t, e: Math.min(t.range.e, f.t + f.dur), weak });
+  }
+  for (const sp of spans) {
+    sp.s += shift;
+    sp.e += shift;
   }
   return {
     id: t.id,
@@ -299,9 +383,11 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     impact: t.impact,
     aim: t.aim,
     speed: impactSpeed(t),
-    range: t.range,
+    range: c ? placedRange(t.range, c) : t.range,
     row,
     spans,
-    keys: t.keys.filter(k => inSpan(range, k.i)).map(k => clip[k.i].t),
+    keys: t.keys.filter(k => inSpan(range, k.i)).map(k => clip[k.i].t + shift),
+    cutout: c && { from: t.range.s, bg: c.bg, moves: c.keys.map(k => c.at + k.t) },
+    path: t.fx.effect === 'path' ? { drawn: !!t.path?.drawn, end: !!t.path?.end } : null,
   };
 }

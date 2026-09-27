@@ -1,4 +1,4 @@
-// The video clip's rows: its filmstrip, and its own sound.
+// The video clip's rows: its filmstrip (a film per scene, once split), and its own sound.
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Icon, I } from '../icons';
 import type { MakeThumbs, UiState } from '../player';
@@ -24,8 +24,8 @@ export function VideoRow({
 }: {
   ui: UiState;
   scale: Scale;
-  selected: boolean;
-  onSelect(): void;
+  selected: number | null; // the film (scene) selected
+  onSelect(scene: number): void;
   onChooseFile(): void;
   makeThumbs: MakeThumbs;
 }) {
@@ -44,27 +44,33 @@ export function VideoRow({
       </div>
     );
   }
+  const scenes = ui.scenes.length ? ui.scenes : [{ s: 0, e: dur }];
   return (
     <div className="tl-row">
-      <button
-        type="button"
-        className={`lane clip${selected ? ' sel' : ''}`}
-        style={{ width: x(dur), height: THUMB_H }}
-        aria-pressed={selected}
-        aria-label="Video clip"
-        onClick={stop(onSelect)}
-      >
-        {thumbs.map(
-          (url, i) =>
-            url && (
-              <span
-                key={i}
-                className="thumb"
-                style={{ left: x(i * step), width: x(step), backgroundImage: `url(${url})` }}
-              />
-            ),
-        )}
-      </button>
+      {scenes.map((sc, k) => (
+        <button
+          key={k}
+          type="button"
+          className={`lane clip${selected === k ? ' sel' : ''}${scenes.length > 1 ? ' scene' : ''}`}
+          style={{ left: x(sc.s), width: x(sc.e - sc.s), height: THUMB_H }}
+          aria-pressed={selected === k}
+          aria-label={scenes.length > 1 ? `Film ${k + 1} of ${scenes.length}` : 'Video clip'}
+          onClick={stop(() => onSelect(k))}
+        >
+          {thumbs.map(
+            (url, i) =>
+              url &&
+              (i + 1) * step > sc.s &&
+              i * step < sc.e && (
+                <span
+                  key={i}
+                  className="thumb"
+                  style={{ left: x(i * step - sc.s), width: x(step), backgroundImage: `url(${url})` }}
+                />
+              ),
+          )}
+        </button>
+      ))}
       <button
         type="button"
         className="add-end"

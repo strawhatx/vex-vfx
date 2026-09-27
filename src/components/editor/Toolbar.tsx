@@ -21,7 +21,12 @@ export type ToolKey =
   | 'swap'
   | 'delete'
   | 'hithere'
-  | 'mute';
+  | 'mute'
+  | 'split'
+  | 'cutout'
+  | 'movekey'
+  | 'place'
+  | 'attach';
 export interface ToolBtn {
   key: ToolKey;
   label: string;
@@ -29,9 +34,9 @@ export interface ToolBtn {
   on?: boolean;
   disabled?: boolean;
 }
-// what the toolbar lists: the effect categories, the elements, the impact families, the clip's
-// tools, a selected effect or impact's tools
-export type Mode = 'catalog' | 'elements' | 'impacts' | 'clip' | 'track' | 'impact' | null;
+// what the toolbar lists: the effect categories, the elements, the impact families, the footage
+// tools (the film selected), a selected effect, impact or cutout's tools
+export type Mode = 'catalog' | 'elements' | 'impacts' | 'clip' | 'track' | 'impact' | 'cutout' | null;
 
 // the Elements menu
 export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
@@ -48,6 +53,7 @@ export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'outline', label: 'Outline', icon: I.outline },
   { id: 'glitch', label: 'Glitch', icon: I.glitch },
   { id: 'text', label: 'Text', icon: I.text },
+  { id: 'path', label: 'Path', icon: I.path },
 ];
 
 // the Impact menu: one button per family
@@ -79,6 +85,9 @@ export function toolsFor(
     words: boolean; // the selected effect is Text: its words can be changed
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
+    moveKey: boolean; // the selected cutout has a transform keyframe at the playhead
+    path: boolean; // the selected effect is a path
+    pathEnd: boolean; // its far end is held
   },
 ): ToolBtn[] {
   const sheet = (t: Tool, label: string, icon: string): ToolBtn => ({
@@ -103,8 +112,11 @@ export function toolsFor(
     ];
   if (mode === 'elements') return ELEMENT_CATEGORIES.map(category);
   if (mode === 'impacts') return IMPACT_CATEGORIES.map(category);
+  // the footage: split the film, cut objects out of it, and the clip's own settings
   if (mode === 'clip')
     return [
+      { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
+      { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
       {
         key: 'mute',
         label: s.muted ? 'Unmute' : 'Mute',
@@ -142,6 +154,47 @@ export function toolsFor(
       },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
+  if (mode === 'cutout')
+    return [
+      sheet('transform', 'Transform', I.move),
+      {
+        key: 'movekey',
+        label: s.moveKey ? 'Remove key' : 'Keyframe',
+        icon: I.key,
+        on: s.moveKey,
+        disabled: s.busy,
+      },
+      sheet('background', 'Background', I.scene),
+      { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
+      { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
+      { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
+      { key: 'unfix', label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
+      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
+    ];
+  if (mode === 'track' && s.path)
+    return [
+      sheet('form', 'Form', I.path),
+      sheet('finish', 'Look', I.effects),
+      sheet('color', 'Color', I.color),
+      sheet('shape', 'Shape', I.adjust),
+      {
+        key: 'attach',
+        label: s.pathEnd ? 'Free end' : 'Attach end',
+        icon: I.attach,
+        on: s.pathEnd,
+        disabled: s.busy,
+      },
+      { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
+      { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
+      ...(s.pinned
+        ? []
+        : [
+            { key: 'unfix' as const, label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
+            { key: 'swap' as const, label: 'Swap', icon: I.cross, disabled: s.busy || s.objects < 2 },
+          ]),
+      sheet('effects', 'Effect', I.effects),
+      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
+    ];
   if (mode === 'track')
     return [
       sheet('effects', 'Effect', I.effects),
@@ -162,7 +215,7 @@ export function toolsFor(
     ];
   return [
     { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
-    { key: 'edit', label: 'Edit', icon: I.edit },
+    { key: 'edit', label: 'Footage', icon: I.film },
   ];
 }
 

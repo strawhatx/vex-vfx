@@ -18,7 +18,8 @@ export function drawOutline(
   if (!frames[idx].shapes.length) return;
   // an Outline, Glitch or Text shows its object itself, and a spot effect shows its crosshair
   const fx = l.spec.settings.effect;
-  if (fx === 'outline' || fx === 'glitch' || fx === 'text' || fx === 'water' || l.spec.pinned) return;
+  const showsItself = fx === 'outline' || fx === 'glitch' || fx === 'text' || fx === 'water';
+  if ((showsItself && l.spec.kind !== 'cutout') || l.spec.pinned) return;
   const ctx = v.ctx;
   const o = l.geo.outline(frames, idx);
   const col = o.lost ? LOST : l.spec.color;

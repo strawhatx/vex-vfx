@@ -2,6 +2,7 @@
 // its particle simulation. The simulation is rebuilt from track data, so any frame comes out the
 // same in any order; playing forward just steps it along.
 import type { LayerSpec } from '@/application/ports';
+import type { StrandFrame } from '@/domain/effects/strands';
 import { FrameGeometry } from './geometry';
 import { EffectSim, MAX_LIFE, type FxFrame } from './sim';
 
@@ -28,7 +29,11 @@ export class Layer {
   invalidate() {
     this.geo.clear();
     this.dirty = true;
+    this.strand = null;
   }
+
+  // a path's strand at each frame of its range, worked out when first drawn (see strandLayer.ts)
+  strand: { key: string; from: number; frames: StrandFrame[] } | null = null;
 
   // whether it draws at clip time t: nothing at all outside its range, not even flames still dying down
   isOn(t: number, clipLength: number) {
@@ -36,8 +41,14 @@ export class Layer {
     return frames.length === clipLength && t >= range.s - 1e-6 && t < range.e - 1e-6;
   }
 
-  // steps the simulation to frame idx
-  advanceTo(idx: number, shot: Int32Array) {
+  // steps the simulation to frame idx. A path drives it with its own frames (what's along the
+  // strand) and settings (its look's effect).
+  advanceTo(
+    idx: number,
+    shot: Int32Array,
+    frameAt = (i: number) => this.fxFrame(i, shot),
+    settings = this.spec.settings,
+  ) {
     const frames = this.spec.frames;
     const shotStart = shot[idx] ?? 0;
     const canContinue =
@@ -54,7 +65,7 @@ export class Layer {
       j = idx;
       while (j > shotStart && frames[j - 1].t >= frames[idx].t - MAX_LIFE) j--;
     }
-    for (; j <= idx; j++) this.sim.step(this.fxFrame(j, shot), this.spec.settings);
+    for (; j <= idx; j++) this.sim.step(frameAt(j), settings);
     this.simIdx = idx;
     this.dirty = false;
   }
