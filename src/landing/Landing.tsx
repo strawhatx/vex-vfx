@@ -3,22 +3,42 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ACCENT, startEffects, type FxName } from "./effects";
 
-const HERO_FX: { fx: FxName; label: string }[] = [
-  { fx: "fire", label: "Fire" },
-  { fx: "lightning", label: "Lightning" },
-  { fx: "aura", label: "Aura" },
+// the hero's switch, and the words the headline says for each
+const HERO_FX: { fx: FxName; label: string; put: string }[] = [
+  { fx: "fire", label: "Fire", put: "Put fire" },
+  { fx: "lightning", label: "Lightning", put: "Put lightning" },
+  { fx: "aura", label: "Aura", put: "Put an aura" },
+  { fx: "sparks", label: "Sparks", put: "Put sparks" },
 ];
 
-const CARDS: { fx: FxName; title: string; soon?: boolean }[] = [
-  { fx: "fire", title: "Fire" },
-  { fx: "lightning", title: "Lightning" },
-  { fx: "aura", title: "Aura" },
-  { fx: "sparks", title: "Sparks" },
-  { fx: "neon", title: "Neon outline", soon: true },
-  { fx: "trail", title: "Motion trail", soon: true },
+const CARDS: { fx: FxName; title: string; tag: string; soon?: boolean }[] = [
+  { fx: "fire", title: "Fire", tag: "Element" },
+  { fx: "lightning", title: "Lightning", tag: "Element" },
+  { fx: "aura", title: "Aura", tag: "Element" },
+  { fx: "rain", title: "Rain", tag: "Water" },
+  { fx: "underwater", title: "Underwater", tag: "Water" },
+  { fx: "splash", title: "Splash", tag: "Impact" },
+  { fx: "hit", title: "Hits & shockwaves", tag: "Impact" },
+  { fx: "explosion", title: "Explosions", tag: "Impact" },
+  { fx: "pow", title: "POW! BOOM! K.O.", tag: "Impact" },
+  { fx: "neon", title: "Neon outline", tag: "Outline" },
+  { fx: "glitch", title: "Glitch", tag: "Glitch" },
+  { fx: "behind", title: "Text behind you", tag: "Text" },
+  { fx: "sparks", title: "Sparks", tag: "Particles" },
+  { fx: "trail", title: "Motion trail", tag: "Coming later", soon: true },
+  { fx: "waterfall", title: "Waterfall", tag: "Coming later", soon: true },
 ];
 
-const MARQUEE = ["Fire", "Lightning", "Aura", "Sparks", "Neon", "Trails", "One tap", "No After Effects"];
+const FEATURES: { title: string; text: string }[] = [
+  { title: "Follows a body part", text: "Tap a person and pick the head, eyes, a hand, a foot or the whole body. The effect stays on it, frame by frame." },
+  { title: "Or stays put", text: "Explosions, splashes, titles and rain pin to a spot in the scene, or cover the whole frame, and stay there as the camera moves." },
+  { title: "Impacts on the moment", text: "Hits, shockwaves and comic words land on one frame with a camera jolt and a flash. Stretch one out for slow motion." },
+  { title: "Text that knows where you are", text: "Big words behind you, labels that follow a player, titles that slam in. In bold, free-to-use fonts." },
+  { title: "Sound built in", text: "Every effect and hit comes with its own sound, mixed under your clip. Turn each one up, down or off." },
+  { title: "Stays on your phone", text: "Your clips are tracked and exported right in the browser. They never get uploaded anywhere." },
+];
+
+const MARQUEE = ["Fire", "Lightning", "Aura", "Water", "Glitch", "Neon", "Text behind you", "Explosions", "Shockwaves", "POW!", "One tap", "No After Effects"];
 const NOTE = "Free to start. One email when it opens. No spam.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,13 +83,13 @@ export default function Landing() {
         <span className="hint">Move your cursor · it follows you</span>
         <div className="wrap hero-inner">
           <h1>
-            <span>Put fire</span>
+            <span>{HERO_FX.find((h) => h.fx === effect)?.put ?? "Put fire"}</span>
             <span className="outline">on anything.</span>
           </h1>
           <div className="hero-row">
             <p>
-              Tap a hand, a body, a car. Pick an effect. It tracks the whole clip for you. No keyframes. No
-              masking. No After Effects.
+              Tap a hand, a body, a car. Pick fire, lightning, rain, a glitch, an explosion or words behind you. It
+              tracks the whole clip for you. No keyframes. No masking. No After Effects.
             </p>
             <div className="switch" role="group" aria-label="Try an effect">
               {HERO_FX.map(({ fx, label }) => (
@@ -111,16 +131,16 @@ export default function Landing() {
             </li>
             <li>
               <span className="n">02</span>
-              <h3>Tap what should burn</h3>
+              <h3>Tap where it goes</h3>
               <p>
-                Tap a hand, a person or an object. Flarecut traces its outline and follows it through every frame, even
-                as it moves and turns.
+                Tap a hand, a person, an object, or just a spot in the scene. Flarecut traces the outline and follows it
+                through every frame, even as it moves and turns.
               </p>
             </li>
             <li>
               <span className="n">03</span>
               <h3>Pick it. Post it.</h3>
-              <p>Choose an effect, dial in color, size and intensity, and export a clip that&apos;s ready for TikTok and Reels.</p>
+              <p>Choose an effect, dial in color, size and intensity, and export a clip with sound that&apos;s ready for TikTok and Reels.</p>
             </li>
           </ol>
 
@@ -134,7 +154,7 @@ export default function Landing() {
                 <li><s>Mask everything that passes in front</s></li>
                 <li><s>Tweak until it blends</s></li>
               </ol>
-              <p className="foot">30 minutes to hours. Per shot.</p>
+              <p className="foot">from hours to days. Per shot.</p>
             </div>
             <div className="new">
               <span className="tag">Flarecut</span>
@@ -153,15 +173,38 @@ export default function Landing() {
         <div className="wrap">
           <p className="eyebrow">Effects</p>
           <h2>They stick to the action.</h2>
+          <p className="lede">
+            Elements that follow a body part. Impacts that land on the moment. Outlines, glitches and text that know
+            where you are.
+          </p>
           <div className="fx-grid" ref={cardsRef}>
-            {CARDS.map(({ fx, title, soon }) => (
+            {CARDS.map(({ fx, title, tag, soon }) => (
               <div key={fx} className={soon ? "fx-card soon" : "fx-card"}>
                 <canvas data-card={fx} />
                 <h3>{title}</h3>
-                <span>{soon ? "Coming later" : "At launch"}</span>
+                <span>{tag}</span>
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="block" id="more" style={{ paddingTop: 0 }}>
+        <div className="wrap">
+          <p className="eyebrow">Not just effects</p>
+          <h2>
+            Made for the edit,
+            <br />
+            not the effect.
+          </h2>
+          <ul className="feats">
+            {FEATURES.map(({ title, text }) => (
+              <li key={title}>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 

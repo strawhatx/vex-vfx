@@ -17,10 +17,10 @@ const grotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Flarecut: put fire on anything",
   description:
-    "Tap a hand, a body, a car. Pick fire, lightning or an aura. It follows the whole clip. Join the waitlist.",
+    "Tap a hand, a body, a car. Pick fire, lightning, water, glitches, explosions or text behind you. It follows the whole clip. Join the waitlist.",
   openGraph: {
     title: "Flarecut: put fire on anything",
-    description: "VFX for your videos in one tap. Join the waitlist.",
+    description: "Fire, lightning, water, glitches, impacts and text for your videos, in one tap. Join the waitlist.",
   },
 };
 
