@@ -38,7 +38,8 @@ src/
 7. Don't add a port or layer without a real outside dependency behind it; pure helpers are just functions.
 
 ## Before you finish
-- `npm test`, `npx tsc --noEmit` and `npx eslint .` pass.
+- `npm test`, `npx tsc --noEmit` and `npx eslint .` pass, and `npm run format` has been run (Prettier).
+- Keep files to one job each; split a file when it starts doing several.
 - `domain/` and `application/` have no imports from `infrastructure/`, `components/`, React or Next.js.
 - A changed rule or use case has a test.
 

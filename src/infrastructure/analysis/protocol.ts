@@ -6,14 +6,31 @@ import type { ClipFrame, Selection, Shape, TrackMeta } from '@/domain/tracking/t
 // playerLength: how much of the clip the page's video player can play, from its first frame
 export type ScanRequest = { type: 'scan'; jobId: number; clipId: number; file: Blob; playerLength: number };
 // times: the frames to cover, in order; key: index in times of the frame the object was tapped
-// on. Tracks forward from the key to the end of times, then backward to the start. pin: also follow
-// the tapped spot itself (for impacts); part: follow that body part of the person tapped instead of
-// the object under the tap
-export type TrackRequest = { type: 'track'; jobId: number; clipId: number; file: Blob; times: number[]; key: number; select: Selection; pin?: boolean; part?: BodyPart };
+// on. Tracks forward from the key to the end of times, then backward to the start. part: follow that
+// body part of the person tapped instead of the object under the tap
+export type TrackRequest = {
+  type: 'track';
+  jobId: number;
+  clipId: number;
+  file: Blob;
+  times: number[];
+  key: number;
+  select: Selection;
+  part?: BodyPart;
+};
+// times: every frame of the clip, in order
+export type CameraRequest = { type: 'camera'; jobId: number; clipId: number; file: Blob; times: number[] };
 // t: the frame's time; at: where it was tapped
-export type ProbeRequest = { type: 'probe'; jobId: number; clipId: number; file: Blob; t: number; at: Selection };
+export type ProbeRequest = {
+  type: 'probe';
+  jobId: number;
+  clipId: number;
+  file: Blob;
+  t: number;
+  at: Selection;
+};
 // clipId: the same for every job on the same file, so the worker can keep it open between jobs
-export type JobRequest = ScanRequest | TrackRequest | ProbeRequest;
+export type JobRequest = ScanRequest | TrackRequest | ProbeRequest | CameraRequest;
 export type WorkerRequest = JobRequest | { type: 'cancel' };
 
 export type WorkerMessage =
@@ -23,5 +40,7 @@ export type WorkerMessage =
   | { type: 'shapes'; jobId: number; shapes: { i: number; shape: Shape }[] }
   // the body part nearest the tap, or null when it wasn't on a person
   | { type: 'probed'; jobId: number; part: BodyPart | null }
+  // the camera path for frames i of the request's times (see domain/effects/laser Cam)
+  | { type: 'camera'; jobId: number; path: { i: number; s: number; tx: number; ty: number }[] }
   | { type: 'done'; jobId: number }
   | { type: 'error'; jobId: number; message: string };

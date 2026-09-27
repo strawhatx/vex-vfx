@@ -10,7 +10,9 @@ import type { Effect } from '@/domain/effects/palettes';
 import { effectLoop, impactHit, LOOP_S } from './synth';
 
 // effect loops sit under the clip's own sound; hits cut through
-const LOOP_LEVEL = 0.8, HIT_LEVEL = 1.2, FADE_S = 0.04;
+const LOOP_LEVEL = 0.8,
+  HIT_LEVEL = 1.2,
+  FADE_S = 0.04;
 
 type Voice = { effect: Effect; src: AudioBufferSourceNode; gain: GainNode };
 
@@ -30,16 +32,27 @@ export class Mixer {
   // sets up the mix (the first time) and wakes it; call from a tap or click
   start() {
     if (!this.ctx) {
-      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const Ctx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctx) return;
       // on iPhones, play like a video (even with the ring switch on silent), not like a notification
       const nav = navigator as Navigator & { audioSession?: { type: string } };
-      if (nav.audioSession) try { nav.audioSession.type = 'playback'; } catch { /* not supported */ }
-      const ctx = this.ctx = new Ctx();
+      if (nav.audioSession)
+        try {
+          nav.audioSession.type = 'playback';
+        } catch {
+          /* not supported */
+        }
+      const ctx = (this.ctx = new Ctx());
       this.master = ctx.createGain();
       // a limiter, so effects on top of a loud clip don't distort
       const limit = ctx.createDynamicsCompressor();
-      limit.threshold.value = -6; limit.knee.value = 6; limit.ratio.value = 12; limit.attack.value = 0.003; limit.release.value = 0.15;
+      limit.threshold.value = -6;
+      limit.knee.value = 6;
+      limit.ratio.value = 12;
+      limit.attack.value = 0.003;
+      limit.release.value = 0.15;
       this.out = ctx.createMediaStreamDestination();
       this.master.connect(limit);
       limit.connect(ctx.destination);
@@ -54,9 +67,13 @@ export class Mixer {
   }
 
   // the mixed sound, for recording
-  get track(): MediaStreamTrack | null { return this.out?.stream.getAudioTracks()[0] ?? null; }
+  get track(): MediaStreamTrack | null {
+    return this.out?.stream.getAudioTracks()[0] ?? null;
+  }
 
-  setClips(clips: SoundClip[]) { this.clips = clips; }
+  setClips(clips: SoundClip[]) {
+    this.clips = clips;
+  }
 
   // the clip's own sound: 0 = muted, 1 = as recorded
   setOriginal(level: number) {
@@ -68,7 +85,8 @@ export class Mixer {
   // called for every frame shown, with its clip time: effect loops follow what's on screen, and
   // hits sound as playback passes them
   tick(t: number, playing: boolean) {
-    const ctx = this.ctx, prev = this.lastT;
+    const ctx = this.ctx,
+      prev = this.lastT;
     this.lastT = t;
     if (!ctx || !this.master) return;
     if (playing && prev !== null) for (const c of hitsBetween(this.clips, prev, t)) this.hit(c);
@@ -76,14 +94,18 @@ export class Mixer {
     for (const c of this.clips) {
       if (c.kind !== 'effect') continue;
       let v = this.voices.get(c.id);
-      if (v && v.effect !== c.effect) { this.stopVoice(c.id); v = undefined; }
+      if (v && v.effect !== c.effect) {
+        this.stopVoice(c.id);
+        v = undefined;
+      }
       const sounding = on.get(c.id);
       if (!v && !sounding) continue;
       v ??= this.startVoice(c);
       v.gain.gain.setTargetAtTime(sounding ? sounding.volume * LOOP_LEVEL : 0, ctx.currentTime, FADE_S);
     }
     // clips that were deleted
-    for (const id of this.voices.keys()) if (!this.clips.some(c => c.id === id && c.kind === 'effect')) this.stopVoice(id);
+    for (const id of this.voices.keys())
+      if (!this.clips.some(c => c.id === id && c.kind === 'effect')) this.stopVoice(id);
   }
 
   destroy() {
@@ -104,7 +126,9 @@ export class Mixer {
   }
 
   private startVoice(c: SoundClip): Voice {
-    const ctx = this.ctx!, src = ctx.createBufferSource(), gain = ctx.createGain();
+    const ctx = this.ctx!,
+      src = ctx.createBufferSource(),
+      gain = ctx.createGain();
     src.buffer = this.buffer(`loop:${c.effect}`, sr => effectLoop(c.effect, sr));
     src.loop = true;
     gain.gain.value = 0;
@@ -127,8 +151,10 @@ export class Mixer {
 
   private hit(c: SoundClip) {
     if (!c.impact) return;
-    const ctx = this.ctx!, speed = Math.round(c.speed * 20) / 20;
-    const src = ctx.createBufferSource(), gain = ctx.createGain();
+    const ctx = this.ctx!,
+      speed = Math.round(c.speed * 20) / 20;
+    const src = ctx.createBufferSource(),
+      gain = ctx.createGain();
     src.buffer = this.buffer(`hit:${c.impact}:${speed}`, sr => impactHit(c.impact!, speed, sr));
     gain.gain.value = c.volume * HIT_LEVEL;
     src.connect(gain).connect(this.master!);

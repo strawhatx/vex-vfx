@@ -14,33 +14,72 @@ export class AnalysisClient implements Analysis {
   private clipIds = new WeakMap<Blob, number>();
   private nextClipId = 1;
 
-  scan: Analysis['scan'] = (file, playerLength, on) => this.start({ type: 'scan', clipId: this.clipId(file), file, playerLength }, {
-    progress: m => on.progress(m.done, m.total), scanned: m => on.scanned(m.meta, m.frames), done: on.done, error: m => on.error(m.message),
-  });
+  scan: Analysis['scan'] = (file, playerLength, on) =>
+    this.start(
+      { type: 'scan', clipId: this.clipId(file), file, playerLength },
+      {
+        progress: m => on.progress(m.done, m.total),
+        scanned: m => on.scanned(m.meta, m.frames),
+        done: on.done,
+        error: m => on.error(m.message),
+      },
+    );
 
-  track: Analysis['track'] = (file, req, on) => this.start({ type: 'track', clipId: this.clipId(file), file, ...req }, {
-    progress: m => on.progress(m.done, m.total), shapes: m => on.shapes(m.shapes), done: on.done, error: m => on.error(m.message),
-  });
+  track: Analysis['track'] = (file, req, on) =>
+    this.start(
+      { type: 'track', clipId: this.clipId(file), file, ...req },
+      {
+        progress: m => on.progress(m.done, m.total),
+        shapes: m => on.shapes(m.shapes),
+        done: on.done,
+        error: m => on.error(m.message),
+      },
+    );
 
-  probe: Analysis['probe'] = (file, req, on) => this.start({ type: 'probe', clipId: this.clipId(file), file, ...req }, {
-    probed: m => on.probed(m.part), done: on.done, error: m => on.error(m.message),
-  });
+  probe: Analysis['probe'] = (file, req, on) =>
+    this.start(
+      { type: 'probe', clipId: this.clipId(file), file, ...req },
+      {
+        probed: m => on.probed(m.part),
+        done: on.done,
+        error: m => on.error(m.message),
+      },
+    );
+
+  camera: Analysis['camera'] = (file, times, on) =>
+    this.start(
+      { type: 'camera', clipId: this.clipId(file), file, times },
+      {
+        progress: m => on.progress(m.done, m.total),
+        camera: m => on.path(m.path),
+        done: on.done,
+        error: m => on.error(m.message),
+      },
+    );
 
   cancel() {
-    this.handlers = null; this.jobId++;
+    this.handlers = null;
+    this.jobId++;
     this.worker?.postMessage({ type: 'cancel' });
   }
 
-  terminate() { this.handlers = null; this.worker?.terminate(); this.worker = null; }
+  terminate() {
+    this.handlers = null;
+    this.worker?.terminate();
+    this.worker = null;
+  }
 
   private clipId(file: Blob) {
     let id = this.clipIds.get(file);
-    if (id === undefined) { id = this.nextClipId++; this.clipIds.set(file, id); }
+    if (id === undefined) {
+      id = this.nextClipId++;
+      this.clipIds.set(file, id);
+    }
     return id;
   }
 
   private start(req: Job, handlers: Handlers) {
-    const w = this.worker ??= this.spawn();
+    const w = (this.worker ??= this.spawn());
     this.handlers = handlers;
     w.postMessage({ ...req, jobId: ++this.jobId } as JobRequest);
   }
@@ -48,14 +87,16 @@ export class AnalysisClient implements Analysis {
   private spawn() {
     const w = new Worker(new URL('./analysis.worker.ts', import.meta.url), { type: 'module' });
     w.onmessage = (e: MessageEvent<WorkerMessage>) => {
-      const m = e.data, h = this.handlers;
+      const m = e.data,
+        h = this.handlers;
       if (!h || m.jobId !== this.jobId) return; // a cancelled job
       // done and error end the job
       if (m.type === 'done' || m.type === 'error') this.handlers = null;
       (h[m.type] as ((m: WorkerMessage) => void) | undefined)?.(m);
     };
     w.onerror = e => {
-      const h = this.handlers; this.handlers = null;
+      const h = this.handlers;
+      this.handlers = null;
       h?.error?.({ type: 'error', jobId: this.jobId, message: e.message || 'The analysis worker crashed.' });
     };
     return w;

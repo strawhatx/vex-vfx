@@ -7,11 +7,12 @@ import type { Effect } from './palettes';
 export interface SoundClip {
   id: number;
   kind: 'effect' | 'impact';
-  effect: Effect;             // which loop an effect plays
+  effect: Effect; // which loop an effect plays
   impact: ImpactStyle | null; // which hit an impact plays
-  s: number; e: number;       // seconds; an impact hits at s
-  volume: number;             // 0..1.5
-  speed: number;              // impacts: 1 = the style's own timing, 0.5 = half speed (sounds deeper and longer)
+  s: number;
+  e: number; // seconds; an impact hits at s
+  volume: number; // 0..1.5
+  speed: number; // impacts: 1 = the style's own timing, 0.5 = half speed (sounds deeper and longer)
 }
 
 // a jump bigger than this between two moments means a seek, not playback

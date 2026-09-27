@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { toClipTime } from './timeline';
 
-const frames = (first: number, n: number, dur = 0.5) => Array.from({ length: n }, (_, i) => ({ t: first + i * dur, dur }));
+const frames = (first: number, n: number, dur = 0.5) =>
+  Array.from({ length: n }, (_, i) => ({ t: first + i * dur, dur }));
 
 describe('toClipTime', () => {
   it('leaves a file that starts at 0 alone', () => {

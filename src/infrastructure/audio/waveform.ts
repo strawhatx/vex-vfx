@@ -3,6 +3,7 @@
 import { ALL_FORMATS, AudioSampleSink, BlobSource, Input } from 'mediabunny';
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect } from '@/domain/effects/palettes';
+import type { Lane } from '@/domain/project/track';
 import { effectLoop, impactHit } from './synth';
 
 export const WAVE_PER_S = 20;
@@ -11,7 +12,8 @@ const SFX_RATE = 4000; // plenty for drawing, cheap to make
 // peak level per 1/WAVE_PER_S s; scaled so the loudest is 1 unless `raw`
 function peaks(data: Float32Array, sampleRate: number, raw = false) {
   const perSecond = WAVE_PER_S;
-  const step = Math.max(1, Math.floor(sampleRate / perSecond)), out: number[] = [];
+  const step = Math.max(1, Math.floor(sampleRate / perSecond)),
+    out: number[] = [];
   for (let i = 0; i < data.length; i += step) {
     let m = 0;
     for (let k = i; k < Math.min(data.length, i + step); k++) m = Math.max(m, Math.abs(data[k]));
@@ -38,7 +40,9 @@ export async function clipPeaks(file: Blob): Promise<ClipWave> {
       if (!(await track.canDecode())) continue;
       const levels: number[] = [];
       for await (const sample of new AudioSampleSink(track).samples()) {
-        const n = sample.numberOfFrames, buf = new Float32Array(n), rate = sample.sampleRate;
+        const n = sample.numberOfFrames,
+          buf = new Float32Array(n),
+          rate = sample.sampleRate;
         sample.copyTo(buf, { planeIndex: 0, format: 'f32-planar' });
         for (let k = 0; k < n; k += 16) {
           const at = Math.floor((sample.timestamp + k / rate) * WAVE_PER_S);
@@ -48,9 +52,14 @@ export async function clipPeaks(file: Blob): Promise<ClipWave> {
       }
       return scale(Array.from(levels, v => v ?? 0));
     }
-  } catch { /* fall back to the browser's own decoder */ }
+  } catch {
+    /* fall back to the browser's own decoder */
+  }
   try {
-    const Offline = window.OfflineAudioContext ?? (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+    const Offline =
+      window.OfflineAudioContext ??
+      (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
+        .webkitOfflineAudioContext;
     if (!Offline) return 'unreadable';
     const audio = await new Offline(1, 1, 44100).decodeAudioData(await file.arrayBuffer());
     return scale(peaks(audio.getChannelData(0), audio.sampleRate, true));
@@ -66,13 +75,34 @@ function scale(levels: number[]): number[] {
 }
 
 const cache = new Map<string, number[]>();
-const cached = (key: string, make: () => number[]) => { let v = cache.get(key); if (!v) { v = make(); cache.set(key, v); } return v; };
+const cached = (key: string, make: () => number[]) => {
+  let v = cache.get(key);
+  if (!v) {
+    v = make();
+    cache.set(key, v);
+  }
+  return v;
+};
 
 // one run of an effect's loop
-export const loopPeaks = (effect: Effect) => cached(`loop:${effect}`, () => peaks(effectLoop(effect, SFX_RATE), SFX_RATE));
+export const loopPeaks = (effect: Effect) =>
+  cached(`loop:${effect}`, () => peaks(effectLoop(effect, SFX_RATE), SFX_RATE));
 
 // an impact's hit, at its speed
 export const hitPeaks = (style: ImpactStyle, speed: number) => {
   const s = Math.round(speed * 20) / 20;
   return cached(`hit:${style}:${s}`, () => peaks(impactHit(style, s, SFX_RATE), SFX_RATE));
 };
+
+// a clip's sound effect across its length: its loop repeated (an effect), or its hit (an impact),
+// scaled by its volume
+export function laneSound(l: Lane): number[] {
+  const n = Math.max(1, Math.round((l.range.e - l.range.s) * WAVE_PER_S));
+  const vol = Math.min(1, l.fx.volume);
+  if (l.kind === 'impact' && l.impact) {
+    const hit = hitPeaks(l.impact, l.speed);
+    return Array.from({ length: n }, (_, k) => (hit[k] ?? 0) * vol);
+  }
+  const loop = loopPeaks(l.fx.effect);
+  return Array.from({ length: n }, (_, k) => loop[k % loop.length] * vol);
+}

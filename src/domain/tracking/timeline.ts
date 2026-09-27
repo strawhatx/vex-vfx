@@ -11,12 +11,15 @@ export const clipShift = (firstT: number) => Math.max(0, firstT);
 // the frames the player can show, in clip time; `kept` maps them back to the input's indices.
 // length: how long the player says the clip is (0 = unknown, keep everything)
 export function toClipTime(frames: ClipFrame[], length: number) {
-  const shift = frames.length ? clipShift(frames[0].t) : 0, out: ClipFrame[] = [], kept: number[] = [];
+  const shift = frames.length ? clipShift(frames[0].t) : 0,
+    out: ClipFrame[] = [],
+    kept: number[] = [];
   frames.forEach((f, i) => {
     const t = f.t - shift;
-    if (t + f.dur <= 1e-3) return;              // lead-in the player never shows
+    if (t + f.dur <= 1e-3) return; // lead-in the player never shows
     if (length > 0 && t >= length - 1e-3) return; // past the end the player can reach
-    out.push({ t: Math.max(0, t), dur: f.dur }); kept.push(i);
+    out.push({ t: Math.max(0, t), dur: f.dur });
+    kept.push(i);
   });
   return { frames: out, kept, shift };
 }

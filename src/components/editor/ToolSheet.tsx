@@ -3,11 +3,12 @@
 // floats beside the preview.
 import type { CSSProperties } from 'react';
 import { IMPACTS, IMPACT_STYLES, type ImpactStyle } from '@/domain/effects/impacts';
+import type { Aim } from '@/domain/effects/laser';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import { BODY_PARTS, type BodyPart } from '@/domain/tracking/bodyParts';
 import { Icon, I } from './icons';
 
-export type Tool = 'styles' | 'effects' | 'color' | 'adjust' | 'impact' | 'parts';
+export type Tool = 'styles' | 'effects' | 'color' | 'adjust' | 'impact' | 'parts' | 'aim';
 // the effect categories: each continuous effect, and impacts
 export type Category = Effect | 'impact';
 
@@ -16,13 +17,30 @@ export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'lightning', label: 'Lightning' },
   { id: 'aura', label: 'Aura' },
   { id: 'sparks', label: 'Sparks' },
+  { id: 'laser', label: 'Laser' },
 ];
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
 export const categoryName = (c: Category) => (c === 'impact' ? 'Impact' : effectName(c));
 
-export const TOOL_TITLES: Record<Tool, string> = { styles: 'Styles', effects: 'Effect', color: 'Color', adjust: 'Adjust', impact: 'Impact style', parts: 'Which part?' };
+export const TOOL_TITLES: Record<Tool, string> = {
+  styles: 'Styles',
+  effects: 'Effect',
+  color: 'Color',
+  adjust: 'Adjust',
+  impact: 'Impact style',
+  parts: 'Which part?',
+  aim: 'Aim',
+};
 
-const PART_ICONS: Record<BodyPart, string> = { body: I.person, head: I.head, eyes: I.eye, handL: I.hand, handR: I.hand, footL: I.foot, footR: I.foot };
+const PART_ICONS: Record<BodyPart, string> = {
+  body: I.person,
+  head: I.head,
+  eyes: I.eye,
+  handL: I.hand,
+  handR: I.hand,
+  footL: I.foot,
+  footR: I.foot,
+};
 
 // a burst of each impact style's colors, for its tile
 export const IMPACT_ART: Record<ImpactStyle, string> = {
@@ -32,30 +50,68 @@ export const IMPACT_ART: Record<ImpactStyle, string> = {
   anime: 'radial-gradient(circle, #fff 0 22%, #d98bff 40%, #8a2be2 60%, transparent 80%), #fff3',
 };
 
-const swatchBg = (i: number) => { const c = PALETTES[i].c; return `radial-gradient(circle at 40% 40%, ${c[0]}, ${c[1]} 35%, ${c[2]} 70%, ${c[3]})`; };
-const pct = (v: number, min: number, max: number) => ({ '--p': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
+const swatchBg = (i: number) => {
+  const c = PALETTES[i].c;
+  return `radial-gradient(circle at 40% 40%, ${c[0]}, ${c[1]} 35%, ${c[2]} 70%, ${c[3]})`;
+};
+const pct = (v: number, min: number, max: number) =>
+  ({ '--p': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
 
 // what picking a style in a category adds
 export type Pick = { kind: 'effect'; effect: Effect; pal: number } | { kind: 'impact'; style: ImpactStyle };
 
-export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick, impact, onImpact, suggested, onPart }: {
-  tool: Tool; title: string; fx: FxSettings; onChange(p: Partial<FxSettings>): void; onClose(): void;
-  category?: Category | null; onPick?(p: Pick): void;
-  impact?: ImpactStyle | null; onImpact?(style: ImpactStyle): void;
+export function ToolSheet({
+  tool,
+  title,
+  fx,
+  onChange,
+  onClose,
+  category,
+  onPick,
+  impact,
+  onImpact,
+  suggested,
+  onPart,
+  aim,
+  onAim,
+}: {
+  tool: Tool;
+  title: string;
+  fx: FxSettings;
+  onChange(p: Partial<FxSettings>): void;
+  onClose(): void;
+  category?: Category | null;
+  onPick?(p: Pick): void;
+  impact?: ImpactStyle | null;
+  onImpact?(style: ImpactStyle): void;
   // parts: the one nearest the tap, and what to do with the one picked
-  suggested?: BodyPart; onPart?(part: BodyPart): void;
+  suggested?: BodyPart;
+  onPart?(part: BodyPart): void;
+  // aim: a laser's direction, and whether it hits a tapped spot instead
+  aim?: Aim;
+  onAim?: { angle(deg: number): void; target(): void; clear(): void };
 }) {
   return (
     <div className="sheet" role="dialog" aria-label={title}>
       <div className="sheet-head">
         <strong>{title}</strong>
-        <button type="button" className="icon-btn" aria-label="Done" onClick={onClose}><Icon d={I.check} /></button>
+        <button type="button" className="icon-btn" aria-label="Done" onClick={onClose}>
+          <Icon d={I.check} />
+        </button>
       </div>
       {tool === 'parts' && (
         <div className="tiles" role="group" aria-label="Body part">
           {BODY_PARTS.map(b => (
-            <button key={b.id} type="button" className="tile part-tile" aria-pressed={suggested === b.id} onClick={() => onPart?.(b.id)}>
-              <span className={`tile-art${b.id.endsWith('L') ? ' mirror' : ''}`}><Icon d={PART_ICONS[b.id]} size={30} /></span>
+            <button
+              key={b.id}
+              type="button"
+              className="tile part-tile"
+              aria-pressed={suggested === b.id}
+              onClick={() => onPart?.(b.id)}
+            >
+              <span className={`tile-art${b.id.endsWith('L') ? ' mirror' : ''}`}>
+                <Icon d={PART_ICONS[b.id]} size={30} />
+              </span>
               {b.label}
             </button>
           ))}
@@ -64,7 +120,12 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
       {tool === 'styles' && category === 'impact' && (
         <div className="tiles" role="group" aria-label="Impact styles">
           {IMPACT_STYLES.map(st => (
-            <button key={st} type="button" className="tile" onClick={() => onPick?.({ kind: 'impact', style: st })}>
+            <button
+              key={st}
+              type="button"
+              className="tile"
+              onClick={() => onPick?.({ kind: 'impact', style: st })}
+            >
               <span className="tile-art" style={{ background: IMPACT_ART[st] }} />
               {IMPACTS[st].label}
             </button>
@@ -74,7 +135,12 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
       {tool === 'styles' && category && category !== 'impact' && (
         <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
           {PALETTES.map((p, i) => (
-            <button key={p.name} type="button" className="tile" onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}>
+            <button
+              key={p.name}
+              type="button"
+              className="tile"
+              onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
+            >
               <span className="tile-art" style={{ background: swatchBg(i) }} />
               {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
             </button>
@@ -84,7 +150,13 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
       {tool === 'effects' && (
         <div className="tiles" role="group" aria-label="Effect">
           {EFFECTS.map(f => (
-            <button key={f.id} type="button" className="tile" aria-pressed={fx.effect === f.id} onClick={() => onChange({ effect: f.id, pal: DEFAULT_PAL[f.id] })}>
+            <button
+              key={f.id}
+              type="button"
+              className="tile"
+              aria-pressed={fx.effect === f.id}
+              onClick={() => onChange({ effect: f.id, pal: DEFAULT_PAL[f.id] })}
+            >
               <span className="tile-art" style={{ background: swatchBg(DEFAULT_PAL[f.id]) }} />
               {f.label}
             </button>
@@ -94,7 +166,13 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
       {tool === 'impact' && (
         <div className="tiles" role="group" aria-label="Impact style">
           {IMPACT_STYLES.map(st => (
-            <button key={st} type="button" className="tile" aria-pressed={impact === st} onClick={() => onImpact?.(st)}>
+            <button
+              key={st}
+              type="button"
+              className="tile"
+              aria-pressed={impact === st}
+              onClick={() => onImpact?.(st)}
+            >
               <span className="tile-art" style={{ background: IMPACT_ART[st] }} />
               {IMPACTS[st].label}
             </button>
@@ -104,31 +182,109 @@ export function ToolSheet({ tool, title, fx, onChange, onClose, category, onPick
       {tool === 'color' && (
         <div className="tiles" role="group" aria-label="Color">
           {PALETTES.map((p, i) => (
-            <button key={p.name} type="button" className="tile" aria-pressed={fx.pal === i} onClick={() => onChange({ pal: i })}>
+            <button
+              key={p.name}
+              type="button"
+              className="tile"
+              aria-pressed={fx.pal === i}
+              onClick={() => onChange({ pal: i })}
+            >
               <span className="tile-art round" style={{ background: swatchBg(i) }} />
               {p.name}
             </button>
           ))}
         </div>
       )}
+      {tool === 'aim' && aim && (
+        <div className="sliders">
+          <label className="slider">
+            <span>Direction</span>
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={5}
+              value={aim.deg}
+              style={pct(aim.deg, -180, 180)}
+              disabled={!!aim.target}
+              onChange={e => onAim?.angle(+e.target.value)}
+            />
+            <output>{aim.deg}°</output>
+          </label>
+          <div className="aim-dirs" role="group" aria-label="Quick directions">
+            {(
+              [
+                ['Left', 180],
+                ['Up', -90],
+                ['Down', 90],
+                ['Right', 0],
+              ] as const
+            ).map(([name, deg]) => (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={!aim.target && aim.deg === deg}
+                disabled={!!aim.target}
+                onClick={() => onAim?.angle(deg)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <div className="aim-target">
+            <span>{aim.target ? 'Hitting the spot you tapped.' : 'Or hit a spot in the scene.'}</span>
+            {aim.target ? (
+              <button type="button" onClick={() => onAim?.clear()}>
+                Clear target
+              </button>
+            ) : (
+              <button type="button" className="primary" onClick={() => onAim?.target()}>
+                <Icon d={I.target} size={18} />
+                Tap a target
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {tool === 'adjust' && (
         <div className="sliders">
           <label className="slider">
             <span>Size</span>
-            <input type="range" min={0.3} max={2.5} step={0.05} value={fx.size} style={pct(fx.size, 0.3, 2.5)}
-              onChange={e => onChange({ size: +e.target.value })} />
+            <input
+              type="range"
+              min={0.3}
+              max={2.5}
+              step={0.05}
+              value={fx.size}
+              style={pct(fx.size, 0.3, 2.5)}
+              onChange={e => onChange({ size: +e.target.value })}
+            />
             <output>{Math.round(fx.size * 100)}</output>
           </label>
           <label className="slider">
             <span>Intensity</span>
-            <input type="range" min={0.2} max={2} step={0.05} value={fx.intensity} style={pct(fx.intensity, 0.2, 2)}
-              onChange={e => onChange({ intensity: +e.target.value })} />
+            <input
+              type="range"
+              min={0.2}
+              max={2}
+              step={0.05}
+              value={fx.intensity}
+              style={pct(fx.intensity, 0.2, 2)}
+              onChange={e => onChange({ intensity: +e.target.value })}
+            />
             <output>{Math.round(fx.intensity * 100)}</output>
           </label>
           <label className="slider">
             <span>Sound</span>
-            <input type="range" min={0} max={1.5} step={0.05} value={fx.volume} style={pct(fx.volume, 0, 1.5)}
-              onChange={e => onChange({ volume: +e.target.value })} />
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.05}
+              value={fx.volume}
+              style={pct(fx.volume, 0, 1.5)}
+              onChange={e => onChange({ volume: +e.target.value })}
+            />
             <output>{fx.volume === 0 ? 'Off' : Math.round(fx.volume * 100)}</output>
           </label>
         </div>

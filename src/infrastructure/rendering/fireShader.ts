@@ -66,7 +66,10 @@ void main() {
   outColor = vec4(col, 1.0);
 }`;
 
-const hex = (h: string) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+const hex = (h: string) => {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+};
 
 export class FireShader {
   readonly canvas: OffscreenCanvas;
@@ -79,27 +82,43 @@ export class FireShader {
   static create(w: number, h: number) {
     try {
       const canvas = new OffscreenCanvas(w, h);
-      const gl = canvas.getContext('webgl2', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: false });
+      const gl = canvas.getContext('webgl2', {
+        premultipliedAlpha: true,
+        preserveDrawingBuffer: true,
+        antialias: false,
+      });
       return gl ? new FireShader(canvas, gl) : null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   private constructor(canvas: OffscreenCanvas, gl: WebGL2RenderingContext) {
-    this.canvas = canvas; this.gl = gl;
+    this.canvas = canvas;
+    this.gl = gl;
     const sh = (type: number, src: string) => {
-      const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s);
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader');
       return s;
     };
     const p = gl.createProgram()!;
-    gl.attachShader(p, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FRAG)); gl.linkProgram(p);
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'link');
-    this.prog = p; gl.useProgram(p);
-    for (const k of ['uSrc', 'uRes', 'uTime', 'uUnit', 'uHeight', 'uIntensity', 'uC0', 'uC1', 'uC2', 'uC3']) this.u[k] = gl.getUniformLocation(p, k);
+    this.prog = p;
+    gl.useProgram(p);
+    for (const k of ['uSrc', 'uRes', 'uTime', 'uUnit', 'uHeight', 'uIntensity', 'uC0', 'uC1', 'uC2', 'uC3'])
+      this.u[k] = gl.getUniformLocation(p, k);
 
-    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(p, 'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const loc = gl.getAttribLocation(p, 'aPos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
     this.tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
@@ -110,15 +129,21 @@ export class FireShader {
     gl.uniform1i(this.u.uSrc, 0);
   }
 
-  resize(w: number, h: number) { this.canvas.width = w; this.canvas.height = h; }
+  resize(w: number, h: number) {
+    this.canvas.width = w;
+    this.canvas.height = h;
+  }
 
   // src: the heat source (white where the object is), same aspect as the layer.
   // unit and height are in layer pixels.
   render(src: OffscreenCanvas, t: number, unit: number, height: number, intensity: number, pal: number) {
-    const gl = this.gl, { width, height: h } = this.canvas, c = PALETTES[pal].c;
+    const gl = this.gl,
+      { width, height: h } = this.canvas,
+      c = PALETTES[pal].c;
     gl.viewport(0, 0, width, h);
     gl.useProgram(this.prog);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.uniform2f(this.u.uRes, width, h);
@@ -126,8 +151,10 @@ export class FireShader {
     gl.uniform1f(this.u.uUnit, unit);
     gl.uniform1f(this.u.uHeight, height);
     gl.uniform1f(this.u.uIntensity, intensity);
-    gl.uniform3fv(this.u.uC0, hex(c[0])); gl.uniform3fv(this.u.uC1, hex(c[1]));
-    gl.uniform3fv(this.u.uC2, hex(c[2])); gl.uniform3fv(this.u.uC3, hex(c[3]));
+    gl.uniform3fv(this.u.uC0, hex(c[0]));
+    gl.uniform3fv(this.u.uC1, hex(c[1]));
+    gl.uniform3fv(this.u.uC2, hex(c[2]));
+    gl.uniform3fv(this.u.uC3, hex(c[3]));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return this.canvas;
   }

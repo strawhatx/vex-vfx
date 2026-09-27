@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { hitsBetween, soundingAt, type SoundClip } from './sound';
 
-const effect = (id: number, s: number, e: number, volume = 1): SoundClip => ({ id, kind: 'effect', effect: 'fire', impact: null, s, e, volume, speed: 1 });
-const impact = (id: number, s: number, volume = 1): SoundClip => ({ id, kind: 'impact', effect: 'fire', impact: 'punch', s, e: s + 0.45, volume, speed: 1 });
+const effect = (id: number, s: number, e: number, volume = 1): SoundClip => ({
+  id,
+  kind: 'effect',
+  effect: 'fire',
+  impact: null,
+  s,
+  e,
+  volume,
+  speed: 1,
+});
+const impact = (id: number, s: number, volume = 1): SoundClip => ({
+  id,
+  kind: 'impact',
+  effect: 'fire',
+  impact: 'punch',
+  s,
+  e: s + 0.45,
+  volume,
+  speed: 1,
+});
 
 describe('soundingAt', () => {
   it('is the effects the playhead is inside', () => {

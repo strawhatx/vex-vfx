@@ -7,23 +7,48 @@ import type { Analysis, EffectLayers, LayerSpec } from './ports';
 type Call =
   | { kind: 'scan'; on: Parameters<Analysis['scan']>[2] }
   | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] }
-  | { kind: 'probe'; req: Parameters<Analysis['probe']>[1]; on: Parameters<Analysis['probe']>[2] };
+  | { kind: 'probe'; req: Parameters<Analysis['probe']>[1]; on: Parameters<Analysis['probe']>[2] }
+  | { kind: 'camera'; times: number[] };
 
 class FakeAnalysis implements Analysis {
   calls: Call[] = [];
   cancels = 0;
-  scan: Analysis['scan'] = (_s, _l, on) => { this.calls.push({ kind: 'scan', on }); };
-  track: Analysis['track'] = (_s, req, on) => { this.calls.push({ kind: 'track', req, on }); };
-  probe: Analysis['probe'] = (_s, req, on) => { this.calls.push({ kind: 'probe', req, on }); };
-  cancel() { this.cancels++; }
-  get last() { return this.calls[this.calls.length - 1]; }
-  get tracks() { return this.calls.filter(c => c.kind === 'track').length; }
+  scan: Analysis['scan'] = (_s, _l, on) => {
+    this.calls.push({ kind: 'scan', on });
+  };
+  track: Analysis['track'] = (_s, req, on) => {
+    this.calls.push({ kind: 'track', req, on });
+  };
+  probe: Analysis['probe'] = (_s, req, on) => {
+    this.calls.push({ kind: 'probe', req, on });
+  };
+  // the camera's path is worked out at once: it held still
+  camera: Analysis['camera'] = (_s, times, on) => {
+    this.calls.push({ kind: 'camera', times });
+    on.path(times.map((_, i) => ({ i, s: 1, tx: 0, ty: 0 })));
+    on.done();
+  };
+  cancel() {
+    this.cancels++;
+  }
+  get last() {
+    return this.calls[this.calls.length - 1];
+  }
+  get tracks() {
+    return this.calls.filter(c => c.kind === 'track').length;
+  }
 }
 
 class FakeLayers implements EffectLayers {
   specs: LayerSpec[] = [];
   setClip() {}
-  setLayers(s: LayerSpec[]) { this.specs = s; }
+  camera: unknown[] = [];
+  setCamera(path: unknown[]) {
+    this.camera = path;
+  }
+  setLayers(s: LayerSpec[]) {
+    this.specs = s;
+  }
   changed() {}
 }
 
@@ -34,7 +59,11 @@ const shape = (): Shape => ({ id: 0, cx: 50, cy: 50, w: 20, h: 40 });
 
 let analysis: FakeAnalysis, editor: Editor, layers: FakeLayers, state: EditorState, statuses: string[];
 
-function trackCall() { const c = analysis.last; if (c.kind !== 'track') throw new Error(`expected a track job, got ${c.kind}`); return c; }
+function trackCall() {
+  const c = analysis.last;
+  if (c.kind !== 'track') throw new Error(`expected a track job, got ${c.kind}`);
+  return c;
+}
 // finishes the running track job with the object found in every frame
 function finishTrack() {
   const c = trackCall();
@@ -44,8 +73,16 @@ function finishTrack() {
 }
 
 beforeEach(() => {
-  analysis = new FakeAnalysis(); layers = new FakeLayers(); statuses = [];
-  editor = new Editor(analysis, layers, { changed: s => { state = s; }, status: m => statuses.push(m), meta: () => {} });
+  analysis = new FakeAnalysis();
+  layers = new FakeLayers();
+  statuses = [];
+  editor = new Editor(analysis, layers, {
+    changed: s => {
+      state = s;
+    },
+    status: m => statuses.push(m),
+    meta: () => {},
+  });
   editor.load(new Blob());
   editor.scan(6);
   const scan = analysis.last;
@@ -59,7 +96,8 @@ describe('adding an effect', () => {
     editor.addTrack(14, { x: 50, y: 50 });
     expect(state.lanes[0].range).toEqual({ s: 1.4, e: 4.4 });
     const c = trackCall();
-    expect(c.req.pin).toBe(false);
+    // plain effects don't need the camera's path
+    expect(analysis.calls.some(k => k.kind === 'camera')).toBe(false);
     expect(c.req.times).toEqual(times(14, 44));
     expect(c.req.key).toBe(0);
     expect(state.job?.label).toBe('Tracking Object 1');
@@ -83,8 +121,8 @@ describe('adding an effect', () => {
 
 describe('stacking effects', () => {
   it('effects one after another share a row', () => {
-    editor.addTrack(0, { x: 10, y: 10 });   // 0..3
-    editor.addTrack(30, { x: 20, y: 20 });  // 3..6
+    editor.addTrack(0, { x: 10, y: 10 }); // 0..3
+    editor.addTrack(30, { x: 20, y: 20 }); // 3..6
     expect(state.rows).toBe(1);
     expect(state.lanes.map(l => l.row)).toEqual([0, 0]);
   });
@@ -208,8 +246,10 @@ describe('impacts', () => {
   it('tracks the object from a little before the hit to the end of the burst', () => {
     editor.addImpact(20, { x: 50, y: 50 }, 'punch');
     const c = trackCall();
-    // impacts also follow the tapped spot with the camera; effects don't need to
-    expect(c.req.pin).toBe(true);
+    // impacts stay put in the scene, so the camera's path is worked out once for the clip
+    expect(analysis.calls.filter(k => k.kind === 'camera')).toHaveLength(1);
+    expect(layers.camera).toHaveLength(60);
+    expect(layers.camera[30]).toEqual({ s: 1, tx: 0, ty: 0 });
     expect(c.req.times[0]).toBe(1.8);
     expect(c.req.times[c.req.times.length - 1]).toBe(2.4);
     expect(c.req.times[c.req.key]).toBe(2);
@@ -248,7 +288,7 @@ describe('impacts', () => {
   });
 
   it('impacts and effects stack on rows together', () => {
-    editor.addTrack(0, { x: 10, y: 10 });            // 0..3
+    editor.addTrack(0, { x: 10, y: 10 }); // 0..3
     editor.addImpact(20, { x: 20, y: 20 }, 'punch'); // 2..2.45, overlaps
     editor.addImpact(40, { x: 20, y: 20 }, 'punch'); // 4..4.45, free
     expect(state.lanes.map(l => l.row)).toEqual([0, 1, 0]);
@@ -264,7 +304,8 @@ describe('body parts', () => {
     if (c.kind !== 'probe') throw new Error('expected a probe');
     expect(analysis.cancels).toBe(cancels + 1);
     expect(c.req).toEqual({ t: 2, at: { x: 30, y: 40 } });
-    c.on.probed('handR'); c.on.done();
+    c.on.probed('handR');
+    c.on.done();
     expect(await answer).toBe('handR');
     expect(trackCall().req.times).toEqual(times(14, 44)); // the interrupted tracking, again
   });
@@ -273,7 +314,8 @@ describe('body parts', () => {
     const answer = editor.probe(20, { x: 0, y: 0 });
     const c = analysis.last;
     if (c.kind !== 'probe') throw new Error('expected a probe');
-    c.on.probed(null); c.on.done();
+    c.on.probed(null);
+    c.on.done();
     expect(await answer).toBeNull();
   });
 
@@ -283,11 +325,39 @@ describe('body parts', () => {
     expect(state.lanes[0].name).toBe('Eyes');
   });
 
-  it('an impact on a body part tracks the part rather than pinning the spot', () => {
+  it('an impact on a body part tracks the part', () => {
     editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, 'handL');
     const c = trackCall();
     expect(c.req.part).toBe('handL');
-    expect(c.req.pin).toBe(false);
     expect(state.lanes[0].name).toBe('Left hand');
+  });
+});
+
+describe('lasers', () => {
+  it('fires sideways by default, towards the side with more room', () => {
+    editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
+    expect(layers.specs[0].aim).toEqual({ deg: 0, target: null });
+    editor.addTrack(40, { x: 90, y: 50 }, { effect: 'laser' });
+    expect(layers.specs[1].aim).toEqual({ deg: 180, target: null });
+    expect(layers.specs[1].tap).toEqual({ i: 40, x: 90, y: 50 });
+  });
+
+  it('turns to a direction, kept between -180 and 180', () => {
+    editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
+    editor.setAimAngle(1, 270);
+    expect(layers.specs[0].aim.deg).toBe(-90);
+  });
+
+  it('can hit a tapped spot instead, which needs the camera path; clearing it goes back to its direction', () => {
+    editor.addTrack(14, { x: 10, y: 50 }, { effect: 'laser' });
+    editor.setAimAngle(1, 45);
+    editor.aimAt(1, 20, { x: 70, y: 20 });
+    expect(layers.specs[0].aim).toEqual({ deg: 45, target: { i: 20, x: 70, y: 20 } });
+    // the camera's path is worked out once the laser's own tracking is done
+    expect(analysis.calls.some(k => k.kind === 'camera')).toBe(false);
+    finishTrack();
+    expect(analysis.calls.some(k => k.kind === 'camera')).toBe(true);
+    editor.clearAimTarget(1);
+    expect(layers.specs[0].aim).toEqual({ deg: 45, target: null });
   });
 });

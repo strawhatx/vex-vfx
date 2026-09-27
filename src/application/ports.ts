@@ -2,6 +2,7 @@
 // in infrastructure/ implement these; tests use in-memory fakes.
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
+import type { Aim, Cam } from '@/domain/effects/laser';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -15,14 +16,26 @@ interface JobEvents {
 export interface Analysis {
   // lists every frame the player can show, in clip time (0 at its first frame; playerLength: how
   // long the player can play)
-  scan(source: Blob, playerLength: number, on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void }): void;
+  scan(
+    source: Blob,
+    playerLength: number,
+    on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void },
+  ): void;
   // follows the object at `select` in frame times[key], forward to the end of times then back to the
-  // start; pin: also follows that exact spot (Shape.pin); part: follows that body part of the
-  // person at `select` instead of the object there
-  track(source: Blob, req: { times: number[]; key: number; select: Selection; pin?: boolean; part?: BodyPart },
-    on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void }): void;
+  // start; part: follows that body part of the person at `select` instead of the object there
+  track(
+    source: Blob,
+    req: { times: number[]; key: number; select: Selection; part?: BodyPart },
+    on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void },
+  ): void;
   // whether the tap at `at` in the frame at t is on a person, and the body part nearest it
-  probe(source: Blob, req: { t: number; at: Selection }, on: Omit<JobEvents, 'progress'> & { probed(part: BodyPart | null): void }): void;
+  probe(
+    source: Blob,
+    req: { t: number; at: Selection },
+    on: Omit<JobEvents, 'progress'> & { probed(part: BodyPart | null): void },
+  ): void;
+  // the camera's path through the clip (frames `times`, in order), from the first frame
+  camera(source: Blob, times: number[], on: JobEvents & { path(path: ({ i: number } & Cam)[]): void }): void;
   cancel(): void;
 }
 
@@ -32,7 +45,14 @@ export interface Analysis {
 // out for its style's duration; tap: where on the object it was tapped, frame and work pixels,
 // so the burst lands on that spot rather than the middle of the object)
 export interface LayerSpec {
-  id: number; kind: 'effect' | 'impact'; frames: TrackFrame[]; settings: FxSettings; color: string; range: { s: number; e: number };
+  id: number;
+  kind: 'effect' | 'impact';
+  frames: TrackFrame[];
+  settings: FxSettings;
+  color: string;
+  range: { s: number; e: number };
+  aim: Aim; // for a laser
+  tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
   impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
 }
 
@@ -42,6 +62,9 @@ export interface EffectLayers {
   // at a segment's first frame; the whole clip is one segment)
   setClip(frames: TrackFrame[], segmentStart: Int32Array): void;
   setLayers(specs: LayerSpec[]): void;
+  // the camera's path through the clip (one entry per clip frame, filled in as it's worked out), so
+  // spots can stay put in the scene
+  setCamera(path: (Cam | null)[]): void;
   // a layer's track data changed in place
   changed(id: number): void;
 }
