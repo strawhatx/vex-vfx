@@ -26,7 +26,8 @@ export type ToolKey =
   | 'cutout'
   | 'movekey'
   | 'place'
-  | 'attach';
+  | 'attach'
+  | 'deletescene';
 export interface ToolBtn {
   key: ToolKey;
   label: string;
@@ -86,6 +87,7 @@ export function toolsFor(
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
     moveKey: boolean; // the selected cutout has a transform keyframe at the playhead
+    films: number; // how many films the clip is split into (kept)
     path: boolean; // the selected effect is a path
     pathEnd: boolean; // its far end is held
   },
@@ -117,6 +119,7 @@ export function toolsFor(
     return [
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
+      { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 2 },
       {
         key: 'mute',
         label: s.muted ? 'Unmute' : 'Mute',

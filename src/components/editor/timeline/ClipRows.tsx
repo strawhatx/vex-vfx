@@ -1,4 +1,5 @@
-// The video clip's rows: its filmstrip (a film per scene, once split), and its own sound.
+// The video clip's rows: its filmstrip (a film per scene, once split), and its own sound. Both
+// show the film as edited: the kept films back to back, each with its own stretch of the clip.
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Icon, I } from '../icons';
 import type { MakeThumbs, UiState } from '../player';
@@ -29,7 +30,8 @@ export function VideoRow({
   onChooseFile(): void;
   makeThumbs: MakeThumbs;
 }) {
-  const dur = ui.duration || 0;
+  // the thumbnails are of the whole clip, deleted films too
+  const dur = ui.srcDuration || 0;
   const step = dur > MAX_THUMBS ? dur / MAX_THUMBS : 1; // seconds per tile
   const thumbs = useFilmstrip(makeThumbs, ui.src, dur, ui.videoStart, step);
   const { x } = scale;
@@ -44,7 +46,7 @@ export function VideoRow({
       </div>
     );
   }
-  const scenes = ui.scenes.length ? ui.scenes : [{ s: 0, e: dur }];
+  const scenes = ui.scenes.length ? ui.scenes : [{ s: 0, e: dur, at: 0 }];
   return (
     <div className="tl-row">
       {scenes.map((sc, k) => (
@@ -52,7 +54,7 @@ export function VideoRow({
           key={k}
           type="button"
           className={`lane clip${selected === k ? ' sel' : ''}${scenes.length > 1 ? ' scene' : ''}`}
-          style={{ left: x(sc.s), width: x(sc.e - sc.s), height: THUMB_H }}
+          style={{ left: x(sc.at), width: x(sc.e - sc.s), height: THUMB_H }}
           aria-pressed={selected === k}
           aria-label={scenes.length > 1 ? `Film ${k + 1} of ${scenes.length}` : 'Video clip'}
           onClick={stop(() => onSelect(k))}
@@ -74,7 +76,7 @@ export function VideoRow({
       <button
         type="button"
         className="add-end"
-        style={{ left: x(dur) }}
+        style={{ left: x(ui.duration || 0) }}
         aria-label="Replace clip"
         onClick={stop(onChooseFile)}
       >
@@ -137,7 +139,7 @@ export function AudioRow({
         aria-label={label}
         onClick={stop(onSelect)}
       >
-        {Array.isArray(wave) ? <Wave levels={wave} className="wave" /> : <span>{note}</span>}
+        {Array.isArray(wave) ? <WavePieces levels={wave} ui={ui} scale={scale} /> : <span>{note}</span>}
         {wave !== 'none' && muted && (
           <span className="muted-tag">
             <Icon d={I.muted} size={12} />
@@ -147,4 +149,17 @@ export function AudioRow({
       </button>
     </div>
   );
+}
+
+// the clip's waveform for each kept film, back to back
+function WavePieces({ levels, ui, scale }: { levels: number[]; ui: UiState; scale: Scale }) {
+  const dur = ui.srcDuration || 0;
+  const pieces = ui.scenes.length ? ui.scenes : [{ s: 0, e: dur, at: 0 }];
+  if (!dur) return null;
+  const n = levels.length;
+  return pieces.map((p, k) => (
+    <span key={k} className="wave-piece" style={{ left: scale.x(p.at), width: scale.x(p.e - p.s) }}>
+      <Wave levels={levels.slice(Math.floor((p.s / dur) * n), Math.ceil((p.e / dur) * n))} className="wave" />
+    </span>
+  ));
 }

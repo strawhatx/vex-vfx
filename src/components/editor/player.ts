@@ -32,7 +32,8 @@ export interface UiState extends Omit<EditorState, 'hasEffects'> {
   ready: boolean;
   playing: boolean;
   time: number;
-  duration: number; // clip length the player can play
+  duration: number; // how long the film plays, as edited (deleted films left out)
+  srcDuration: number; // the clip's own length the player can play
   videoStart: number; // the video element's time at the clip's first frame
   hint: string;
   status: string;
@@ -93,6 +94,10 @@ export const INITIAL_UI: UiState = {
   playing: false,
   time: 0,
   duration: 0,
+  srcDuration: 0,
+  length: 0,
+  canUndo: false,
+  canRedo: false,
   videoStart: 0,
   hint: '',
   status: '',
@@ -140,6 +145,8 @@ export class Player {
   // drawing
   private showOutline = true;
   private lastT = 0; // the video time last drawn
+  private jumping = false; // skipping over a deleted film
+  private srcLength = 0; // the clip's own length the player can play
 
   // tapping
   private press: { x: number; y: number; cx: number; cy: number } | null = null;
@@ -250,8 +257,10 @@ export class Player {
   togglePlay() {
     if (!this.ui.ready || this.ui.scan !== null) return;
     this.mixer.start(); // a tap or click: audio can start now
-    if (this.video.paused) void this.video.play();
-    else this.video.pause();
+    if (!this.video.paused) return this.video.pause();
+    // stopped at the end of the film as edited (the rest of the clip deleted): from the top
+    if (this.editor.jumpFrom(this.srcTime()) === 'end') this.seek(0);
+    void this.video.play();
   }
 
   // the clip's own sound on or off (effect sounds keep playing)
@@ -260,15 +269,40 @@ export class Player {
     this.set({ muted });
   }
 
+  // Times from here out are program time: the film as edited, deleted films left out. The video
+  // element plays the clip itself, and skips the deleted films as it plays.
   seek(t: number) {
     this.video.pause();
-    this.video.currentTime = t + this.start;
+    this.video.currentTime = this.editor.toSource(t) + this.start;
     this.set({ time: t });
   }
 
-  // the clip time being shown
+  // the time being shown
   time() {
+    return this.editor.toProgram(this.srcTime());
+  }
+
+  // the clip's own time being shown
+  private srcTime() {
     return Math.max(0, this.video.currentTime - this.start);
+  }
+
+  // ---------- undo ----------
+
+  undo() {
+    if (this.editor.undo()) this.afterHistory();
+  }
+
+  redo() {
+    if (this.editor.redo()) this.afterHistory();
+  }
+
+  // the selection may be gone, and the playhead in a film that's gone
+  private afterHistory() {
+    const sel = this.ui.selected;
+    if (sel !== null && !this.ui.lanes.some(l => l.id === sel)) this.select(null);
+    if (this.video.paused) this.seek(this.time());
+    this.redraw();
   }
 
   // ---------- adding and selecting clips ----------
@@ -313,6 +347,12 @@ export class Player {
   splitHere() {
     this.video.pause();
     if (this.editor.split(this.frameNow())) this.say('Split into two films.');
+  }
+
+  // deletes film k: the playhead moves on to what plays there now
+  deleteScene(k: number) {
+    this.video.pause();
+    if (this.editor.deleteScene(k)) this.seek(this.time());
   }
 
   // the scene playing at the playhead
@@ -508,7 +548,9 @@ export class Player {
 
   private editorChanged(s: EditorState, drawn: boolean) {
     const { hasEffects, ...rest } = s;
-    this.set({ ...rest, canRecord: hasEffects && canRecord(this.view) });
+    // once the clip is read, the film plays as edited
+    const duration = s.scenes.length ? s.length : this.srcLength;
+    this.set({ ...rest, duration, canRecord: hasEffects && canRecord(this.view) });
     this.mixer.setClips(
       s.lanes
         .filter(l => l.kind !== 'cutout')
@@ -591,7 +633,15 @@ export class Player {
     await seekVideo(v, 0);
     this.start = v.currentTime;
     const length = Math.max(0, (v.duration || 0) - this.start);
-    this.set({ ready: true, duration: length, videoStart: this.start, time: 0, status: 'Video loaded.' });
+    this.srcLength = length;
+    this.set({
+      ready: true,
+      duration: length,
+      srcDuration: length,
+      videoStart: this.start,
+      time: 0,
+      status: 'Video loaded.',
+    });
     this.redraw();
     this.editor.scan(length);
   }
@@ -611,14 +661,21 @@ export class Player {
   // t: the video element's time
   private draw(t: number) {
     if (!this.renderer.CW || this.video.readyState < 2) return;
-    this.lastT = t;
     const paused = this.video.paused;
+    // playing into a deleted film: skip it, without drawing its frame
+    if (!paused && !this.jumping) {
+      const to = this.editor.jumpFrom(t - this.start);
+      if (to !== null) return this.jumpTo(to);
+    }
+    if (this.jumping) return;
+    this.lastT = t;
     const idx = this.renderer.render(this.video, t - this.start, {
       outline: this.showOutline && !this.recorder,
       paused,
       selected: this.ui.selected,
     });
-    this.mixer.tick(t - this.start, !paused);
+    const now = this.editor.toProgram(t - this.start);
+    this.mixer.tick(now, !paused);
     const ui = this.ui;
     const state = {
       ready: ui.ready,
@@ -634,7 +691,31 @@ export class Player {
     };
     const hint = hintFor(state, this.editor, idx);
     if (hint !== ui.hint) this.set({ hint });
-    this.showCutoutNow(t - this.start);
+    this.showCutoutNow(now);
+  }
+
+  // skips on to the clip's own time t (the next kept film), or stops at the end of the film. An
+  // export holds while it skips.
+  private jumpTo(to: number | 'end') {
+    const v = this.video;
+    if (to === 'end') {
+      v.pause();
+      this.recorder?.stop();
+      return;
+    }
+    this.jumping = true;
+    this.recorder?.pause();
+    let done = false;
+    const landed = () => {
+      if (done) return;
+      done = true;
+      this.jumping = false;
+      this.recorder?.resume();
+    };
+    v.addEventListener('seeked', landed, { once: true });
+    // in case the browser never says it got there
+    setTimeout(landed, 1500);
+    v.currentTime = to + this.start;
   }
 
   // the selected cutout's transform at clip time t, for its panel
@@ -870,7 +951,7 @@ export class Player {
     }
     this.set({ recording: true, status: 'Recording…' });
     const v = this.video;
-    await seekVideo(v, start + this.start);
+    await seekVideo(v, this.editor.toSource(start) + this.start);
     // start recording once the video is actually playing: some browsers (Safari) take a moment to
     // start, which would otherwise open the export with a frozen frame and put the sound late
     await v.play();

@@ -90,6 +90,14 @@ button.primary {
 .topbar > :last-child {
   justify-self: end;
 }
+.top-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+}
 .icon-btn {
   width: 40px;
   height: 40px;
@@ -1082,6 +1090,11 @@ input[type='range']::-moz-range-thumb {
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.6);
   color: var(--ink);
+}
+.wave-piece {
+  position: absolute;
+  top: 0;
+  bottom: 0;
 }
 .wave {
   position: absolute;

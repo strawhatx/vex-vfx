@@ -56,9 +56,17 @@ export default function VfxStudio() {
     };
   }, []);
 
-  // space bar plays/pauses on desktop
+  // on desktop: the space bar plays/pauses; Ctrl/⌘+Z undoes, Ctrl/⌘+Shift+Z (or Ctrl+Y) redoes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement).closest('input[type="text"], textarea');
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !typing && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+        e.preventDefault();
+        if (e.key.toLowerCase() === 'y' || e.shiftKey) playerRef.current?.redo();
+        else playerRef.current?.undo();
+        return;
+      }
       if (e.code !== 'Space' || (e.target as HTMLElement).closest('input, button, a')) return;
       e.preventDefault();
       playerRef.current?.togglePlay();
@@ -118,7 +126,7 @@ export default function VfxStudio() {
     setScene(k);
     const sc = ui.scenes[k],
       t = player()?.time() ?? 0;
-    if (sc && (t < sc.s || t >= sc.e)) player()?.seek(sc.s);
+    if (sc && (t < sc.at || t >= sc.at + sc.e - sc.s)) player()?.seek(sc.at);
   }
 
   function selectLane(id: number) {
@@ -172,6 +180,7 @@ export default function VfxStudio() {
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
     moveKey: !!cutout && !!ui.cutoutNow?.onKey,
+    films: ui.scenes.length,
     path: !!lane?.path,
     pathEnd: !!lane?.path?.end,
   });
@@ -193,6 +202,9 @@ export default function VfxStudio() {
       case 'split':
         pl?.splitHere();
         return setScene(pl?.sceneNow() ?? null);
+      case 'deletescene':
+        if (scene !== null) pl?.deleteScene(scene);
+        return setScene(null);
       case 'cutout':
         if (lane) break; // (a cutout's own tools don't have this)
         setTool(null);
@@ -258,9 +270,31 @@ export default function VfxStudio() {
   return (
     <div className={`editor${full ? ' full' : ''}`}>
       <header className="topbar">
-        <button type="button" className="icon-btn" aria-label="Open a video" onClick={chooseFile}>
-          <Icon d={I.plus} />
-        </button>
+        <div className="top-tools">
+          <button type="button" className="icon-btn" aria-label="Open a video" onClick={chooseFile}>
+            <Icon d={I.plus} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Undo"
+            title="Undo (⌘Z)"
+            disabled={!ui.canUndo || ui.recording}
+            onClick={() => player()?.undo()}
+          >
+            <Icon d={I.undo} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Redo"
+            title="Redo (⇧⌘Z)"
+            disabled={!ui.canRedo || ui.recording}
+            onClick={() => player()?.redo()}
+          >
+            <Icon d={I.redo} />
+          </button>
+        </div>
         <strong className="wordmark" aria-label="FlareCut">
           FLARE<em>CUT</em>
         </strong>

@@ -59,6 +59,8 @@ export const I = {
   key: 'M12 4l6 8-6 8-6-8z',
   scene: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4',
   place: 'M12 4v16M8 8l4-4 4 4M5 20h14',
+  undo: 'M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11',
+  redo: 'M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13',
   path: 'M4 18c3-8 6 2 9-5s5-6 7-7M4 18h.01M20 6h.01',
   attach: 'M5 12h3M16 12h3M8 12c2-4 6 4 8 0M5 9v6M19 9v6',
   // the forms a path can take

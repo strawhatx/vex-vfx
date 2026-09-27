@@ -92,6 +92,24 @@ export class Jobs {
     if (this.running && match(this.running)) this.stopRunning();
   }
 
+  // ---------- undo ----------
+
+  // the tracking still to do: running, then queued
+  pending(): TrackJob[] {
+    return [...(this.running ? [this.running] : []), ...this.queue];
+  }
+
+  // the project went back (or forward) to how it was: its tracking still to do replaces what's
+  // here, and nothing is being cut out (the editor asks again for what needs it)
+  restore(jobs: readonly TrackJob[]) {
+    if (this.running || this.rendering !== null) this.analysis.cancel();
+    this.running = null;
+    this.rendering = null;
+    this.renders = [];
+    this.queue = [...jobs];
+    this.pump();
+  }
+
   // ---------- cutting out ----------
 
   // cuts the cutout out again once its tracking is done (anything it was cut from has changed)

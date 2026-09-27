@@ -523,8 +523,8 @@ describe('splitting the film', () => {
   it('splits into two films at the frame shown', () => {
     expect(editor.split(20)).toBe(true);
     expect(state.scenes).toEqual([
-      { s: 0, e: 2 },
-      { s: 2, e: 6 },
+      { s: 0, e: 2, at: 0 },
+      { s: 2, e: 6, at: 2 },
     ]);
     expect(editor.sceneAt(2.5)).toBe(1);
   });
@@ -709,5 +709,153 @@ describe('paths', () => {
     editor.setPathEnd(1, 20, { x: 50, y: 50 });
     editor.deleteTrack(2);
     expect(layers.specs[0].path?.end).toEqual({ i: 20, x: 50, y: 50, clip: null });
+  });
+});
+
+// ---------- deleting films ----------
+
+describe('deleting a film', () => {
+  it('leaves it out: the films either side play back to back', () => {
+    editor.split(20);
+    editor.split(40);
+    expect(editor.deleteScene(1)).toBe(true);
+    expect(state.scenes).toEqual([
+      { s: 0, e: 2, at: 0 },
+      { s: 4, e: 6, at: 2 },
+    ]);
+    expect(state.length).toBe(4);
+    // times outside are the film as edited
+    expect(editor.frameAt(2.5)).toBe(45);
+    expect(editor.toProgram(4.5)).toBe(2.5);
+    expect(editor.jumpFrom(2)).toBe(4);
+    expect(editor.jumpFrom(1)).toBeNull();
+  });
+
+  it('won’t delete the only film', () => {
+    expect(editor.deleteScene(0)).toBe(false);
+    expect(statuses.at(-1)).toContain('only film');
+  });
+
+  it('what’s on it stays in the project, unseen; a clip running over it closes up round it', () => {
+    editor.split(20);
+    editor.split(40);
+    editor.addTrack(25, { x: 50, y: 50 }); // 2.5 .. 4: wholly in the middle film
+    editor.addTrack(10, { x: 50, y: 50 }); // 1 .. 2
+    editor.setRange(2, { e: 5 }); // on over the middle film into the last (nothing's deleted yet)
+    editor.deleteScene(1);
+    expect(state.lanes.map(l => l.id)).toEqual([2]);
+    // the clip's 5 plays at 3 once the middle film is gone
+    expect(state.lanes[0].range).toEqual({ s: 1, e: 3 });
+    expect(layers.specs.map(s => s.id)).toEqual([1, 2]);
+  });
+
+  it('dragging a clip’s end on the edited timeline sets it in the clip’s own time', () => {
+    editor.split(20);
+    editor.split(40);
+    editor.deleteScene(1);
+    editor.addTrack(10, { x: 50, y: 50 });
+    editor.setRange(1, { e: 3 }); // program 3 = the clip's 5
+    expect(layers.specs[0].range).toEqual({ s: 1, e: 5 });
+    expect(state.lanes[0].range).toEqual({ s: 1, e: 3 });
+    // ending right at the join ends at the end of the first film, not the start of the next
+    editor.setRange(1, { e: 2 });
+    expect(layers.specs[0].range.e).toBe(2);
+  });
+});
+
+// ---------- undo ----------
+
+describe('undo and redo', () => {
+  it('undoes and redoes adding a clip', () => {
+    expect(state.canUndo).toBe(false);
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    expect(state.canUndo).toBe(true);
+    expect(editor.undo()).toBe(true);
+    expect(state.lanes).toEqual([]);
+    expect(layers.specs).toEqual([]);
+    expect(state.canRedo).toBe(true);
+    editor.redo();
+    expect(state.lanes.map(l => l.id)).toEqual([1]);
+    // the tracking came back with it
+    expect(editor.hasShapeAt(1, 20)).toBe(true);
+  });
+
+  it('a new change clears what could be redone', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.undo();
+    editor.addTrack(20, { x: 50, y: 50 });
+    expect(state.canRedo).toBe(false);
+    expect(editor.redo()).toBe(false);
+  });
+
+  it('undoes splitting and deleting films', () => {
+    editor.split(20);
+    editor.deleteScene(0);
+    expect(state.scenes).toHaveLength(1);
+    editor.undo();
+    expect(state.scenes).toHaveLength(2);
+    editor.undo();
+    expect(state.scenes).toHaveLength(1);
+    expect(state.scenes[0]).toEqual({ s: 0, e: 6, at: 0 });
+  });
+
+  it('a drag is one step, however many moves it takes', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    editor.setRange(1, { e: 5 });
+    editor.setRange(1, { e: 5.2 });
+    editor.setRange(1, { e: 5.4 });
+    editor.commitRange(1);
+    editor.undo();
+    expect(state.lanes[0].range).toEqual({ s: 1.4, e: 4.4 });
+  });
+
+  it('slider changes to one setting are one step', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.setFx(1, { size: 1.2 });
+    editor.setFx(1, { size: 1.5 });
+    editor.setFx(1, { pal: 3 });
+    editor.undo();
+    expect(editor.fx(1)).toMatchObject({ size: 1.5, pal: 0 });
+    editor.undo();
+    expect(editor.fx(1).size).toBe(1);
+  });
+
+  it('undoing a fix stops its tracking and puts the old outlines back', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    finishTrack();
+    editor.fixAt(1, 40, { x: 70, y: 50 });
+    const fix = trackCall();
+    editor.undo();
+    // the old tracking is back, and nothing new is asked for
+    expect(editor.hasShapeAt(1, 40)).toBe(true);
+    const calls = analysis.calls.length;
+    fix.on.done(); // too late: it was cancelled
+    expect(analysis.calls.length).toBe(calls);
+  });
+
+  it('tracking still to do when a step was taken carries on after undoing back to it', () => {
+    editor.addTrack(14, { x: 50, y: 50 }); // tracking starts
+    editor.setFx(1, { pal: 2 });
+    editor.undo();
+    expect(trackCall().req.times).toEqual(times(14, 44));
+  });
+
+  it('a cutout whose outlines changed is cut out again', () => {
+    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    finishTrack();
+    cutoutCall().on.done();
+    editor.fixAt(1, 30, { x: 60, y: 50 });
+    finishTrack();
+    cutoutCall().on.done();
+    editor.undo();
+    expect(cutoutCall().req.times).toEqual(times(14, 44));
+  });
+
+  it('a new clip forgets it all', () => {
+    editor.addTrack(14, { x: 50, y: 50 });
+    editor.load(new Blob());
+    expect(state.canUndo).toBe(false);
   });
 });

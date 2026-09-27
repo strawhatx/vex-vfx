@@ -69,6 +69,13 @@ export function startCanvasRecording(
     stop: () => {
       if (recorder.state !== 'inactive') recorder.stop();
     },
+    // held while the video skips a deleted film, so the export doesn't freeze on a frame there
+    pause: () => {
+      if (recorder.state === 'recording') recorder.pause();
+    },
+    resume: () => {
+      if (recorder.state === 'paused') recorder.resume();
+    },
   };
 }
 
