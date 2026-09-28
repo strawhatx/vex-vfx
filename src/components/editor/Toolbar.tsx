@@ -28,6 +28,9 @@ export type ToolKey =
   | 'place'
   | 'deletescene'
   | 'isolate'
+  | 'removevideo'
+  | 'videoearlier'
+  | 'videolater'
   | 'duplicate';
 export interface ToolBtn {
   key: ToolKey;
@@ -89,6 +92,8 @@ export function toolsFor(
     moveKey: boolean; // the selected cutout has a transform keyframe at the playhead
     isolated: boolean; // the selected cutout is shown on its own
     films: number; // how many films the clip is split into (kept)
+    // the selected film's video: where it is among the film's videos, and how many there are
+    video: { at: number; of: number } | null;
   },
 ): ToolBtn[] {
   const sheet = (t: Tool, label: string, icon: string): ToolBtn => ({
@@ -119,6 +124,23 @@ export function toolsFor(
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
+      ...(s.video && s.video.of > 1
+        ? [
+            {
+              key: 'videoearlier' as const,
+              label: 'Move earlier',
+              icon: I.back,
+              disabled: s.busy || s.video.at === 0,
+            },
+            {
+              key: 'videolater' as const,
+              label: 'Move later',
+              icon: I.forward,
+              disabled: s.busy || s.video.at === s.video.of - 1,
+            },
+            { key: 'removevideo' as const, label: 'Remove video', icon: I.remove, disabled: s.busy },
+          ]
+        : []),
       {
         key: 'mute',
         label: s.muted ? 'Unmute' : 'Mute',
@@ -172,7 +194,6 @@ export function toolsFor(
       { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
-      { key: 'unfix', label: 'Remove fix', icon: I.unfix, disabled: s.busy || !s.hasKeys },
       { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];

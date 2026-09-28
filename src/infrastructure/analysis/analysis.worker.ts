@@ -10,6 +10,7 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from
 import { toClipTime } from '@/domain/tracking/timeline';
 import { BodyPartTracker, modelsFor } from './bodyTracker';
 import { CameraTracker } from './camera';
+import { refineMatte } from './matte';
 import { cleanPlate, holeOf, type PlateFrame } from './cleanPlate';
 import { NO_MOVE } from '@/domain/effects/laser';
 import {
@@ -303,8 +304,9 @@ async function camera(job: CameraRequest) {
 }
 
 // ---------- cutout ----------
-// Each frame is decoded at output size. The object is cut out of it along its outline (drawn up from
-// analysis size, so its edge comes out softened), and with a clean plate the frame is also kept at
+// Each frame is decoded at output size. The object is cut out of it along its outline: drawn up from
+// analysis size, then its edge redrawn from the picture itself (see matte.ts), so it follows the
+// object's real edge rather than the blocky outline's. With a clean plate the frame is also kept at
 // analysis size, for PLATE_REACH frames either side, to borrow the background from.
 async function cutout(job: CutoutRequest) {
   const c = await open(job),
@@ -355,21 +357,32 @@ async function cutout(job: CutoutRequest) {
     for (let y = b.by0; y <= b.by1; y++)
       for (let x = b.bx0; x <= b.bx1; x++) if (mask[y * W + x]) m32[y * W + x] = 0xffffffff;
     mctx.putImageData(maskImg, 0, 0);
-    // the box in output pixels, a pixel of room round it for the soft edge
-    const x0 = Math.max(0, Math.floor((b.bx0 - 1) * q)),
-      y0 = Math.max(0, Math.floor((b.by0 - 1) * q)),
-      x1 = Math.min(ow, Math.ceil((b.bx1 + 2) * q)),
-      y1 = Math.min(oh, Math.ceil((b.by1 + 2) * q));
+    // the box in output pixels, with room round it for the edge to move out to
+    const r = Math.max(3, Math.round(2 * q)),
+      room = 1 + Math.ceil(r / q);
+    const x0 = Math.max(0, Math.floor((b.bx0 - room) * q)),
+      y0 = Math.max(0, Math.floor((b.by0 - room) * q)),
+      x1 = Math.min(ow, Math.ceil((b.bx1 + 1 + room) * q)),
+      y1 = Math.min(oh, Math.ceil((b.by1 + 1 + room) * q));
     const cw = x1 - x0,
       ch = y1 - y0;
     if (cw < 1 || ch < 1) return null;
     const out = new OffscreenCanvas(cw, ch),
-      g = out.getContext('2d') as OffscreenCanvasRenderingContext2D;
-    g.drawImage(frame, -x0, -y0);
-    g.globalCompositeOperation = 'destination-in';
+      g = out.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+    // the rough matte, drawn up to output size
     g.imageSmoothingEnabled = true;
     g.imageSmoothingQuality = 'high';
     g.drawImage(maskCan, -x0, -y0, W * q, H * q);
+    const rough = g.getImageData(0, 0, cw, ch).data,
+      alpha = new Float32Array(cw * ch);
+    for (let k = 0; k < alpha.length; k++) alpha[k] = rough[k * 4 + 3] / 255;
+    // the picture, and the matte redrawn from it
+    g.clearRect(0, 0, cw, ch);
+    g.drawImage(frame, -x0, -y0);
+    const pic = g.getImageData(0, 0, cw, ch);
+    const fine = refineMatte(pic.data, alpha, cw, ch, r);
+    for (let k = 0; k < fine.length; k++) pic.data[k * 4 + 3] = Math.round(fine[k] * 255);
+    g.putImageData(pic, 0, 0);
     return { image: out.transferToImageBitmap(), x: x0 / q, y: y0 / q, w: cw / q, h: ch / q };
   };
 

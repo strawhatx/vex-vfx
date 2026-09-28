@@ -3,7 +3,7 @@
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { Aim, Cam } from '@/domain/effects/laser';
-import type { Cutout } from '@/domain/project/cutout';
+import type { Background } from '@/domain/project/cutout';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Rle, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -79,7 +79,8 @@ export interface CutFrame {
 // outside that it draws nothing at all), and its impacts (frame of the hit and style; each plays
 // out for its style's duration; tap: where on the object it was tapped, frame and work pixels,
 // so the burst lands on that spot rather than the middle of the object)
-// A cutout's range is the frames it's cut from; `cutout` says where the layer is placed and how.
+// A cutout's range is the frames it's cut from; `cutout` says what's left in the footage there (the
+// layer itself is drawn by the film: see Overlays).
 export interface LayerSpec {
   id: number;
   kind: 'effect' | 'impact' | 'cutout';
@@ -91,7 +92,7 @@ export interface LayerSpec {
   aim: Aim; // for a laser
   tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
   impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
-  cutout: Cutout | null;
+  cutout: { bg: Background } | null;
 }
 
 // Draws each effect over the video.
@@ -109,4 +110,25 @@ export interface EffectLayers {
   cutoutFrames(id: number, frames: CutFrame[]): void;
   // drops a cutout's frames outside [s, e) (clip frames), when it's cut from fewer
   trimCutout(id: number, span: { s: number; e: number }): void;
+}
+
+// a cut-out picture of an overlay, and where it sits in the frame it was cut from (fractions of
+// that frame)
+export interface OverlaySprite {
+  image: ImageBitmap;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// Keeps the pictures cut for each overlay (see domain/project/overlay), so it can be drawn without
+// the video it was cut from.
+export interface OverlayPictures {
+  // pictures for times of its video (seconds); null: nothing was cut there
+  put(id: number, frames: { t: number; cut: OverlaySprite | null }[]): void;
+  // drops its pictures outside [s, e) (its video's time)
+  trim(id: number, span: { s: number; e: number }): void;
+  // gives overlay `to` the same pictures as `from` (a copy of it)
+  copy(from: number, to: number): void;
 }

@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
 import type { Lane, MakeThumbs, UiState } from '../player';
-import { AudioRow, VideoRow } from './ClipRows';
+import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
 import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
 import { PAD, type Scale } from './layout';
 import { Ruler } from './Ruler';
@@ -66,7 +66,7 @@ export function Timeline({
 
   const scale: Scale = { pps, x: t => t * pps };
   // every film deleted: nothing but the button to add a clip
-  const hasFilm = ui.ready && !(ui.scanned && !ui.scenes.length);
+  const hasFilm = filmShowing(ui);
   const fxLanes = ui.lanes.filter(l => l.kind !== 'cutout'),
     cutLanes = ui.lanes.filter(l => l.kind === 'cutout');
   const rows = Array.from({ length: ui.rows }, (_, r) => fxLanes.filter(l => l.row === r));

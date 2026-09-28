@@ -2,71 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FAMILY_STYLES } from '@/domain/effects/impacts';
 import type { ClipFrame, Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
-import type { Analysis, EffectLayers, LayerSpec } from './ports';
-
-// ---------- fakes ----------
-type Call =
-  | { kind: 'scan'; on: Parameters<Analysis['scan']>[2] }
-  | { kind: 'track'; req: Parameters<Analysis['track']>[1]; on: Parameters<Analysis['track']>[2] }
-  | { kind: 'probe'; req: Parameters<Analysis['probe']>[1]; on: Parameters<Analysis['probe']>[2] }
-  | { kind: 'camera'; times: number[] }
-  | { kind: 'cutout'; req: Parameters<Analysis['cutout']>[1]; on: Parameters<Analysis['cutout']>[2] };
-
-class FakeAnalysis implements Analysis {
-  calls: Call[] = [];
-  cancels = 0;
-  scan: Analysis['scan'] = (_s, _l, on) => {
-    this.calls.push({ kind: 'scan', on });
-  };
-  track: Analysis['track'] = (_s, req, on) => {
-    this.calls.push({ kind: 'track', req, on });
-  };
-  probe: Analysis['probe'] = (_s, req, on) => {
-    this.calls.push({ kind: 'probe', req, on });
-  };
-  // the camera's path is worked out at once: it held still, or panned `pan` pixels a frame
-  pan = 0;
-  camera: Analysis['camera'] = (_s, times, on) => {
-    this.calls.push({ kind: 'camera', times });
-    on.path(times.map((_, i) => ({ i, s: 1, tx: i * this.pan, ty: 0 })));
-    on.done();
-  };
-  cutout: Analysis['cutout'] = (_s, req, on) => {
-    this.calls.push({ kind: 'cutout', req, on });
-  };
-  cancel() {
-    this.cancels++;
-  }
-  get last() {
-    return this.calls[this.calls.length - 1];
-  }
-  get tracks() {
-    return this.calls.filter(c => c.kind === 'track').length;
-  }
-}
-
-class FakeLayers implements EffectLayers {
-  specs: LayerSpec[] = [];
-  setClip() {}
-  camera: unknown[] = [];
-  setCamera(path: unknown[]) {
-    this.camera = path;
-  }
-  setLayers(s: LayerSpec[]) {
-    this.specs = s;
-  }
-  changed() {}
-  cut = new Map<number, Map<number, unknown>>();
-  cutoutFrames(id: number, frames: { i: number }[]) {
-    const m = this.cut.get(id) ?? new Map();
-    for (const f of frames) m.set(f.i, f);
-    this.cut.set(id, m);
-  }
-  trimmed: { id: number; span: { s: number; e: number } }[] = [];
-  trimCutout(id: number, span: { s: number; e: number }) {
-    this.trimmed.push({ id, span });
-  }
-}
+import { FakeAnalysis, FakeLayers } from './fakes';
 
 // 60 frames at 10 fps: a 6-second clip
 const clip: ClipFrame[] = Array.from({ length: 60 }, (_, i) => ({ t: i / 10, dur: 0.1 }));
@@ -131,7 +67,6 @@ describe('adding an effect', () => {
     expect(editor.hasShapeAt(1, 20)).toBe(true);
     expect(editor.hasShapeAt(1, 50)).toBe(false);
     expect(state.hasEffects).toBe(true);
-    expect(editor.firstEffectTime()).toBe(1.4);
   });
 });
 
@@ -544,7 +479,6 @@ describe('explosions', () => {
   it('can be exported on their own: nothing to follow, but something to draw from the moment they go off', () => {
     editor.addImpact(20, { x: 30, y: 40 }, 'grenade');
     expect(state.hasEffects).toBe(true);
-    expect(editor.firstEffectTime()).toBe(2);
   });
 
   it('a tap while one is selected moves it there, still without tracking', () => {
@@ -619,9 +553,11 @@ describe('cutting an object out', () => {
     const c = cutoutCall();
     expect(c.req.times).toEqual(times(14, 44));
     expect(c.req.plate).toBe(false);
-    expect(state.lanes[0]).toMatchObject({ kind: 'cutout', name: 'Cutout 1', range: { s: 1.4, e: 4.4 } });
-    expect(state.cutRows).toBe(1);
-    expect(state.rows).toBe(0);
+    // what's cut is the film's (see project.ts): the video lists no clip for it
+    expect(state.lanes).toEqual([]);
+    expect(editor.cutoutOf(id)).toMatchObject({ range: { s: 1.4, e: 4.4 }, bg: 'keep' });
+    // the object in each frame cut, as fractions of the frame
+    expect(editor.cutoutOf(id)?.frames[0]).toEqual({ t: 1.4, cx: 0.5, cy: 0.5, w: 0.2, h: 0.4 });
     // frames come back numbered by clip frame
     c.on.frames([{ i: 0, cut: null }]);
     expect(layers.cut.get(id)?.has(14)).toBe(true);
@@ -655,52 +591,6 @@ describe('cutting an object out', () => {
     editor.setBackground(1, 'clean');
     expect(cutoutCall().req.plate).toBe(true);
     expect(layers.specs[0].cutout?.bg).toBe('clean');
-  });
-
-  it('can be placed at another time without cutting it out again', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
-    finishTrack();
-    cutoutCall().on.done();
-    const calls = analysis.calls.length;
-    editor.placeAt(1, 5);
-    // it's 3 s long, so it can start at 3 s at the latest
-    expect(state.lanes[0].range.s).toBeCloseTo(3);
-    expect(state.lanes[0].range.e).toBeCloseTo(6);
-    expect(state.lanes[0].cutout?.from).toBe(1.4);
-    expect(analysis.calls.length).toBe(calls);
-    expect(editor.cutoutShowing(1, 45)).toBe(true);
-    expect(editor.cutoutShowing(1, 20)).toBe(false);
-  });
-
-  it('its ends are where it’s placed, and change the frames it’s cut from to match', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
-    finishTrack();
-    cutoutCall().on.done();
-    editor.placeAt(1, 2.4); // one second later than cut from
-    editor.setRange(1, { s: 2.9 });
-    expect(state.lanes[0].range.s).toBeCloseTo(2.9);
-    expect(state.lanes[0].cutout?.from).toBeCloseTo(1.9);
-    editor.commitRange(1);
-    expect(cutoutCall().req.times).toEqual(times(19, 44));
-  });
-
-  it('moves and animates with keyframes', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
-    editor.setTransform(1, 1.4, { x: 10 });
-    expect(editor.transformAt(1, 3)).toMatchObject({ x: 10 });
-    editor.toggleMoveKey(1, 1.4);
-    editor.setTransform(1, 2.4, { x: 30 });
-    expect(editor.moveKeyAt(1, 2.4)).toBe(true);
-    expect(state.lanes[0].cutout?.moves).toEqual([1.4, 2.4]);
-    expect(editor.transformAt(1, 1.9)?.x).toBeCloseTo(20);
-  });
-
-  it('is selected by tapping it where it’s placed', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
-    finishTrack();
-    editor.setTransform(1, 1.4, { x: 30 });
-    expect(editor.trackAt(20, { x: 80, y: 50 })).toBe(1);
-    expect(editor.trackAt(20, { x: 50, y: 50 })).toBe(null);
   });
 
   it('deleting it stops cutting it out', () => {

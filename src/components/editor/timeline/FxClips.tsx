@@ -177,7 +177,8 @@ export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<Clip
   const start = slide.start;
   const w = x(len);
   const cut = l.cutout;
-  const from = cut && Math.abs(cut.from - start) > 0.05 ? ` · from ${mmss(cut.from)}` : '';
+  const from =
+    cut && cut.from !== null && Math.abs(cut.from - start) > 0.05 ? ` · from ${mmss(cut.from)}` : '';
 
   return (
     <span

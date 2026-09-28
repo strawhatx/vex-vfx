@@ -12,16 +12,17 @@ export interface Timeline {
   hasEffects: boolean; // some clip has something to draw: an explosion, or an object found
 }
 
-// The clips as the timeline shows them, in program time (the film as edited: see edit.ts). A clip
-// that runs over a deleted film closes up round it; one wholly inside a deleted film isn't shown.
-// Effects and impacts go on their rows, cutouts (placed where they're placed) on theirs: each on
-// the row the user put it on, where it fits (see assignRows).
+// The video's effects and impacts as the timeline shows them, in program time (the video as edited:
+// see edit.ts). A clip that runs over a deleted film closes up round it; one wholly inside a deleted
+// film isn't shown. Each goes on the row the user put it on, where it fits (see assignRows).
+// Cutouts aren't listed: what's cut is a layer of the film's (see project.ts).
 export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly Piece[]): Timeline {
   const P = (t: number) => toProgram(pieces, t);
   // an impact shows if it goes off in a kept film; anything else if some of it is kept
   const kept = (l: Lane) =>
     l.kind === 'impact' ? pieceAt(pieces, l.range.s) >= 0 : P(l.range.e) - P(l.range.s) > 1e-6;
   const shown = tracks
+    .filter(t => t.kind !== 'cutout')
     .map(t => toLane(t, clip, 0))
     .filter(kept)
     .map(l => ({
@@ -29,31 +30,17 @@ export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly 
       range: { s: P(l.range.s), e: P(l.range.e) },
       spans: l.spans.map(sp => ({ ...sp, s: P(sp.s), e: P(sp.e) })).filter(sp => sp.e - sp.s > 1e-6),
       keys: l.keys.filter(k => pieceAt(pieces, k) >= 0).map(P),
-      cutout: l.cutout && {
-        ...l.cutout,
-        from: P(l.cutout.from),
-        moves: l.cutout.moves.filter(k => pieceAt(pieces, k) >= 0).map(P),
-      },
     }));
-  const isCut = (l: Lane) => l.kind === 'cutout';
-  const fx = shown.filter(l => !isCut(l)),
-    cuts = shown.filter(isCut);
   const wanted = (l: Lane) => tracks.find(t => t.id === l.id)?.row ?? null;
-  const fxRows = assignRows(
-      fx.map(l => l.range),
-      fx.map(wanted),
-    ),
-    cutRows = assignRows(
-      cuts.map(l => l.range),
-      cuts.map(wanted),
-    );
-  fx.forEach((l, k) => (l.row = fxRows[k]));
-  cuts.forEach((l, k) => (l.row = cutRows[k]));
-  const count = (rows: number[]) => (rows.length ? Math.max(...rows) + 1 : 0);
+  const rows = assignRows(
+    shown.map(l => l.range),
+    shown.map(wanted),
+  );
+  shown.forEach((l, k) => (l.row = rows[k]));
   return {
     lanes: shown,
-    rows: count(fxRows),
-    cutRows: count(cutRows),
+    rows: rows.length ? Math.max(...rows) + 1 : 0,
+    cutRows: 0,
     hasEffects: tracks.some(t => isPinned(t) || t.frames.some(f => f.shapes.length)),
   };
 }

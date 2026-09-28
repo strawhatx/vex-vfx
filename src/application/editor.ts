@@ -1,7 +1,7 @@
-// The editing use cases:
+// The editing use cases for one video of the film (see project.ts for the film as a whole):
 //   - load a clip, and list its frames
 //   - the footage: split the film into scenes and delete the ones not wanted, and cut objects out
-//     of it into layers of their own (cutouts), placed, moved and animated however the user likes
+//     of it (the layers they become belong to the film: see overlay.ts)
 //   - add clips on tapped objects: effects for a stretch of the video (the user sets where each
 //     starts and ends) and impacts at a moment
 //   - fix the tracking with keyframes, change a clip's timing and look, aim lasers
@@ -16,17 +16,8 @@
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
 import { DEFAULT_PAL, type Effect, type FxSettings } from '@/domain/effects/palettes';
-import {
-  clampAt,
-  keyAt,
-  newCutout,
-  resetTransform,
-  setTransformAt,
-  toggleKey,
-  transformAt,
-  type Background,
-  type Transform,
-} from '@/domain/project/cutout';
+import type { Background } from '@/domain/project/cutout';
+import type { OverlayFrame } from '@/domain/project/overlay';
 import {
   jumpFrom,
   lengthOf,
@@ -49,8 +40,6 @@ import {
 import {
   DEFAULT_EFFECT_S,
   clearShapes,
-  cutoutAt,
-  cutoutSource,
   hitFrame,
   isPinned,
   nearestOther,
@@ -73,7 +62,7 @@ import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { frameIndexAt, type ClipFrame, type Selection, type TrackMeta } from '@/domain/tracking/types';
 import { Jobs, type JobHost, type JobStatus, type TrackJob } from './jobs';
-import type { Analysis, EffectLayers } from './ports';
+import type { Analysis, CutFrame, EffectLayers } from './ports';
 import { layersOf, timelineOf, type Timeline } from './views';
 
 export interface EditorState extends Timeline {
@@ -115,7 +104,7 @@ const copyTrack = (t: Track): Track => ({
   frames: [],
 });
 
-const EMPTY: EditorState = {
+export const EMPTY_STATE: EditorState = {
   scan: null,
   job: null,
   lanes: [],
@@ -135,6 +124,11 @@ export interface EditorEvents {
   status(message: string): void;
   // the clip's frame size for analysis is known
   meta(meta: TrackMeta): void;
+  // a step to undo was kept (see record): the film keeps one history for all its videos
+  recorded?(): void;
+  // a cutout's pictures, as they're cut (i: clip frame), and the frames it's being cut from now
+  cutoutFrames?(id: number, frames: CutFrame[]): void;
+  cutoutTrimmed?(id: number, span: { s: number; e: number }): void;
 }
 
 export const DEFAULT_FX: FxSettings = {
@@ -156,7 +150,8 @@ export class Editor {
   private source: Blob | null = null;
   private duration = 0;
   private clip: ClipFrame[] = [];
-  private W = 0; // analysis frame width
+  private W = 0; // analysis frame size
+  private H = 0;
   // the camera's path through the clip, filled in when something needs it
   private camPath: (Cam | null)[] = [];
   // where the film is split into scenes (see scenes.ts), and the source start of each one deleted
@@ -178,13 +173,16 @@ export class Editor {
   private merge: { key: string; at: number } | null = null;
 
   private jobs: Jobs;
-  private state: EditorState = EMPTY;
+  private state: EditorState = EMPTY_STATE;
 
+  // idBase: clip ids start after it, so several videos' clips never share one
   constructor(
     private analysis: Analysis,
     private layers: EffectLayers,
     private events: EditorEvents,
+    private idBase = 0,
   ) {
+    this.nextId = idBase + 1;
     this.jobs = new Jobs(analysis, this.jobHost());
   }
 
@@ -218,6 +216,19 @@ export class Editor {
   name(id: number) {
     return this.track(id)?.name ?? '';
   }
+  color(id: number) {
+    return this.track(id)?.color ?? '#fff';
+  }
+  // the time of clip frame i (the clip's own), and the frame's size for analysis
+  frameTime(i: number) {
+    return this.clip[i]?.t ?? 0;
+  }
+  get frameCount() {
+    return this.clip.length;
+  }
+  get frameSize() {
+    return { W: this.W, H: this.H };
+  }
   kind(id: number) {
     return this.track(id)?.kind ?? null;
   }
@@ -240,23 +251,13 @@ export class Editor {
   lostAt(i: number) {
     return this.tracks.some(t => t.frames[i]?.shapes.some(s => s.lost));
   }
-  // the clip tapped at frame i: a cutout on top (where it's placed), or an effect's object
+  // the effect whose object was tapped at frame i
   trackAt(i: number, p: Selection) {
-    return (
-      (cutoutAt(this.tracks, this.clip, i, p.x, p.y) ?? trackAt(this.tracks, this.clip, i, p.x, p.y))?.id ??
-      null
-    );
+    return trackAt(this.tracks, this.clip, i, p.x, p.y)?.id ?? null;
   }
-  // the first time any clip has something to show: a cutout shows from where it's placed, or where
-  // it leaves the footage changed
-  firstEffectTime() {
-    const times = this.tracks.map(t => {
-      const c = t.cutout;
-      if (c) return Math.min(c.at, c.bg === 'keep' ? Infinity : t.range.s);
-      return isPinned(t) ? t.range.s : (t.frames.find(f => f.shapes.length)?.t ?? Infinity);
-    });
-    const first = Math.min(Infinity, ...times);
-    return first === Infinity ? null : this.toProgram(first);
+  // the clip's own length
+  get sourceLength() {
+    return this.duration;
   }
 
   // ---------- the clip ----------
@@ -267,6 +268,7 @@ export class Editor {
     this.source = source;
     this.clip = [];
     this.tracks = [];
+    this.nextId = this.idBase + 1;
     this.tracked.clear();
     this.camPath = [];
     this.cuts = [];
@@ -275,7 +277,7 @@ export class Editor {
     this.redos = [];
     this.merge = null;
     this.syncLayers();
-    this.update(EMPTY, true);
+    this.update(EMPTY_STATE, true);
   }
 
   // lists every frame; nothing can be tracked until this is done
@@ -289,6 +291,7 @@ export class Editor {
         this.clip = frames;
         this.duration = meta.duration || length;
         this.W = meta.W;
+        this.H = meta.H;
         this.events.meta(meta);
         this.camPath = new Array(frames.length).fill(null);
         this.layers.setCamera(this.camPath);
@@ -350,7 +353,7 @@ export class Editor {
     if (!f) return null;
     this.record();
     const range = { s: f.t, e: this.defaultEnd(f.t) };
-    const t = newCutoutTrack(this.nextId++, this.clip, this.lastFx, range, newCutout(range.s, bg));
+    const t = newCutoutTrack(this.nextId++, this.clip, this.lastFx, range, bg);
     t.focus = focus && { w: Math.max(8, focus.w), h: Math.max(8, focus.h) };
     const id = this.start(t, i, sel);
     this.jobs.render(id);
@@ -369,64 +372,31 @@ export class Editor {
     if (bg === 'clean') this.jobs.render(id);
   }
 
-  // the cutout's transform at time t
-  transformAt(id: number, t: number): Transform | null {
-    const c = this.track(id)?.cutout;
-    return c ? transformAt(c, this.src(t) - c.at) : null;
-  }
-
-  // whether the cutout is showing at frame i (where it's placed)
-  cutoutShowing(id: number, i: number) {
+  // what's cut out for a cutout: the stretch of the clip it's cut from (the clip's own time), what
+  // it leaves there, and the object in each frame (fractions of the frame); null if it's gone
+  cutoutOf(id: number): { range: { s: number; e: number }; bg: Background; frames: OverlayFrame[] } | null {
     const t = this.track(id);
-    return !!t?.cutout && cutoutSource(t, this.clip, i) >= 0;
+    if (!t?.cutout || !this.clip.length) return null;
+    const W = this.W || 1,
+      H = this.H || 1;
+    const { s, e } = rangeFrames(t, this.clip);
+    const frames: OverlayFrame[] = [];
+    for (let i = s; i < e; i++) {
+      const sh = t.shapes[i];
+      if (sh) frames.push({ t: this.clip[i].t, cx: sh.cx / W, cy: sh.cy / H, w: sh.w / W, h: sh.h / H });
+    }
+    return { range: t.range, bg: t.cutout.bg, frames };
   }
 
-  // whether the cutout has a transform keyframe at time t; and whether it has any
-  moveKeyAt(id: number, t: number) {
-    const c = this.track(id)?.cutout;
-    return !!c && !!keyAt(c, this.src(t) - c.at);
-  }
-  hasMoveKeys(id: number) {
-    return !!this.track(id)?.cutout?.keys.length;
-  }
-
-  // moves, scales, turns or fades the cutout at time t: the whole layer, or with keyframes,
-  // the keyframe there
-  setTransform(id: number, t: number, p: Partial<Transform>) {
-    const at = this.src(t);
-    this.changeCutout(id, c => setTransformAt(c, at - c.at, p), `move:${id}`);
-  }
-
-  // adds a transform keyframe at time t, or removes the one there
-  toggleMoveKey(id: number, t: number) {
-    const at = this.src(t);
-    this.changeCutout(id, c => toggleKey(c, at - c.at));
-  }
-
-  // back where it was cut from: no move and no keyframes
-  resetTransform(id: number) {
-    this.changeCutout(id, resetTransform);
-  }
-
-  // places the cutout to start at time t (kept inside the clip); it plays the same frames
-  placeAt(id: number, t: number) {
-    const tr = this.track(id);
-    if (!tr) return;
-    const len = tr.range.e - tr.range.s,
-      at = this.src(t);
-    this.changeCutout(id, c => ({ ...c, at: clampAt(at, len, this.duration) }));
-  }
-
-  private changeCutout(
-    id: number,
-    change: (c: NonNullable<Track['cutout']>) => Track['cutout'],
-    merge?: string,
-  ) {
+  // cuts a cutout from another stretch of the clip (its own time); call commitRange once the change
+  // is done to track and cut what it uncovered
+  setCutoutRange(id: number, r: { s?: number; e?: number }) {
     const t = this.track(id);
     if (!t?.cutout) return;
-    this.record(merge);
-    t.cutout = change(t.cutout);
+    this.record(`range:${id}`);
+    if (!setRange(t, r, this.duration, this.clip)) return;
     this.syncLayers();
+    this.layers.changed(id);
     this.publish(true);
   }
 
@@ -475,6 +445,7 @@ export class Editor {
   }
 
   private start(t: Track, i: number, sel: Selection) {
+    this.named(t);
     const key: Key = { i, x: sel.x, y: sel.y };
     t.aim = defaultAim(sel, this.W);
     t.keys = [key];
@@ -575,7 +546,6 @@ export class Editor {
       ...(span.e !== undefined && { e: this.src(span.e, true) }),
     };
     this.record(`range:${id}`);
-    if (t.cutout) return this.setCutoutRange(t, r);
     if (!setRange(t, r, this.duration, this.clip)) return;
     this.place(t);
     this.syncLayers();
@@ -598,28 +568,6 @@ export class Editor {
       this.jobs.add(...redo.map(key => ({ id, key })));
     }
     if (before.s !== after.s || before.e !== after.e) this.recut(t);
-  }
-
-  // placed times [s, e) to the frames the cutout's cut from; its keyframes stay where they are
-  private setCutoutRange(t: Track, r: { s?: number; e?: number }) {
-    const c = t.cutout!,
-      off = t.range.s - c.at;
-    const src = {
-      ...(r.s !== undefined && { s: r.s + off }),
-      ...(r.e !== undefined && { e: r.e + off }),
-    };
-    const was = t.range;
-    if (!setRange(t, src, this.duration, this.clip)) return;
-    const at = t.range.s - off;
-    if (at < -1e-6 || at + (t.range.e - t.range.s) > this.duration + 1e-6) {
-      setRange(t, was, this.duration, this.clip);
-      return;
-    }
-    const moved = at - c.at;
-    t.cutout = { ...c, at, keys: c.keys.map(k => ({ ...k, t: k.t - moved })) };
-    this.syncLayers();
-    this.layers.changed(t.id);
-    this.publish(true);
   }
 
   // moves an impact to hit at time t
@@ -703,6 +651,7 @@ export class Editor {
     if (!t) return null;
     this.record();
     const d = duplicate(t, this.nextId++, this.clip);
+    this.named(d);
     this.tracks.push(d);
     this.tracked.set(d.id, this.tracked.get(t.id) ?? trackSpan(d, this.clip));
     this.place(d);
@@ -766,6 +715,7 @@ export class Editor {
     }
     this.merge = merge ? { key: merge, at: now } : null;
     this.undos.push(this.snapshot());
+    this.events.recorded?.();
     if (this.undos.length > HISTORY) this.undos.shift();
     this.redos = [];
     if (!this.state.canUndo || this.state.canRedo) this.update({ canUndo: true, canRedo: false });
@@ -862,6 +812,13 @@ export class Editor {
     this.layers.changed(t.id);
   }
 
+  // a new clip's name counts from 1 in this video, not from its id's base
+  private named(t: Track) {
+    const suffix = ` ${t.id}`;
+    if (this.idBase && t.name.endsWith(suffix))
+      t.name = `${t.name.slice(0, -suffix.length)} ${t.id - this.idBase}`;
+  }
+
   private track(id: number | null) {
     return this.tracks.find(t => t.id === id) ?? null;
   }
@@ -919,9 +876,13 @@ export class Editor {
       get camPath() {
         return camPath();
       },
-      cutoutStarted: (id, span) => this.layers.trimCutout(id, span),
+      cutoutStarted: (id, span) => {
+        this.layers.trimCutout(id, span);
+        this.events.cutoutTrimmed?.(id, span);
+      },
       cutoutFrames: (id, frames) => {
         this.layers.cutoutFrames(id, frames);
+        this.events.cutoutFrames?.(id, frames);
         this.update({}, true);
       },
       status: message => this.events.status(message),

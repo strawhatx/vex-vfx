@@ -8,14 +8,15 @@
 //   text.ts         the Text effect (words behind the object first, labels and titles last)
 //   water.ts        the Water effect: rain or underwater, over the other effects
 //   impactLayer.ts  impacts and the camera jolt
-//   cutoutLayer.ts  cutouts: what's left where each was cut from, then the layers themselves
+//   cutoutLayer.ts  cutouts: what's left where each was cut from (the layers themselves are the
+//                   film's: see overlays.ts)
 //   outline.ts      outlines and targets while editing
 import type { CutFrame, EffectLayers, LayerSpec } from '@/application/ports';
 import type { Cam } from '@/domain/effects/laser';
 import { frameIndexAt, type TrackFrame } from '@/domain/tracking/types';
 import { GpuFire } from './fire';
 import { FrameGeometry } from './geometry';
-import { CutoutStore, drawCutout, drawCutoutFrame, drawCutoutHole } from './cutoutLayer';
+import { CutoutStore, drawCutoutHole } from './cutoutLayer';
 import { drawImpacts } from './impactLayer';
 import { drawLaser } from './laserLayer';
 import { Layer } from './layer';
@@ -33,7 +34,6 @@ export interface RenderOptions {
   outline: boolean; // draw outlines (not in exports)
   paused: boolean;
   selected: number | null;
-  isolate?: number | null; // a cutout to show on its own, on a checkerboard
 }
 
 export class Renderer implements EffectLayers {
@@ -135,24 +135,16 @@ export class Renderer implements EffectLayers {
 
     const v = this.view();
     const frameT = this.clip[idx].t;
-    const alone = opts.isolate != null ? this.layers.get(opts.isolate) : undefined;
-    if (alone?.spec.cutout) {
-      drawChecker(ctx, this.CW, this.CH);
-      const at = drawCutout(v, this.cutouts, alone, idx);
-      if (at && opts.outline && opts.paused) drawCutoutFrame(v, alone, at, true);
-      return idx;
-    }
     const all = [...this.layers.values()];
     const cutouts = all.filter(l => l.spec.kind === 'cutout' && l.spec.frames.length === this.clip.length);
-    // effects and impacts on at this frame (a cutout shows where it's placed: see below)
+    // effects and impacts on at this frame
     const showing = all.filter(l => l.spec.kind !== 'cutout' && l.isOn(frameT, this.clip.length));
 
-    // the footage: what's left where objects were cut out, then the cutouts where they're placed
+    // the footage: what's left where objects were cut out
     for (const l of cutouts) {
       const reveal = opts.paused && opts.selected === l.spec.id;
       drawCutoutHole(v, this.cutouts, l, idx, reveal);
     }
-    const placed = cutouts.map(l => ({ l, at: drawCutout(v, this.cutouts, l, idx) }));
 
     const isText = (l: Layer) => l.spec.kind === 'effect' && l.spec.settings.effect === 'text';
     // words behind the object go under every other effect
@@ -180,14 +172,10 @@ export class Renderer implements EffectLayers {
 
     if (opts.outline) {
       for (const l of showing) drawOutline(v, this.masks, l, idx, opts.selected === l.spec.id, opts.paused);
-      for (const { l, at } of placed) {
-        const selected = opts.selected === l.spec.id;
-        // the selected cutout's object where it's cut from, to fix its outline
-        if (selected && l.isOn(frameT, this.clip.length))
+      // the selected cutout's object where it's cut from
+      for (const l of cutouts)
+        if (opts.selected === l.spec.id && l.isOn(frameT, this.clip.length))
           drawOutline(v, this.masks, l, idx, true, opts.paused);
-        // and where it's placed; others still being cut out show where they'll be
-        if (at && (selected || !at.ready)) drawCutoutFrame(v, l, at, selected);
-      }
       // the selected clip's spot in the scene, even outside its range, to show where it will be
       const sel = opts.selected !== null && this.layers.get(opts.selected);
       if (sel && opts.paused) drawSceneSpot(v, sel, idx);
@@ -256,13 +244,4 @@ export class Renderer implements EffectLayers {
   private invalidate() {
     for (const l of this.layers.values()) l.invalidate();
   }
-}
-
-// the grey and white squares behind something shown on its own, where nothing is
-function drawChecker(ctx: Ctx2D, W: number, H: number) {
-  const n = Math.max(8, Math.round(W / 48));
-  ctx.fillStyle = '#d6d6d6';
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#9a9a9a';
-  for (let y = 0; y * n < H; y++) for (let x = y % 2; x * n < W; x += 2) ctx.fillRect(x * n, y * n, n, n);
 }

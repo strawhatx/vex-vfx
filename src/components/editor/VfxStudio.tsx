@@ -29,7 +29,6 @@ import { Transport } from './Transport';
 type Catalog = 'effects' | 'elements' | 'impacts' | null;
 
 export default function VfxStudio() {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const viewRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<Player | null>(null);
@@ -48,7 +47,7 @@ export default function VfxStudio() {
   const [draftFx, setDraftFx] = useState<FxSettings>(DEFAULT_FX);
 
   useEffect(() => {
-    const player = new Player(videoRef.current!, viewRef.current!, setUi);
+    const player = new Player(viewRef.current!, setUi);
     playerRef.current = player;
     return () => {
       player.destroy();
@@ -94,12 +93,16 @@ export default function VfxStudio() {
     player()?.setFx(p);
   }
 
-  function chooseFile() {
+  // picks a video: added to the end of the film, or (replacing) put in place of video `replacing`
+  const replacing = useRef<number | null>(null);
+  function chooseFile(replace: number | null = null) {
+    replacing.current = replace;
     fileRef.current?.click();
   }
 
   function fileChosen(f: File) {
-    player()?.loadFile(f);
+    player()?.loadFile(f, replacing.current);
+    replacing.current = null;
     setScene(null);
     setTool(null);
   }
@@ -124,7 +127,7 @@ export default function VfxStudio() {
     player()?.select(null);
     if (scene === k) return setScene(null);
     setScene(k);
-    const sc = ui.scenes[k],
+    const sc = ui.films[k],
       t = player()?.time() ?? 0;
     if (sc && (t < sc.at || t >= sc.at + sc.e - sc.s)) player()?.seek(sc.at);
   }
@@ -162,6 +165,9 @@ export default function VfxStudio() {
     );
   }
 
+  // the video of the film selected
+  const filmVideo = scene !== null ? (ui.films[scene]?.reel ?? null) : null;
+
   const buttons = toolsFor(mode, {
     ready: ui.ready,
     busy,
@@ -181,7 +187,9 @@ export default function VfxStudio() {
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
     moveKey: !!cutout && !!ui.cutoutNow?.onKey,
     isolated: !!cutout && ui.isolated === cutout.id,
-    films: ui.scenes.length,
+    films: ui.films.length,
+    video:
+      filmVideo !== null ? { at: ui.reels.findIndex(r => r.id === filmVideo), of: ui.reels.length } : null,
   });
 
   // a toolbar button pressed
@@ -201,6 +209,13 @@ export default function VfxStudio() {
       case 'split':
         pl?.splitHere();
         return setScene(pl?.sceneNow() ?? null);
+      case 'removevideo':
+        if (filmVideo !== null) pl?.removeVideo(filmVideo);
+        return setScene(null);
+      case 'videoearlier':
+      case 'videolater':
+        if (filmVideo !== null) pl?.moveVideo(filmVideo, key === 'videoearlier' ? -1 : 1);
+        return setScene(null);
       case 'deletescene':
         if (scene !== null) pl?.deleteScene(scene);
         return setScene(null);
@@ -218,7 +233,7 @@ export default function VfxStudio() {
       case 'cancel':
         return pl?.cancelAdding();
       case 'replace':
-        return chooseFile();
+        return chooseFile((scene !== null ? ui.films[scene]?.reel : null) ?? player()?.activeVideo ?? null);
       case 'camera':
         void pl?.toggleCamera();
         setScene(null);
@@ -269,7 +284,7 @@ export default function VfxStudio() {
     <div className={`editor${full ? ' full' : ''}`}>
       <header className="topbar">
         <div className="top-tools">
-          <button type="button" className="icon-btn" aria-label="Open a video" onClick={chooseFile}>
+          <button type="button" className="icon-btn" aria-label="Add a video" onClick={() => chooseFile()}>
             <Icon d={I.plus} />
           </button>
           <button
@@ -311,7 +326,7 @@ export default function VfxStudio() {
         canvasRef={viewRef}
         full={full}
         pointer={!!ui.lanes.length && !ui.adding && !lane}
-        onChooseFile={chooseFile}
+        onChooseFile={() => chooseFile()}
       />
 
       <Transport
@@ -341,7 +356,7 @@ export default function VfxStudio() {
             deselect,
             selectScene,
             selectLane,
-            chooseFile,
+            chooseFile: () => chooseFile(),
             addEffect,
             setRange: (id, r) => player()?.setRange(id, r),
             commitRange: id => player()?.commitRange(id),
@@ -431,7 +446,6 @@ export default function VfxStudio() {
           e.target.value = '';
         }}
       />
-      <video ref={videoRef} className="src-video" playsInline preload="auto" />
     </div>
   );
 }

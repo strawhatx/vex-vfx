@@ -1,5 +1,4 @@
 // The hint for what to do next, from what's going on in the editor.
-import type { Editor } from './editor';
 
 export interface HintState {
   ready: boolean; // a clip is loaded
@@ -13,11 +12,17 @@ export interface HintState {
   selected: number | null; // the selected clip
 }
 
-// what it needs to know about the clips
-export type HintQueries = Pick<
-  Editor,
-  'trackCount' | 'name' | 'inRange' | 'hasShapeAt' | 'lostAt' | 'pinned' | 'kind' | 'cutoutShowing'
->;
+// what it needs to know about the clips (idx: the frame shown, of the video playing)
+export interface HintQueries {
+  trackCount: number;
+  name(id: number): string;
+  inRange(id: number, idx: number): boolean;
+  hasShapeAt(id: number, idx: number): boolean;
+  lostAt(idx: number): boolean;
+  pinned(id: number): boolean;
+  kind(id: number): 'effect' | 'impact' | 'cutout' | null;
+  cutoutShowing(id: number, idx: number): boolean;
+}
 
 // idx: the frame shown (-1: none)
 export function hintFor(s: HintState, ed: HintQueries, idx: number): string {
@@ -40,7 +45,7 @@ export function hintFor(s: HintState, ed: HintQueries, idx: number): string {
     if (ed.pinned(sel)) return `Tap the preview to move ${name}.`;
     if (ed.kind(sel) === 'cutout') {
       if (ed.cutoutShowing(sel, idx)) return `Drag to move ${name}.`;
-      if (!ed.inRange(sel, idx)) return `${name} isn’t showing here.`;
+      return `${name} isn’t showing here.`;
     }
     if (!ed.inRange(sel, idx)) return `Outside ${name}’s effect. Drag its ends to cover this.`;
     if (!ed.hasShapeAt(sel, idx)) return `${name} isn’t found here. Tap it to fix.`;

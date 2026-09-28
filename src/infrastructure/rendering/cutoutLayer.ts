@@ -1,17 +1,12 @@
-// Cutouts: objects cut out of the footage into layers of their own. Two parts, drawn at different
-// times of the frame:
-//   - where it was cut from: the background rebuilt behind the object (a clean plate), or a hole
-//     cleared through the picture; or nothing, if the footage keeps the object
-//   - the layer itself: the object as cut out of the frame it's playing, placed where the layer is
-//     (moved, scaled and turned about the object's middle, and faded)
-// The cut-out pictures come from the analysis worker (see CutFrame) and are kept here per frame.
+// Cutouts, in the video they're cut from: what's left there — the background rebuilt behind the
+// object (a clean plate), or a hole cleared through the picture; or nothing, if the footage keeps
+// the object. (The object cut out is a layer of the film's: see overlays.ts.) The clean plates come
+// from the analysis worker (see CutFrame) and are kept here per frame.
 import type { CutFrame, Sprite } from '@/application/ports';
-import { sourceTime, transformAt } from '@/domain/project/cutout';
-import { frameIndexAt } from '@/domain/tracking/types';
 import type { Layer } from './layer';
 import type { View } from './view';
 
-type Stored = { cut?: Sprite | null; plate?: Sprite | null };
+type Stored = { plate?: Sprite | null };
 
 export class CutoutStore {
   private byId = new Map<number, Map<number, Stored>>();
@@ -19,12 +14,9 @@ export class CutoutStore {
   put(id: number, frames: CutFrame[]) {
     let m = this.byId.get(id);
     if (!m) this.byId.set(id, (m = new Map()));
+    // (the cut-out pictures belong to the film's overlays, not here)
     for (const { i, ...parts } of frames) {
       const had = m.get(i) ?? {};
-      if (parts.cut !== undefined) {
-        if (had.cut && had.cut !== parts.cut) had.cut.image.close();
-        had.cut = parts.cut;
-      }
       if (parts.plate !== undefined) {
         if (had.plate && had.plate !== parts.plate) had.plate.image.close();
         had.plate = parts.plate;
@@ -39,7 +31,6 @@ export class CutoutStore {
     if (!m) return;
     for (const [i, f] of m)
       if (i < span.s || i >= span.e) {
-        f.cut?.image.close();
         f.plate?.image.close();
         m.delete(i);
       }
@@ -81,62 +72,6 @@ export function drawCutoutHole(v: View, store: CutoutStore, l: Layer, idx: numbe
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = 'destination-out';
   ctx.drawImage(l.geo.maskCanvas, 0, 0, v.CW, v.CH);
-  ctx.restore();
-}
-
-// the layer at frame idx, where it's placed; its box (output pixels, before turning) for the
-// editor's outline, or null if it isn't showing
-export function drawCutout(v: View, store: CutoutStore, l: Layer, idx: number) {
-  const c = l.spec.cutout;
-  const t = v.clip[idx].t;
-  if (!c) return null;
-  const len = l.spec.range.e - l.spec.range.s;
-  if (!inRange(t, { s: c.at, e: c.at + len })) return null;
-  const j = frameIndexAt(v.clip, sourceTime(l.spec.range, c, t));
-  if (j < 0 || !inRange(v.clip[j].t, l.spec.range)) return null;
-  const tgt = l.geo.target(l.spec.frames, j, 1 / 30, v.shot);
-  if (!tgt.active) return null;
-  const tf = transformAt(c, t - c.at);
-  const px = tgt.x,
-    py = tgt.y;
-  const ctx = v.ctx;
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.translate(px + tf.x * v.q, py + tf.y * v.q);
-  ctx.rotate((tf.rot * Math.PI) / 180);
-  ctx.scale(tf.scale, tf.scale);
-  ctx.translate(-px, -py);
-  const cut = store.get(l.spec.id, j)?.cut;
-  if (cut && tf.opacity > 0) {
-    ctx.globalAlpha = tf.opacity;
-    drawSprite(v, cut, ctx);
-  }
-  const box = { x: px - tgt.rx, y: py - tgt.ry, w: tgt.rx * 2, h: tgt.ry * 2 };
-  ctx.restore();
-  return { box, at: { x: px + tf.x * v.q, y: py + tf.y * v.q }, pivot: { x: px, y: py }, tf, ready: !!cut };
-}
-
-// the selected cutout's box as placed: a dashed frame round it
-export function drawCutoutFrame(
-  v: View,
-  l: Layer,
-  placed: NonNullable<ReturnType<typeof drawCutout>>,
-  selected: boolean,
-) {
-  const { box, pivot, at, tf } = placed;
-  const ctx = v.ctx;
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.translate(at.x, at.y);
-  ctx.rotate((tf.rot * Math.PI) / 180);
-  ctx.scale(tf.scale, tf.scale);
-  ctx.translate(-pivot.x, -pivot.y);
-  ctx.strokeStyle = l.spec.color;
-  ctx.lineWidth = (selected ? 2 : 1) / tf.scale;
-  ctx.setLineDash([8 / tf.scale, 5 / tf.scale]);
-  ctx.shadowColor = '#000';
-  ctx.shadowBlur = 3;
-  ctx.strokeRect(box.x, box.y, box.w, box.h);
   ctx.restore();
 }
 

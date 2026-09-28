@@ -491,6 +491,11 @@ button.primary {
   top: 0;
   bottom: 0;
 }
+/* a selected clip is dragged by a finger (rather than the timeline scrolling under it) */
+.fx-clip.on .fx-body,
+.fx-clip.on .impact-clip {
+  touch-action: none;
+}
 .fx-body {
   position: absolute;
   inset: 0;

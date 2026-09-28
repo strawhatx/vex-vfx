@@ -32,7 +32,7 @@ export function Preview({
 }) {
   const stageRef = useRef<HTMLElement>(null);
   const scanning = ui.scan !== null;
-  const { zoom, resetZoom } = usePreviewZoom(stageRef, canvasRef, ui.src);
+  const { zoom, resetZoom } = usePreviewZoom(stageRef, canvasRef, ui.reels[0]?.src ?? null);
 
   // fit the canvas inside the stage, keeping its aspect
   const fit = useCallback(() => {
@@ -82,7 +82,7 @@ export function Preview({
 
       {!ui.ready && !ui.camera && (
         <div className="empty">
-          <button type="button" className="import" onClick={onChooseFile}>
+          <button type="button" className="import" onClick={() => onChooseFile()}>
             <Icon d={I.plus} size={28} />
           </button>
           <strong>New project</strong>

@@ -1,4 +1,4 @@
-// The editor's sound: the clip's own audio plus the effects' sound effects, mixed together. The mix
+// The editor's sound: the videos' own audio plus the effects' sound effects, mixed together. The mix
 // goes to the speakers and to a stream the exporter records, so the exported video has the same
 // sound on every browser (instead of relying on grabbing audio from the video element, which
 // Safari can't do).
@@ -26,8 +26,25 @@ export class Mixer {
   private clips: SoundClip[] = [];
   private originalLevel = 1;
   private lastT: number | null = null;
+  private videos = new Set<HTMLVideoElement>();
+  private wired = new Set<HTMLVideoElement>();
 
-  constructor(private video: HTMLVideoElement) {}
+  // a video whose sound goes into the mix (each of the film's videos)
+  addVideo(video: HTMLVideoElement) {
+    this.videos.add(video);
+    video.muted = !this.ctx && this.originalLevel === 0;
+    this.wire();
+  }
+
+  // once the mix is set up, each video's sound goes through it (a video can only be taken in once)
+  private wire() {
+    if (!this.ctx || !this.original) return;
+    for (const v of this.videos) {
+      if (this.wired.has(v)) continue;
+      this.wired.add(v);
+      this.ctx.createMediaElementSource(v).connect(this.original);
+    }
+  }
 
   // sets up the mix (the first time) and wakes it; call from a tap or click
   start() {
@@ -59,9 +76,9 @@ export class Mixer {
       limit.connect(this.out);
       this.original = ctx.createGain();
       this.original.gain.value = this.originalLevel;
-      // from now on the video's sound goes through the mix
-      ctx.createMediaElementSource(this.video).connect(this.original);
       this.original.connect(this.master);
+      // from now on the videos' sound goes through the mix
+      this.wire();
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
@@ -79,7 +96,7 @@ export class Mixer {
   setOriginal(level: number) {
     this.originalLevel = level;
     if (this.original && this.ctx) this.original.gain.setTargetAtTime(level, this.ctx.currentTime, FADE_S);
-    else this.video.muted = level === 0;
+    else for (const v of this.videos) v.muted = level === 0;
   }
 
   // called for every frame shown, with its clip time: effect loops follow what's on screen, and

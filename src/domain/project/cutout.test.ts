@@ -1,17 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import {
-  IDENTITY,
-  clampAt,
-  newCutout,
-  placedRange,
-  resetTransform,
-  setTransformAt,
-  sourceTime,
-  toggleKey,
-  transformAt,
-} from './cutout';
+import { IDENTITY, STILL, resetTransform, setTransformAt, shiftKeys, toggleKey, transformAt } from './cutout';
 
-describe('a cutout’s transform', () => {
+const newCutout = (_at: number, bg: 'keep' | 'clean') => ({ ...STILL, bg });
+
+describe('a layer’s placement', () => {
   it('starts where it was cut from, unchanged', () => {
     expect(transformAt(newCutout(1, 'keep'), 0.5)).toEqual(IDENTITY);
   });
@@ -56,16 +48,9 @@ describe('a cutout’s transform', () => {
   });
 });
 
-describe('a cutout’s timing', () => {
-  it('plays the frames it was cut from, from wherever it’s placed', () => {
-    const range = { s: 1, e: 3 },
-      c = newCutout(4, 'keep');
-    expect(placedRange(range, c)).toEqual({ s: 4, e: 6 });
-    expect(sourceTime(range, c, 4.5)).toBe(1.5);
-  });
-
-  it('stays inside the clip', () => {
-    expect(clampAt(5, 2, 6)).toBe(4);
-    expect(clampAt(-1, 2, 6)).toBe(0);
+describe('shifting keyframes', () => {
+  it('moves every key by the same time', () => {
+    const c = shiftKeys(toggleKey(toggleKey(STILL, 0), 1), 0.5);
+    expect(c.keys.map(k => k.t)).toEqual([0.5, 1.5]);
   });
 });
