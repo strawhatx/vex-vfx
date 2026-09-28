@@ -12,6 +12,7 @@ import {
 } from '@/domain/effects/impacts';
 import type { Aim } from '@/domain/effects/laser';
 import { BACKGROUNDS, MAX_SCALE, MIN_SCALE, type Background, type Transform } from '@/domain/project/cutout';
+import { EDGE_LIMITS, type EdgeSettings } from '@/domain/project/edge';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
@@ -34,7 +35,8 @@ export type Tool =
   | 'parts'
   | 'aim'
   | 'background'
-  | 'transform';
+  | 'transform'
+  | 'edge';
 // the effect categories: each continuous effect, and each family of impacts (listed together
 // under Impact)
 export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
@@ -80,7 +82,21 @@ export const TOOL_TITLES: Record<Tool, string> = {
   aim: 'Aim',
   background: 'Where it was',
   transform: 'Transform',
+  edge: 'Edge',
 };
+
+// a cutout's edge settings, as sliders (see domain/project/edge.ts)
+const EDGE_ROWS: { key: keyof EdgeSettings; label: string; about: string; show(v: number): string }[] = [
+  { key: 'feather', label: 'Feather', about: 'Softens the edge', show: v => (v ? `${v} px` : 'Off') },
+  { key: 'smooth', label: 'Smooth', about: 'Rounds off jagged steps', show: v => (v ? `${v}` : 'Off') },
+  {
+    key: 'grow',
+    label: 'Grow',
+    about: 'Moves the edge out, or in below 0',
+    show: v => (v > 0 ? `+${v}` : `${v}`),
+  },
+  { key: 'steady', label: 'Steady', about: 'Stops the edge flickering', show: v => (v ? `${v}` : 'Off') },
+];
 
 // a picture of what each background choice leaves behind
 const BACKGROUND_ART: Record<Background, string> = {
@@ -227,6 +243,8 @@ export function ToolSheet({
   keyed,
   onTransform,
   onReset,
+  edge,
+  onEdge,
 }: {
   tool: Tool;
   title: string;
@@ -254,6 +272,9 @@ export function ToolSheet({
   keyed?: boolean;
   onTransform?(p: Partial<Transform>): void;
   onReset?(): void;
+  // edge: a cutout's, being checked
+  edge?: EdgeSettings;
+  onEdge?(p: Partial<EdgeSettings>): void;
 }) {
   return (
     <div className="sheet" role="dialog" aria-label={title}>
@@ -493,6 +514,28 @@ export function ToolSheet({
           <button type="button" className="sheet-btn" onClick={onReset}>
             Reset
           </button>
+        </div>
+      )}
+      {tool === 'edge' && edge && (
+        <div className="sliders">
+          {EDGE_ROWS.map(({ key, label, about, show }) => {
+            const { min, max, step } = EDGE_LIMITS[key];
+            return (
+              <label key={key} className="slider" title={about}>
+                <span>{label}</span>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={edge[key]}
+                  style={pct(edge[key], min, max)}
+                  onChange={e => onEdge?.({ [key]: +e.target.value })}
+                />
+                <output>{show(edge[key])}</output>
+              </label>
+            );
+          })}
         </div>
       )}
       {tool === 'aim' && aim && onAim && (

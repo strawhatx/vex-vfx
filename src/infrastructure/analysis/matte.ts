@@ -99,6 +99,12 @@ function firm(q: number) {
 }
 
 // the mean over a (2r+1) x (2r+1) window round each pixel (shrunk at the edges), in O(n)
+// the matte's edge softened over about `px` pixels: blurred twice (about a Gaussian)
+export function featherMatte(alpha: Float32Array, w: number, h: number, px: number): Float32Array {
+  const r = Math.max(1, Math.round(px / 2));
+  return boxMean(boxMean(alpha, w, h, r), w, h, r);
+}
+
 function boxMean(a: Float32Array, w: number, h: number, r: number) {
   const tmp = new Float32Array(w * h),
     out = new Float32Array(w * h);

@@ -10,18 +10,21 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input, type InputVideoTrack } from
 import { toClipTime } from '@/domain/tracking/timeline';
 import { BodyPartTracker, modelsFor } from './bodyTracker';
 import { CameraTracker } from './camera';
-import { refineMatte } from './matte';
+import { featherMatte, refineMatte } from './matte';
 import { cleanPlate, holeOf, type PlateFrame } from './cleanPlate';
 import { NO_MOVE } from '@/domain/effects/laser';
 import {
   createFaces,
   createHands,
+  createPersonSegmenter,
   createPoses,
   createSegmenter,
   type Landmarks,
+  type PersonSegmenter,
   type Segmenter,
 } from './mediapipe';
 import { ObjectTracker } from './objectTracker';
+import { PersonTracker } from './personTracker';
 import type {
   CameraRequest,
   CutoutRequest,
@@ -45,7 +48,8 @@ const POST_EVERY_MS = 120,
   PLATE_REACH = 30;
 
 let current = 0;
-let segmenter: Promise<Segmenter> | null = null;
+let segmenter: Promise<Segmenter> | null = null,
+  personSegmenter: Promise<PersonSegmenter> | null = null;
 let poses: Promise<Landmarks> | null = null,
   hands: Promise<Landmarks> | null = null,
   faces: Promise<Landmarks> | null = null;
@@ -117,7 +121,8 @@ function open(job: JobRequest) {
 }
 
 // something that follows what was tapped from frame to frame: the object under the tap (outlined
-// and followed), or a body part of the person tapped. Both look at c.work, which must hold the frame.
+// and followed), the whole person tapped, or a body part of them. All look at c.work, which must
+// hold the frame.
 interface Follower {
   start(rgba: Uint8ClampedArray, sel: Selection): Shape | null;
   step(rgba: Uint8ClampedArray): Shape | null;
@@ -137,10 +142,40 @@ async function makeFollower(c: Clip, job: TrackRequest): Promise<() => Follower>
       return { start: (_rgba, sel) => t.start(sel), step: () => t.step() };
     };
   }
+  const people = async () => ({
+    poses: await (poses ??= createPoses()),
+    people: await (personSegmenter ??= createPersonSegmenter()),
+  });
+  if (part === 'body') {
+    const models = await people();
+    return () => {
+      const t = new PersonTracker(c.W, c.H, models, c.work);
+      return { start: (_rgba, sel) => t.start(sel), step: () => t.step() };
+    };
+  }
   const seg = await (segmenter ??= createSegmenter());
-  return () => {
+  const object = (): Follower => {
     const t = new ObjectTracker(c.W, c.H, (x, y, region) => seg.segment(c.work, x, y, region), job.focus);
     return { start: (rgba, sel) => t.start(rgba, sel), step: rgba => t.step(rgba) };
+  };
+  if (!job.wholePerson) return object;
+  // a person if one was tapped (the whole of them), otherwise the object
+  const models = await people();
+  return () => {
+    let f: Follower | null = null;
+    return {
+      start(rgba, sel) {
+        const t = new PersonTracker(c.W, c.H, models, c.work);
+        const shape = t.start(sel, { focus: job.focus ?? null });
+        if (shape) {
+          f = { start: () => shape, step: () => t.step() };
+          return shape;
+        }
+        f = object();
+        return f.start(rgba, sel);
+      },
+      step: rgba => f?.step(rgba) ?? null,
+    };
   };
 }
 
@@ -359,7 +394,7 @@ async function cutout(job: CutoutRequest) {
     mctx.putImageData(maskImg, 0, 0);
     // the box in output pixels, with room round it for the edge to move out to
     const r = Math.max(3, Math.round(2 * q)),
-      room = 1 + Math.ceil(r / q);
+      room = 1 + Math.ceil((r + job.feather) / q);
     const x0 = Math.max(0, Math.floor((b.bx0 - room) * q)),
       y0 = Math.max(0, Math.floor((b.by0 - room) * q)),
       x1 = Math.min(ow, Math.ceil((b.bx1 + 1 + room) * q)),
@@ -380,7 +415,8 @@ async function cutout(job: CutoutRequest) {
     g.clearRect(0, 0, cw, ch);
     g.drawImage(frame, -x0, -y0);
     const pic = g.getImageData(0, 0, cw, ch);
-    const fine = refineMatte(pic.data, alpha, cw, ch, r);
+    const sharp = refineMatte(pic.data, alpha, cw, ch, r),
+      fine = job.feather > 0 ? featherMatte(sharp, cw, ch, job.feather) : sharp;
     for (let k = 0; k < fine.length; k++) pic.data[k * 4 + 3] = Math.round(fine[k] * 255);
     g.putImageData(pic, 0, 0);
     return { image: out.transferToImageBitmap(), x: x0 / q, y: y0 / q, w: cw / q, h: ch / q };

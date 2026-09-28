@@ -28,10 +28,21 @@ export type ToolKey =
   | 'place'
   | 'deletescene'
   | 'isolate'
+  | 'review'
   | 'removevideo'
   | 'videoearlier'
   | 'videolater'
-  | 'duplicate';
+  | 'duplicate'
+  // checking a cutout's outline (the roto screen)
+  | 'add'
+  | 'remove'
+  | 'pen'
+  | 'hand'
+  | 'prevframe'
+  | 'nextframe'
+  | 'penback'
+  | 'penclear'
+  | 'penclose';
 export interface ToolBtn {
   key: ToolKey;
   label: string;
@@ -181,6 +192,7 @@ export function toolsFor(
     ];
   if (mode === 'cutout')
     return [
+      { key: 'review', label: 'Check outline', icon: I.eye, disabled: s.busy },
       { key: 'isolate', label: 'View alone', icon: I.cutout, on: s.isolated, disabled: !s.ready },
       sheet('transform', 'Transform', I.move),
       {
@@ -219,6 +231,34 @@ export function toolsFor(
   return [
     { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
     { key: 'edit', label: 'Footage', icon: I.film },
+  ];
+}
+
+// the roto screen's tools (checking a cutout's outline): what a tap or loop does (add a piece, or
+// take one out), the pen, the hand (to move the zoomed preview), the edge, and stepping a frame
+// back or on (it's trimmed by dragging the
+// ends of its timeline).
+// With the pen's shape begun: taking a point back, clearing it, and closing it.
+export function rotoTools(s: {
+  tool: 'add' | 'remove';
+  pen: { on: boolean; points: number };
+  hand: boolean;
+  open: Tool | null;
+}): ToolBtn[] {
+  if (s.pen.on && s.pen.points)
+    return [
+      { key: 'penclose', label: 'Close shape', icon: I.check, disabled: s.pen.points < 3 },
+      { key: 'penback', label: 'Undo point', icon: I.undo },
+      { key: 'penclear', label: 'Clear', icon: I.trash },
+    ];
+  return [
+    { key: 'add', label: 'Add', icon: I.plus, on: s.tool === 'add' },
+    { key: 'remove', label: 'Remove', icon: I.remove, on: s.tool === 'remove' },
+    { key: 'pen', label: 'Pen', icon: I.pen, on: s.pen.on },
+    { key: 'hand', label: 'Grab', icon: I.hand, on: s.hand },
+    { key: 'edge', label: 'Edge', icon: I.outline, on: s.open === 'edge' },
+    { key: 'prevframe', label: 'Previous', icon: I.back },
+    { key: 'nextframe', label: 'Next', icon: I.forward },
   ];
 }
 

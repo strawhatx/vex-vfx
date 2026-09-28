@@ -293,6 +293,46 @@ export class Project {
     return this.overlays;
   }
 
+  // ---------- checking a cutout's outlines ----------
+  // An overlay is cut out once its outlines have been checked (see Editor.startReview): the frames
+  // of the video it's cut from, fixed with taps like an effect's.
+
+  // the video an overlay is cut from, its cutout there, and that video's editor
+  sourceOf(id: number) {
+    const o = this.overlay(id);
+    const r = o && this.reel(o.source.reel);
+    return o && r ? { reel: o.source.reel, track: o.source.track, editor: r.editor } : null;
+  }
+
+  startReview(id: number) {
+    const src = this.sourceOf(id);
+    return !!src && src.editor.startReview(src.track);
+  }
+
+  // done checking: it's cut out
+  finishReview(id: number) {
+    this.sourceOf(id)?.editor.finishReview();
+  }
+
+  // which stretch of its video it's cut from (the video's own time), keeping what shows where it is;
+  // commitOverlayRange once the change is done tracks what it grew into
+  setCutoutSpan(id: number, r: { s?: number; e?: number }) {
+    const o = this.overlay(id);
+    const ed = o && this.reel(o.source.reel)?.editor;
+    if (!o || !ed) return;
+    const film = (t: number) => o.at + (t - o.src.s);
+    this.step(`range:${id}`, () => {
+      const next = trimmed(
+        o,
+        { ...(r.s !== undefined && { s: film(r.s) }), ...(r.e !== undefined && { e: film(r.e) }) },
+        { s: 0, e: ed.sourceLength },
+      );
+      this.overlays = this.overlays.map(x => (x.id === id ? next : x));
+      ed.setCutoutRange(o.source.track, next.src);
+      this.publish(true);
+    });
+  }
+
   // the top overlay whose object is under (x, y) at time t, in a W x H picture
   overlayAt(t: number, x: number, y: number, W: number, H: number) {
     return overlayAt(this.overlays, t, x, y, W, H)?.id ?? null;

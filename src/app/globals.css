@@ -691,6 +691,171 @@ button.primary {
   animation: up 0.16s ease-out;
 }
 
+/* ---------- the roto screen: checking a cutout's outline (its own top bar and dock) ---------- */
+.roto-mode .stage {
+  background: #000;
+}
+.roto-top .roto-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  text-align: center;
+}
+.roto-title strong {
+  font-size: 0.95rem;
+}
+.roto-title span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.roto {
+  padding: 10px 16px 2px;
+  animation: up 0.16s ease-out;
+}
+.roto-times {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+.roto-times span:nth-child(2) {
+  color: var(--ink);
+}
+/* zoomed in, the timeline scrolls sideways */
+.roto-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+.roto-scroll::-webkit-scrollbar {
+  display: none;
+}
+.roto-zoom {
+  min-width: 100%;
+}
+.roto-strip {
+  position: relative;
+  height: 56px;
+  margin: 0 14px; /* room for the grips just outside its ends */
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+  touch-action: none;
+}
+.roto-strip .thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background-size: cover;
+  background-position: center;
+}
+/* what isn't cut out */
+.roto-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.62);
+}
+.roto-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 2px solid #fff;
+  border-left-width: 0;
+  border-right-width: 0;
+  pointer-events: none;
+}
+.roto-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 14px;
+  margin-left: -14px;
+  border-radius: 6px 0 0 6px;
+  background: #fff;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.roto-handle.end {
+  margin-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+.roto-handle::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 30%;
+  bottom: 30%;
+  width: 2px;
+  border-radius: 1px;
+  background: #111;
+}
+/* a bigger invisible target for fingers, reaching outwards */
+.roto-handle::before {
+  content: '';
+  position: absolute;
+  inset: -6px 0 -6px -12px;
+}
+.roto-handle.end::before {
+  inset: -6px -12px -6px 0;
+}
+.roto-head {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 3;
+}
+.roto-flags {
+  position: relative;
+  height: 14px;
+  margin: 6px 14px 0; /* lined up with the strip */
+}
+.roto-cut,
+.roto-flag {
+  position: absolute;
+  top: 3px;
+  height: 6px;
+}
+.roto-cut {
+  border-radius: 3px;
+  background: var(--track);
+}
+.roto-flag.missing,
+.roto-flag.lost {
+  background: #ff4d4d;
+}
+.roto-flag.jump {
+  background: var(--weak);
+}
+/* a frame fixed with a tap or a drawing */
+.roto-key {
+  position: absolute;
+  top: 1px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--dock);
+}
+.roto-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
 /* ---------- tool panel: takes over the dock on phones, floats beside the preview on desktop ---------- */
 .sheet {
   position: absolute;

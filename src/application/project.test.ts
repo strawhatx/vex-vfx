@@ -135,6 +135,9 @@ describe('cutouts as layers of the film', () => {
     const a = addVideo(6);
     const id = project.addCutout(a, 14, { x: 50, y: 25 }, 'keep', null)!;
     finishTrack(a);
+    // its outlines checked: it's cut out
+    project.startReview(id);
+    project.finishReview(id);
     return { a, id };
   }
 
@@ -179,6 +182,20 @@ describe('cutouts as layers of the film', () => {
     // and stays when the other video is replaced too
     project.replaceVideo(state.reels[0].id, new Blob());
     expect(project.overlay(id)).not.toBeNull();
+  });
+
+  it('checking it, sets which stretch of its video it’s cut from, both ways', () => {
+    const { a, id } = cutOut();
+    const ed = project.editorOf(a)!;
+    const tracks = analyses.get(a)!.tracks;
+    project.setCutoutSpan(id, { s: 1 });
+    project.commitOverlayRange(id);
+    expect(ed.cutoutOf(id)?.range).toEqual({ s: 1, e: 4.4 });
+    expect(project.overlay(id)).toMatchObject({ src: { s: 1, e: 4.4 } });
+    expect(analyses.get(a)!.tracks).toBeGreaterThan(tracks); // what it grew into is tracked
+    project.setCutoutSpan(id, { e: 3 });
+    expect(ed.cutoutOf(id)?.range).toEqual({ s: 1, e: 3 });
+    expect(project.overlay(id)).toMatchObject({ src: { s: 1, e: 3 } });
   });
 
   it('cutting out and undoing it are one step each', () => {

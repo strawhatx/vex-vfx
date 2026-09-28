@@ -9,7 +9,8 @@
 //   its range (the frames it's cut from) and cut out along its outline; what's cut becomes a layer
 //   of the film's own (see overlay.ts). Here it keeps what's left in the footage where it was.
 // Clips can overlap, stacked on the timeline. Each keeps one shape per clip frame and the
-// keyframes it was tracked from.
+// keyframes it was tracked from; a cutout also keeps pieces added to or taken out of its outline
+// (see parts.ts), and what's drawn is its outline with them.
 import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
 import type { Aim } from '../effects/laser';
 import type { FxSettings } from '../effects/palettes';
@@ -17,6 +18,8 @@ import { partLabel, type BodyPart } from '../tracking/bodyParts';
 import { type ClipFrame, type Shape, type TrackFrame } from '../tracking/types';
 import type { Background } from './cutout';
 import { inSpan, type FrameSpan, type Key } from './keyframes';
+import { PLAIN_EDGE, reshapes, withEdge, type EdgeSettings } from './edge';
+import { withParts, type Part } from './parts';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
@@ -30,7 +33,9 @@ export interface Track {
   fx: FxSettings; // look: effect type, colors, size, intensity (impacts use the colors and size)
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
-  cutout: { bg: Background } | null; // for cutouts: what's left in the footage where it was
+  // for cutouts: what's left in the footage where it was, whether its outlines have been checked
+  // (it's only cut out once they have), and its edge settings
+  cutout: { bg: Background; reviewed: boolean; edge: EdgeSettings } | null;
   // the size of the box drawn round the object when it was picked (work pixels): its outline is
   // only looked for in a box that size around it, which keeps it from spilling onto what's nearby
   focus: { w: number; h: number } | null;
@@ -38,7 +43,8 @@ export interface Track {
   // null until it's first placed
   row: number | null;
   range: { s: number; e: number }; // seconds; for an impact, s is the moment of the hit; for a cutout, the frames it's cut from
-  shapes: (Shape | null)[]; // per clip frame
+  shapes: (Shape | null)[]; // per clip frame, as tracked
+  parts: Part[]; // a cutout's pieces added or taken out, in the order picked (replaced, never changed in place, but for their tracked shapes)
   frames: TrackFrame[]; // what gets drawn: the shapes in the tracked frames
   keys: Key[]; // in frame order
 }
@@ -99,6 +105,7 @@ function make(
     row: null,
     range,
     shapes: new Array(clip.length).fill(null),
+    parts: [],
     frames: [],
     keys: [],
   };
@@ -150,7 +157,7 @@ export function newCutoutTrack(
   bg: Background,
 ) {
   const t = make(id, 'cutout', clip, fx, range, null, null);
-  t.cutout = { bg };
+  t.cutout = { bg, reviewed: false, edge: PLAIN_EDGE };
   return t;
 }
 
@@ -174,15 +181,35 @@ export const trackSpan = (t: Track, clip: ClipFrame[]): FrameSpan => rangeFrames
 // the frame an impact hits on
 export const hitFrame = (t: Track, clip: ClipFrame[]) => rangeFrames(t, clip).s;
 
-// rebuilds what gets drawn at frames [from, to) from the shapes and the tracked frames
+// rebuilds what gets drawn at frames [from, to) from the shapes (with a cutout's parts and edge
+// settings) and the tracked frames
 export function refreshFrames(t: Track, clip: ClipFrame[], from = 0, to = clip.length) {
   if (t.frames.length !== clip.length) t.frames = clip.map(f => ({ t: f.t, dur: f.dur, shapes: [] }));
   const span = trackSpan(t, clip);
+  const outline = (i: number) =>
+    inSpan(span, i) ? (t.parts.length ? withParts(t.shapes, t.parts, i) : t.shapes[i]) : null;
+  const edge = t.cutout?.edge;
+  let at = outline;
+  if (edge && reshapes(edge)) {
+    // (a steadied frame is made from its neighbours too: they change with it)
+    const r = Math.round(edge.steady);
+    from = Math.max(0, from - r);
+    to = Math.min(clip.length, to + r);
+    const seen = new Map<number, Shape | null>();
+    const once = (i: number) => {
+      if (!seen.has(i)) seen.set(i, outline(i));
+      return seen.get(i)!;
+    };
+    at = i => (inSpan(span, i) ? withEdge(once, i, edge) : null);
+  }
   for (let i = from; i < to; i++) {
-    const sh = t.shapes[i];
-    t.frames[i].shapes = sh && inSpan(span, i) ? [sh] : [];
+    const sh = at(i);
+    t.frames[i].shapes = sh ? [sh.id === t.id ? sh : { ...sh, id: t.id }] : [];
   }
 }
+
+// the outline drawn at each frame (null where there's none)
+export const drawnShapes = (t: Track) => t.frames.map(f => f.shapes[0] ?? null);
 
 export function clearShapes(t: Track, clip: ClipFrame[], from: number, to: number) {
   for (let k = from; k < to; k++) t.shapes[k] = null;
@@ -309,6 +336,7 @@ export function duplicate(t: Track, id: number, clip: ClipFrame[]): Track {
     color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length],
     range: { ...t.range },
     shapes: t.shapes.map(sh => sh && { ...sh, id }),
+    parts: t.parts.map(p => ({ ...p, shapes: p.shapes.slice() })),
     keys: t.keys.slice(),
     frames: [],
     row: t.row === null ? null : t.row + 1,

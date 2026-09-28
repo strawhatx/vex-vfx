@@ -8,7 +8,8 @@ import type { ClipFrame, Rle, Selection, Shape, TrackMeta } from '@/domain/track
 export type ScanRequest = { type: 'scan'; jobId: number; clipId: number; file: Blob; playerLength: number };
 // times: the frames to cover, in order; key: index in times of the frame the object was tapped
 // on. Tracks forward from the key to the end of times, then backward to the start. part: follow that
-// body part of the person tapped instead of the object under the tap
+// body part of the person tapped instead of the object under the tap ('body': the whole person);
+// wholePerson: if the tap is on a person, follow the whole of them rather than the object there
 export type TrackRequest = {
   type: 'track';
   jobId: number;
@@ -19,6 +20,7 @@ export type TrackRequest = {
   select: Selection;
   part?: BodyPart;
   focus?: { w: number; h: number };
+  wholePerson?: boolean;
 };
 // times: every frame of the clip, in order
 export type CameraRequest = { type: 'camera'; jobId: number; clipId: number; file: Blob; times: number[] };
@@ -42,6 +44,7 @@ export type CutoutRequest = {
   masks: (Rle | null)[];
   plate: boolean;
   cam: (Cam | null)[];
+  feather: number; // how soft its edge is (output pixels)
 };
 // a picture and where it sits in its frame, in work pixels
 export type SpriteMsg = { image: ImageBitmap; x: number; y: number; w: number; h: number };

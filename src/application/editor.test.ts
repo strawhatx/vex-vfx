@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FAMILY_STYLES } from '@/domain/effects/impacts';
-import type { ClipFrame, Shape } from '@/domain/tracking/types';
+import { encodeRle, type ClipFrame, type Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
 import { FakeAnalysis, FakeLayers } from './fakes';
 
@@ -327,6 +327,12 @@ describe('body parts', () => {
     expect(trackCall().req.part).toBe('eyes');
     expect(state.lanes[0].name).toBe('Eyes');
   });
+
+  it('an effect on the whole body follows the whole person', () => {
+    editor.addTrack(14, { x: 50, y: 50 }, {}, 'body');
+    expect(trackCall().req.part).toBe('body');
+    expect(state.lanes[0].name).not.toBe('Whole body');
+  });
 });
 
 describe('outlines', () => {
@@ -502,6 +508,13 @@ describe('explosions', () => {
 
 // ---------- the footage ----------
 
+// a cutout, its outlines checked (so it's cut out once tracked)
+function checked(id: number) {
+  editor.startReview(id);
+  editor.finishReview();
+  return id;
+}
+
 function cutoutCall() {
   const c = analysis.last;
   if (c.kind !== 'cutout') throw new Error(`expected a cutout job, got ${c.kind}`);
@@ -546,8 +559,16 @@ describe('cutting an object out', () => {
     expect(trackCall().req.focus).toBeUndefined();
   });
 
+  it('a person tapped is cut out whole; an effect follows just what was tapped', () => {
+    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    expect(trackCall().req.wholePerson).toBe(true);
+    finishTrack();
+    editor.addTrack(14, { x: 50, y: 50 });
+    expect(trackCall().req.wholePerson).toBeUndefined();
+  });
+
   it('tracks the object first, then cuts it out along its outlines', () => {
-    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    const id = checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
     expect(trackCall().req.times).toEqual(times(14, 44));
     finishTrack();
     const c = cutoutCall();
@@ -564,7 +585,7 @@ describe('cutting an object out', () => {
   });
 
   it('removing the object waits for the camera’s path, to line up the frames around', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'clean');
+    checked(editor.addCutout(14, { x: 50, y: 50 }, 'clean')!);
     finishTrack();
     expect(analysis.calls.some(k => k.kind === 'camera')).toBe(true);
     const c = cutoutCall();
@@ -574,7 +595,7 @@ describe('cutting an object out', () => {
   });
 
   it('a fix while cutting out stops it, tracks, then cuts out again', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
     finishTrack();
     cutoutCall();
     const cancels = analysis.cancels;
@@ -585,7 +606,7 @@ describe('cutting an object out', () => {
   });
 
   it('choosing to remove the object later cuts it out again, with the background', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
     finishTrack();
     cutoutCall().on.done();
     editor.setBackground(1, 'clean');
@@ -593,8 +614,121 @@ describe('cutting an object out', () => {
     expect(layers.specs[0].cutout?.bg).toBe('clean');
   });
 
+  it('isn’t cut out until its outlines are checked', () => {
+    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    finishTrack();
+    expect(analysis.calls.some(k => k.kind === 'cutout')).toBe(false);
+    const r = editor.reviewOf(id)!;
+    expect([r.s, r.e]).toEqual([14, 44]);
+    expect(r.keys).toEqual([14]);
+    expect(r.flags).toHaveLength(30);
+    editor.startReview(id);
+    editor.finishReview();
+    expect(cutoutCall().req.times).toEqual(times(14, 44));
+  });
+
+  it('fixes made while checking it again are cut out once, when done', () => {
+    const id = checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
+    finishTrack();
+    cutoutCall().on.done();
+    editor.startReview(id);
+    editor.fixAt(id, 30, { x: 60, y: 50 });
+    finishTrack();
+    expect(analysis.last.kind).toBe('track');
+    editor.finishReview();
+    expect(cutoutCall().req.times).toEqual(times(14, 44));
+  });
+
+  it('checked again with nothing changed, it isn’t cut out again', () => {
+    const id = checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
+    finishTrack();
+    cutoutCall().on.done();
+    const calls = analysis.calls.length;
+    editor.startReview(id);
+    editor.finishReview();
+    expect(analysis.calls.length).toBe(calls);
+  });
+
+  it('a piece tapped is followed through all its frames and added to the outline', () => {
+    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    finishTrack();
+    expect(editor.addPart(id, 30, 'add', { at: { x: 80, y: 50 } })).toBe(true);
+    const c = trackCall();
+    // the piece itself, over all the cutout's frames, from where it was tapped
+    expect(c.req).toMatchObject({ select: { x: 80, y: 50 }, key: 16, times: times(14, 44) });
+    expect(c.req.wholePerson).toBeUndefined();
+    const m = new Uint8Array(100 * 100);
+    for (let y = 45; y < 55; y++) m.fill(1, y * 100 + 75, y * 100 + 85);
+    c.on.shapes([
+      { i: 16, shape: { id: 0, cx: 80, cy: 50, w: 10, h: 10, mask: encodeRle(m, 100, 75, 45, 84, 54) } },
+    ]);
+    c.on.done();
+    const at = (t: number) => editor.cutoutOf(id)!.frames.find(f => Math.abs(f.t - t) < 1e-6);
+    // what was there stays (40..60), with the piece (75..84) added
+    expect(at(3)?.w).toBeCloseTo(0.45, 2);
+    expect(at(2)?.w).toBeCloseTo(0.2, 2);
+  });
+
+  it('a loop drawn takes a piece out, carried along; it’s cut out once checked', () => {
+    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    finishTrack();
+    const calls = analysis.calls.length;
+    const top = [
+      { x: 30, y: 20 },
+      { x: 70, y: 20 },
+      { x: 70, y: 50 },
+      { x: 30, y: 50 },
+    ];
+    expect(editor.addPart(id, 30, 'remove', { loop: top })).toBe(true);
+    expect(analysis.calls.length).toBe(calls); // nothing to track
+    const at = (t: number) => editor.cutoutOf(id)!.frames.find(f => Math.abs(f.t - t) < 1e-6);
+    // the object was 30..70 high: now 50..70
+    expect(at(3)?.h).toBeCloseTo(0.2, 2);
+    expect(at(1.4)?.h).toBeCloseTo(0.2, 2);
+    editor.startReview(id);
+    editor.finishReview();
+    expect(cutoutCall().req.masks[16]).not.toBeNull();
+  });
+
+  it('edge settings reshape its outline, soften the cut, and are one step to undo while dragged', () => {
+    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    const m = new Uint8Array(100 * 100);
+    for (let y = 30; y < 70; y++) m.fill(1, y * 100 + 40, y * 100 + 60);
+    const c = trackCall();
+    c.on.shapes(
+      c.req.times.map((_, i) => ({ i, shape: { ...shape(), mask: encodeRle(m, 100, 40, 30, 59, 69) } })),
+    );
+    c.on.done();
+    const w = () => editor.cutoutOf(id)!.frames.find(f => Math.abs(f.t - 3) < 1e-6)!.w;
+    expect(w()).toBeCloseTo(0.2, 2);
+    editor.setEdge(id, { grow: 1 });
+    editor.setEdge(id, { grow: 2 });
+    expect(w()).toBeCloseTo(0.24, 2);
+    expect(editor.reviewOf(id)?.edge.grow).toBe(2);
+    editor.setEdge(id, { feather: 6 });
+    checked(id);
+    expect(cutoutCall().req.feather).toBe(6);
+    editor.undo(); // (the feather)
+    editor.undo(); // (both grows)
+    expect(w()).toBeCloseTo(0.2, 2);
+  });
+
+  it('undoing a piece puts the outline back', () => {
+    const id = editor.addCutout(14, { x: 50, y: 50 }, 'keep')!;
+    finishTrack();
+    editor.addPart(id, 30, 'remove', {
+      loop: [
+        { x: 0, y: 0 },
+        { x: 99, y: 0 },
+        { x: 99, y: 99 },
+      ],
+    });
+    editor.undo();
+    expect(editor.cutoutOf(id)?.frames.find(f => Math.abs(f.t - 3) < 1e-6)?.h).toBeCloseTo(0.4, 2);
+  });
+
   it('deleting it stops cutting it out', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
     finishTrack();
     cutoutCall();
     const cancels = analysis.cancels;
@@ -737,7 +871,7 @@ describe('undo and redo', () => {
   });
 
   it('a cutout whose outlines changed is cut out again', () => {
-    editor.addCutout(14, { x: 50, y: 50 }, 'keep');
+    checked(editor.addCutout(14, { x: 50, y: 50 }, 'keep')!);
     finishTrack();
     cutoutCall().on.done();
     editor.fixAt(1, 30, { x: 60, y: 50 });

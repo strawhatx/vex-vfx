@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { refineMatte } from './matte';
+import { featherMatte, refineMatte } from './matte';
 
 // a 40 x 20 picture: red on the left of column `edge`, blue from it on
 function picture(edge: number, w = 40, h = 20) {
@@ -42,5 +42,16 @@ describe('refining a cutout’s edge', () => {
     const out = refineMatte(flat, a, 40, 20);
     expect(out[10 * 40 + 5]).toBeCloseTo(1, 1);
     expect(out[10 * 40 + 35]).toBeCloseTo(0, 1);
+  });
+
+  it('feathered, fades out across the edge rather than stopping at it', () => {
+    const hard = rough(20, 0.01);
+    const soft = featherMatte(hard, 40, 20, 8);
+    const row = 10 * 40;
+    expect(soft[row + 2]).toBeGreaterThan(0.99);
+    expect(soft[row + 17]).toBeGreaterThan(0.5);
+    expect(soft[row + 17]).toBeLessThan(1);
+    expect(soft[row + 22]).toBeGreaterThan(0);
+    expect(soft[row + 22]).toBeLessThan(0.5);
   });
 });

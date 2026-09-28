@@ -1,19 +1,21 @@
 // The analysis work behind the editor, run one job at a time:
 //   1. a probe: what's at a tapped spot (a person, and which body part), answered first
 //   2. the camera's path through the clip, worked out once when something needs it
-//   3. tracking: following a clip's object from one keyframe, in the order asked
+//   3. tracking: following a clip's object from one keyframe, or a piece of a cutout (see
+//      domain/project/parts.ts) from where it was picked, in the order asked
 //   4. cutting out: a cutout's object cut out of each frame along its outlines (and the background
 //      rebuilt behind it), once all its tracking is done
 // Anything newer and more urgent stops the running job, which is queued to run again after.
 import { inSpan, ownedRange, type Key } from '@/domain/project/keyframes';
-import { clearShapes, refreshFrames, trackSpan, type Track } from '@/domain/project/track';
+import { clearShapes, drawnShapes, refreshFrames, trackSpan, type Track } from '@/domain/project/track';
 import type { Cam } from '@/domain/effects/laser';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
-import type { ClipFrame, Selection } from '@/domain/tracking/types';
+import type { ClipFrame, Selection, Shape } from '@/domain/tracking/types';
 import type { Analysis, CutFrame } from './ports';
 
-// tracking one clip's object from one of its keyframes
-export type TrackJob = { id: number; key: Key };
+// tracking one clip's object from one of its keyframes; or, with part, that piece of a cutout
+// from where it was picked (key)
+export type TrackJob = { id: number; key: Key; part?: number };
 
 // what the user sees of the job in progress
 export type JobStatus = { label: string; progress: number };
@@ -74,14 +76,14 @@ export class Jobs {
   }
 
   // tracks this next. Tracking in progress for the same clip may cover frames this job now owns,
-  // so it stops and runs again after (unless it's from the same frame).
+  // so it stops and runs again after (unless it's the same thing tracked from the same frame).
   addFirst(job: TrackJob) {
     this.queue.unshift(job);
     this.pauseRender();
     const r = this.running;
     if (r && r.id === job.id) {
       this.stopRunning();
-      if (r.key.i !== job.key.i) this.queue.splice(1, 0, r);
+      if (r.key.i !== job.key.i || r.part !== job.part) this.queue.splice(1, 0, r);
     }
     this.pump();
   }
@@ -207,34 +209,69 @@ export class Jobs {
     this.running = null;
   }
 
-  // false if the job is out of date: its keyframe was removed, or left outside the tracked frames
+  // false if the job is out of date: its keyframe (or piece) was removed, or left outside the
+  // tracked frames
   private runTracking(source: Blob, job: TrackJob) {
     const { clip, host } = this;
     const t = host.track(job.id);
     const span = t && trackSpan(t, clip);
-    if (!t || !span || !t.keys.includes(job.key) || !inSpan(span, job.key.i)) return false;
-
-    // the frames this keyframe owns: cleared, then filled in as they're tracked
+    if (!t || !span || !inSpan(span, job.key.i)) return false;
     const key = job.key;
+
+    // a piece of a cutout: followed over all its frames, into the piece's own outlines
+    if (job.part !== undefined) {
+      const p = t.parts.find(q => q.id === job.part);
+      if (!p?.at) return false;
+      p.shapes.fill(null, span.s, span.e);
+      return this.follow(source, job, t, span.s, span.e, `Following the piece of ${t.name}`, {
+        select: p.at,
+        put: (k, shape) => (p.shapes[k] = shape),
+      });
+    }
+
+    // the object, over the frames this keyframe owns
+    if (!t.keys.includes(key)) return false;
     const [from, to] = ownedRange(t.keys, key, span);
     clearShapes(t, clip, from, to);
-    host.shapesChanged(t, false);
+    return this.follow(source, job, t, from, to, `Tracking ${t.name}`, {
+      select: { x: key.x, y: key.y },
+      part: t.part ?? undefined,
+      focus: t.focus ?? undefined,
+      // a person cut out is cut out whole
+      wholePerson: t.kind === 'cutout' || undefined,
+      put: (k, shape) => (t.shapes[k] = { ...shape, id: t.id }),
+    });
+  }
 
+  // follows what's at `how.select` on the job's key frame through frames [from, to), putting what's
+  // found in each where `how.put` says
+  private follow(
+    source: Blob,
+    job: TrackJob,
+    t: Track,
+    from: number,
+    to: number,
+    label: string,
+    how: {
+      select: Selection;
+      part?: BodyPart;
+      focus?: { w: number; h: number };
+      wholePerson?: boolean;
+      put(k: number, shape: Shape): void;
+    },
+  ) {
+    const { clip, host } = this;
+    refreshFrames(t, clip, from, to);
+    host.shapesChanged(t, false);
     this.running = job;
-    const label = `Tracking ${t.name}`;
     host.showJob({ label, progress: 0 });
     const next = () => {
       if (this.running !== job) return;
       this.running = null;
       this.pump();
     };
-    const req = {
-      times: clip.slice(from, to).map(f => f.t),
-      key: key.i - from,
-      select: { x: key.x, y: key.y },
-      part: t.part ?? undefined,
-      focus: t.focus ?? undefined,
-    };
+    const { put, ...rest } = how;
+    const req = { times: clip.slice(from, to).map(f => f.t), key: job.key.i - from, ...rest };
     this.analysis.track(source, req, {
       progress: (done, total) => host.showJob({ label, progress: done / total }),
       shapes: shapes => {
@@ -242,7 +279,7 @@ export class Jobs {
         let hi = -1;
         for (const { i, shape } of shapes) {
           const k = from + i;
-          t.shapes[k] = { ...shape, id: t.id };
+          put(k, shape);
           lo = Math.min(lo, k);
           hi = Math.max(hi, k);
         }
@@ -266,7 +303,7 @@ export class Jobs {
   private runRender(source: Blob, id: number) {
     const { clip, host } = this;
     const t = host.track(id);
-    if (!t?.cutout) return false;
+    if (!t?.cutout?.reviewed) return false;
     const plate = t.cutout.bg === 'clean';
     if (plate && this.camera !== 'done') {
       this.renders.unshift(id);
@@ -285,9 +322,12 @@ export class Jobs {
     };
     const req = {
       times: clip.slice(span.s, span.e).map(f => f.t),
-      masks: t.shapes.slice(span.s, span.e).map(s => s?.mask ?? null),
+      masks: drawnShapes(t)
+        .slice(span.s, span.e)
+        .map(s => s?.mask ?? null),
       plate,
       cam: host.camPath.slice(span.s, span.e),
+      feather: t.cutout.edge.feather,
     };
     this.analysis.cutout(source, req, {
       progress: (done, total) => host.showJob({ label, progress: done / total }),

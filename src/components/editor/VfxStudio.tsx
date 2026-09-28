@@ -12,6 +12,7 @@ import { ExportResult } from './ExportResult';
 import { Icon, I } from './icons';
 import { INITIAL_UI, Player, type Lane, type MakeThumbs, type UiState } from './player';
 import { Preview } from './Preview';
+import { RotoDock, RotoHeader, type RotoActions } from './roto/RotoScreen';
 import { Timeline } from './timeline/Timeline';
 import { Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
 import {
@@ -87,6 +88,27 @@ export default function VfxStudio() {
   const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
+
+  // the roto screen: checking a cutout's outline (see roto/RotoScreen.tsx)
+  const review = ui.review;
+  const roto: RotoActions = {
+    seekFrame: i => player()?.seekFrame(i),
+    seekClip: t => player()?.seekClip(t),
+    stepFrame: d => player()?.stepFrame(d),
+    seekFlagged: d => player()?.seekFlagged(d),
+    setRange: r => player()?.setReviewRange(r),
+    commitRange: () => player()?.commitReviewRange(),
+    setTool: tool => player()?.setReviewTool(tool),
+    togglePen: () => player()?.togglePen(),
+    toggleHand: () => player()?.toggleHand(),
+    penBack: () => player()?.penBack(),
+    penCancel: () => player()?.penCancel(),
+    penClose: () => player()?.penClose(),
+    setEdge: p => player()?.setReviewEdge(p),
+    undo: () => player()?.undo(),
+    redo: () => player()?.redo(),
+    done: () => player()?.closeReview(),
+  };
 
   function changeFx(p: Partial<FxSettings>) {
     setDraftFx(cur => ({ ...cur, ...p }));
@@ -264,6 +286,9 @@ export default function VfxStudio() {
         return pl?.duplicate(lane.id);
       case 'isolate':
         return pl?.toggleIsolated(lane.id);
+      case 'review':
+        setTool(null);
+        return pl?.openReview(lane.id);
       case 'movekey':
         return pl?.toggleMoveKey(lane.id);
       case 'place':
@@ -281,45 +306,50 @@ export default function VfxStudio() {
   }
 
   return (
-    <div className={`editor${full ? ' full' : ''}`}>
-      <header className="topbar">
-        <div className="top-tools">
-          <button type="button" className="icon-btn" aria-label="Add a video" onClick={() => chooseFile()}>
-            <Icon d={I.plus} />
-          </button>
+    <div className={`editor${full ? ' full' : ''}${review ? ' roto-mode' : ''}`}>
+      {/* (the preview stays in its place, so its canvas stays the same) */}
+      {review ? (
+        <RotoHeader review={review} job={ui.job} canUndo={ui.canUndo} canRedo={ui.canRedo} on={roto} />
+      ) : (
+        <header className="topbar">
+          <div className="top-tools">
+            <button type="button" className="icon-btn" aria-label="Add a video" onClick={() => chooseFile()}>
+              <Icon d={I.plus} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Undo"
+              title="Undo (⌘Z)"
+              disabled={!ui.canUndo || ui.recording}
+              onClick={() => player()?.undo()}
+            >
+              <Icon d={I.undo} />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Redo"
+              title="Redo (⇧⌘Z)"
+              disabled={!ui.canRedo || ui.recording}
+              onClick={() => player()?.redo()}
+            >
+              <Icon d={I.redo} />
+            </button>
+          </div>
+          <strong className="wordmark" aria-label="FlareCut">
+            FLARE<em>CUT</em>
+          </strong>
           <button
             type="button"
-            className="icon-btn"
-            aria-label="Undo"
-            title="Undo (⌘Z)"
-            disabled={!ui.canUndo || ui.recording}
-            onClick={() => player()?.undo()}
+            className="export"
+            disabled={!ui.canRecord && !ui.recording}
+            onClick={() => player()?.toggleRecord()}
           >
-            <Icon d={I.undo} />
+            {ui.recording ? 'Stop' : 'Export'}
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Redo"
-            title="Redo (⇧⌘Z)"
-            disabled={!ui.canRedo || ui.recording}
-            onClick={() => player()?.redo()}
-          >
-            <Icon d={I.redo} />
-          </button>
-        </div>
-        <strong className="wordmark" aria-label="FlareCut">
-          FLARE<em>CUT</em>
-        </strong>
-        <button
-          type="button"
-          className="export"
-          disabled={!ui.canRecord && !ui.recording}
-          onClick={() => player()?.toggleRecord()}
-        >
-          {ui.recording ? 'Stop' : 'Export'}
-        </button>
-      </header>
+        </header>
+      )}
 
       <Preview
         ui={ui}
@@ -343,7 +373,18 @@ export default function VfxStudio() {
         onOutline={toggleOutline}
       />
 
-      <div className="dock">
+      {review && (
+        <div className="dock">
+          <RotoDock
+            review={review}
+            reel={ui.reels.find(r => r.id === review.reel)}
+            makeThumbs={makeThumbs}
+            on={roto}
+          />
+        </div>
+      )}
+
+      <div className="dock" hidden={!!ui.review}>
         <Timeline
           ui={ui}
           scene={scene}

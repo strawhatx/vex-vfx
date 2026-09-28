@@ -34,7 +34,13 @@ export interface RenderOptions {
   outline: boolean; // draw outlines (not in exports)
   paused: boolean;
   selected: number | null;
+  // a cutout whose outline is being checked: just the footage, with everything outside its outline
+  // dimmed, so what it takes in is plain to see
+  roto?: number;
 }
+
+// how dark the footage outside a cutout being checked is
+const ROTO_DIM = 0.72;
 
 export class Renderer implements EffectLayers {
   readonly ctx: Ctx2D;
@@ -133,6 +139,10 @@ export class Renderer implements EffectLayers {
     const idx = this.CW ? frameIndexAt(this.clip, t) : -1;
     if (idx < 0) return -1;
 
+    if (opts.roto !== undefined) {
+      this.drawRoto(opts.roto, idx);
+      return idx;
+    }
     const v = this.view();
     const frameT = this.clip[idx].t;
     const all = [...this.layers.values()];
@@ -183,6 +193,22 @@ export class Renderer implements EffectLayers {
 
     drawImpacts(v, this.layers.values(), idx, this.canvas, this.jolt);
     return idx;
+  }
+
+  private drawRoto(id: number, idx: number) {
+    const l = this.layers.get(id),
+      frame = l?.spec.frames[idx];
+    if (!l || !frame?.shapes.length) {
+      // nothing taken in on this frame
+      this.ctx.fillStyle = `rgba(0,0,0,${ROTO_DIM})`;
+      this.ctx.fillRect(0, 0, this.CW, this.CH);
+      return;
+    }
+    l.geo.prepareCanvas(frame);
+    // (a plain white edge: the timeline marks the frames to check; a feathered one's is fainter)
+    const feather = l.spec.cutout?.edge.feather ?? 0;
+    this.masks.outside(l.geo.maskCanvas, this.ctx, '#000', ROTO_DIM, feather);
+    this.masks.glow(l.geo.maskCanvas, this.ctx, '#fff', 2, feather ? 0.45 : 0.9);
   }
 
   private drawParticles(l: Layer, idx: number) {

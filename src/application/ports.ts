@@ -4,6 +4,7 @@ import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Background } from '@/domain/project/cutout';
+import type { EdgeSettings } from '@/domain/project/edge';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Rle, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -23,8 +24,9 @@ export interface Analysis {
     on: JobEvents & { scanned(meta: TrackMeta, frames: ClipFrame[]): void },
   ): void;
   // follows the object at `select` in frame times[key], forward to the end of times then back to the
-  // start; part: follows that body part of the person at `select` instead of the object there;
-  // focus: only looks for the object in a box this size around it (see Track.focus)
+  // start; part: follows that body part of the person at `select` instead of the object there
+  // ('body': the whole person); focus: only looks for the object in a box this size around it (see
+  // Track.focus); wholePerson: if `select` is on a person, follows the whole of them instead
   track(
     source: Blob,
     req: {
@@ -33,6 +35,7 @@ export interface Analysis {
       select: Selection;
       part?: BodyPart;
       focus?: { w: number; h: number };
+      wholePerson?: boolean;
     },
     on: JobEvents & { shapes(shapes: { i: number; shape: Shape }[]): void },
   ): void;
@@ -49,7 +52,8 @@ export interface Analysis {
   // (`cam`: the camera's path at each frame, to line them up). Frames come back with i indexing times.
   cutout(
     source: Blob,
-    req: { times: number[]; masks: (Rle | null)[]; plate: boolean; cam: (Cam | null)[] },
+    // feather: how soft the cut's edge is (output pixels)
+    req: { times: number[]; masks: (Rle | null)[]; plate: boolean; cam: (Cam | null)[]; feather: number },
     on: JobEvents & { frames(frames: CutFrame[]): void },
   ): void;
   cancel(): void;
@@ -92,7 +96,7 @@ export interface LayerSpec {
   aim: Aim; // for a laser
   tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
   impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
-  cutout: { bg: Background } | null;
+  cutout: { bg: Background; edge: EdgeSettings } | null;
 }
 
 // Draws each effect over the video.

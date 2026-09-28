@@ -1,9 +1,10 @@
 // The videos' rows: their filmstrips (a film per kept scene, each with its own stretch of its
 // video), one video after another, and their own sound under them. A + at the end adds a video.
-import { useEffect, useState, type MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
 import { Icon, I } from '../icons';
 import type { MakeThumbs, ReelUi, UiState } from '../player';
 import { BASE_PPS, THUMB_H, type Scale } from './layout';
+import { useFilmstrip } from './useFilmstrip';
 import { Wave } from './Wave';
 
 const MAX_THUMBS = 60;
@@ -97,7 +98,7 @@ function ReelStrip({
 }) {
   const dur = r.srcDuration || 0;
   const step = dur > MAX_THUMBS ? dur / MAX_THUMBS : 1; // seconds per tile
-  const thumbs = useFilmstrip(makeThumbs, r.src || null, dur, r.videoStart, step);
+  const thumbs = useFilmstrip(makeThumbs, r.src || null, dur, r.videoStart, step, step * BASE_PPS, THUMB_H);
   const { x } = scale;
   return piecesOf(ui, r).map(sc => (
     <button
@@ -123,30 +124,6 @@ function ReelStrip({
       )}
     </button>
   ));
-}
-
-// the thumbnails for a video, filled in as they're made
-function useFilmstrip(
-  makeThumbs: MakeThumbs,
-  src: string | null,
-  duration: number,
-  videoStart: number,
-  step: number,
-) {
-  const [strip, setStrip] = useState<{ src: string; urls: string[] } | null>(null);
-  useEffect(() => {
-    if (!src || !duration) return;
-    const ac = new AbortController();
-    void makeThumbs(src, duration, videoStart, step, step * BASE_PPS, THUMB_H, ac.signal, (i, url) => {
-      setStrip(st => {
-        const urls = st?.src === src ? st.urls.slice() : [];
-        urls[i] = url;
-        return { src, urls };
-      });
-    });
-    return () => ac.abort();
-  }, [makeThumbs, src, duration, videoStart, step]);
-  return strip && strip.src === src ? strip.urls : [];
 }
 
 // the videos' own sound, as waveforms under their films

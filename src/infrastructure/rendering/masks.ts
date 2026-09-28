@@ -59,6 +59,20 @@ export class MaskPainter {
     this.drawOnto(ctx, alpha, 'source-over');
   }
 
+  // everything but the silhouette covered with `col`, fading in over `soft` px at its edge
+  outside(mask: OffscreenCanvas, ctx: Ctx2D, col: string, alpha: number, soft = 0) {
+    const { g, CW, CH } = this;
+    this.reset();
+    g.fillStyle = col;
+    g.fillRect(0, 0, CW, CH);
+    g.globalCompositeOperation = 'destination-out';
+    if (soft > 0) g.filter = `blur(${soft / 2}px)`;
+    g.drawImage(mask, 0, 0, CW, CH);
+    g.filter = 'none';
+    g.globalCompositeOperation = 'source-over';
+    this.drawOnto(ctx, alpha, 'source-over');
+  }
+
   // a line round the silhouette: a band `width` wide, starting `gap` outside it, shifted by
   // (dx, dy) and scaled, with a glow of `blur` around it
   edge(mask: OffscreenCanvas, ctx: Ctx2D, e: Edge) {

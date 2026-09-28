@@ -12,6 +12,9 @@ import { Project, type Film, type ProjectState } from '@/application/project';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
 import { fitRect } from '@/domain/project/overlay';
+import type { EdgeSettings } from '@/domain/project/edge';
+import type { PartOp } from '@/domain/project/parts';
+import { nextFlagged, type Flag } from '@/domain/project/review';
 import { canPin } from '@/domain/project/spot';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
 import type { Lane } from '@/domain/project/track';
@@ -85,6 +88,35 @@ export interface UiState {
   muted: boolean; // the videos' own sound is off
   canRecord: boolean;
   result: Recording | null;
+  // a cutout's outlines being checked before it's cut out (see openReview)
+  review: ReviewUi | null;
+}
+
+// a cutout being checked: the overlay, the video it's cut from and its cutout there, the frames it's
+// cut from [s, e) (the video's) and when each starts, that stretch of the video (its own seconds)
+// and the video's length, which frames look wrong, the frames it was picked or changed on, its edge
+// settings, the frame showing and when it starts, and what taps and loops on the preview do now:
+// add pieces, or take them out
+export interface ReviewUi {
+  id: number;
+  reel: number;
+  track: number;
+  name: string;
+  s: number;
+  e: number;
+  times: number[];
+  range: { s: number; e: number };
+  length: number;
+  flags: Flag[];
+  keys: number[];
+  edge: EdgeSettings;
+  at: number;
+  now: number;
+  tool: PartOp;
+  // the pen: taps place points of a shape one by one (points: how many so far)
+  pen: { on: boolean; points: number };
+  // the hand: a drag moves the zoomed preview about, and taps do nothing
+  hand: boolean;
 }
 
 // makes a video's thumbnails, one per `step` seconds, reporting each as it's ready
@@ -143,7 +175,33 @@ export const INITIAL_UI: UiState = {
   muted: false,
   canRecord: false,
   result: null,
+  review: null,
 };
+
+const PEN_HINT = 'Pen: tap point by point round the piece. Tap the first point, or Close, to finish.';
+// a tap this near a shape's first point (preview px) closes it
+const CLOSE_PX = 12;
+// the pointer over the preview with the pen: a pen, its tip on the spot
+const PEN_CURSOR =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 21l1.5-5L16 4.5 19.5 8 8 19.5z' fill='%23fff' stroke='%23000' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M3 21l1.5-5 3.5 3.5z'/%3E%3C/svg%3E\") 3 21, crosshair";
+// the pointer with Add and Remove: cross hairs (their middle on the spot), with a + or − beside
+const markCursor = (mark: string) =>
+  `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v6M12 15v6M3 12h6M15 12h6' stroke='%23000' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M12 3v6M12 15v6M3 12h6M15 12h6' stroke='%23fff' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='18.5' cy='18.5' r='5' fill='%23fff' stroke='%23000'/%3E%3Cpath d='${mark}' stroke='%23000' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E") 12 12, crosshair`;
+const TOOL_CURSORS: Record<PartOp, string> = {
+  add: markCursor('M16 18.5h5M18.5 16v5'),
+  remove: markCursor('M16 18.5h5'),
+};
+// the pointer over the preview while checking a cutout (empty: the preview's own)
+const cursorOf = (r: ReviewUi | null) =>
+  !r ? '' : r.pen.on ? PEN_CURSOR : r.hand ? 'grab' : TOOL_CURSORS[r.tool];
+const HINTS: Record<PartOp, string> = {
+  add: 'Tap a piece to add it, or draw a loop round it. It’s kept in every frame.',
+  remove: 'Tap a piece to take it out, or draw a loop round it. It’s left out of every frame.',
+};
+// a loop drawn to add a piece, and one to take a piece out
+const LOOP_COLORS: Record<PartOp, string> = { add: '#fff', remove: '#ff8a80' };
+// a drawn loop's points are kept at least this far apart (preview px)
+const LASSO_STEP = 3;
 
 // a finger or mouse press on the preview: a tap unless it moves this far (px) or a second finger
 // joins (a pinch)
@@ -198,6 +256,11 @@ export class Player {
   // a box being drawn round the object to cut out: where it started and where the finger is
   // (preview pixels)
   private boxing: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  // a loop being drawn round a piece of a cutout, while checking it (preview pixels)
+  private lasso: { x: number; y: number }[] | null = null;
+  // the pen's shape so far, and where the pointer is (preview pixels)
+  private path: { x: number; y: number }[] = [];
+  private hover: { x: number; y: number } | null = null;
   // the selected cutout being dragged about the preview: where the press started (preview pixels)
   // and its move then
   private grab: { id: number; x: number; y: number; from: Transform; moved: boolean } | null = null;
@@ -436,13 +499,7 @@ export class Player {
       if (id !== null) this.select(id);
       return;
     }
-    this.addNow(
-      p.choice,
-      p.reel,
-      p.i,
-      p.at,
-      from === 'body' || from === 'object' || from === 'spot' ? null : from,
-    );
+    this.addNow(p.choice, p.reel, p.i, p.at, from === 'object' || from === 'spot' ? null : from);
   }
 
   // ---------- the footage ----------
@@ -471,7 +528,194 @@ export class Player {
     this.set({ cutting: false, adding: null });
     if (!p) return;
     const id = this.project.addCutout(p.reel, p.i, p.at, bg, p.focus ?? null);
-    if (id !== null) this.select(id);
+    if (id !== null) this.openReview(id);
+  }
+
+  // ---------- checking a cutout's outlines ----------
+
+  // opens a cutout's outlines to check frame by frame, from its first frame. Taps on its object fix
+  // them; it's cut out when closed.
+  openReview(id: number) {
+    const src = this.project.sourceOf(id);
+    const view = src?.editor.reviewOf(src.track);
+    if (!src || !view || !this.project.startReview(id)) return;
+    this.pause();
+    this.set({
+      selected: id,
+      adding: null,
+      aiming: null,
+      isolated: null,
+      review: {
+        id,
+        reel: src.reel,
+        track: src.track,
+        name: src.editor.name(src.track),
+        ...view,
+        at: -1,
+        now: view.range.s,
+        tool: 'add',
+        pen: { on: false, points: 0 },
+        hand: false,
+      },
+    });
+    this.seekFrame(view.s);
+  }
+
+  // done checking: it's cut out, and stays selected
+  closeReview() {
+    const r = this.ui.review;
+    if (!r) return;
+    this.project.finishReview(r.id);
+    this.path = [];
+    this.set({ review: null });
+    this.redraw();
+  }
+
+  // shows frame i of the cutout's video (anywhere in it, not just the frames it's cut from)
+  seekFrame(i: number) {
+    const r = this.ui.review,
+      ed = r && this.editor(r.reel);
+    if (!r || !ed) return;
+    const k = Math.max(0, Math.min(ed.frameCount - 1, i));
+    this.seek(this.project.startOf(r.reel) + ed.toProgram(ed.frameTime(k) + 1e-4));
+  }
+
+  // the frame after (1) or before (-1) the one showing
+  stepFrame(dir: 1 | -1) {
+    const r = this.ui.review;
+    if (r) this.seekFrame(r.at < 0 ? r.s : r.at + dir);
+  }
+
+  // the next (1) or previous (-1) frame that looks wrong
+  seekFlagged(dir: 1 | -1) {
+    const r = this.ui.review;
+    if (!r) return;
+    const k = nextFlagged(r.flags, r.at < 0 ? (dir > 0 ? -1 : r.flags.length) : r.at - r.s, dir);
+    if (k >= 0) this.seekFrame(r.s + k);
+  }
+
+  // shows the video's own time t
+  seekClip(t: number) {
+    const r = this.ui.review,
+      ed = r && this.editor(r.reel);
+    if (!r || !ed) return;
+    this.seek(this.project.startOf(r.reel) + ed.toProgram(Math.max(0, Math.min(r.length - 1e-3, t))));
+  }
+
+  // cuts it from another stretch of its video (its own seconds): live while dragging;
+  // commitReviewRange when the drag ends tracks what it grew into
+  setReviewRange(r: { s?: number; e?: number }) {
+    const rv = this.ui.review;
+    if (rv) this.project.setCutoutSpan(rv.id, r);
+  }
+
+  commitReviewRange() {
+    const rv = this.ui.review;
+    if (rv) this.project.commitOverlayRange(rv.id);
+  }
+
+  // what taps and loops on the preview do: add pieces, or take them out
+  setReviewTool(tool: PartOp) {
+    const r = this.ui.review;
+    if (r) this.set({ review: { ...r, tool } });
+    this.redraw();
+  }
+
+  // its edge: feathered, smoothed, grown or shrunk, steadied
+  setReviewEdge(p: Partial<EdgeSettings>) {
+    const r = this.ui.review;
+    if (r) this.editor(r.reel)?.setEdge(r.track, p);
+  }
+
+  // ---------- the pen ----------
+  // For pieces whose edge tracking can't find (the same colour as what's behind): taps place a
+  // shape's points one at a time, for exact control (zoom in for more). Closing it adds the shape,
+  // or takes it out, like a loop.
+
+  togglePen() {
+    const r = this.ui.review;
+    if (!r) return;
+    this.pause();
+    this.path = [];
+    this.setPen(!r.pen.on);
+  }
+
+  // the hand: drags move the zoomed preview about (pinch, or Ctrl/⌘ + scroll, zooms it)
+  toggleHand() {
+    const r = this.ui.review;
+    if (!r) return;
+    this.path = [];
+    this.set({ review: { ...r, hand: !r.hand, pen: { on: false, points: 0 } } });
+    this.redraw();
+  }
+
+  // takes the last point back
+  penBack() {
+    this.path.pop();
+    this.setPen(true);
+  }
+
+  // drops the shape so far
+  penCancel() {
+    this.path = [];
+    this.setPen(true);
+  }
+
+  // finishes the shape: it's added (or taken out) on the frame showing
+  penClose() {
+    const r = this.ui.review,
+      rv = this.rv(),
+      i = this.frameNow();
+    if (!r || !rv || rv.id !== r.reel || i < 0 || this.path.length < 3) return;
+    const shape = this.path.map(p => this.toWorkClamped(p.x, p.y));
+    this.path = [];
+    this.editor(r.reel)?.addPart(r.track, i, r.tool, { loop: shape });
+    this.setPen(true);
+  }
+
+  private setPen(on: boolean) {
+    const r = this.ui.review;
+    if (r) this.set({ review: { ...r, pen: { on, points: this.path.length }, hand: on ? false : r.hand } });
+    this.redraw();
+  }
+
+  // a tap with the pen: the next point, or (on the first) closing the shape
+  private penTap(x: number, y: number) {
+    const first = this.path[0];
+    if (first && this.path.length >= 3 && Math.hypot(x - first.x, y - first.y) < CLOSE_PX)
+      return this.penClose();
+    this.path.push({ x, y });
+    this.setPen(true);
+  }
+
+  // the pen's shape over the preview: its points and lines, and a line on to the pointer
+  private drawPath(color: string) {
+    const pts = this.path;
+    if (!pts.length) return;
+    const ctx = this.ctx,
+      r = Math.max(3, this.CW / 200);
+    this.drawLoop(this.hover ? [...pts, this.hover] : pts, false, color);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    pts.forEach((p, k) => {
+      ctx.beginPath();
+      // the first point, bigger: tap it to close
+      ctx.arc(p.x, p.y, k === 0 && pts.length >= 3 ? r * 1.8 : r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  // the cutout being checked changed (or went, with an undo)
+  private refreshReview() {
+    const r = this.ui.review;
+    if (!r) return;
+    const view = this.editor(r.reel)?.reviewOf(r.track);
+    this.set({ review: view ? { ...r, ...view } : null });
   }
 
   setBackground(id: number, bg: Background) {
@@ -652,6 +896,7 @@ export class Player {
 
   private set(p: Partial<UiState>) {
     Object.assign(this.ui, p);
+    if ('review' in p) this.view.style.cursor = cursorOf(this.ui.review);
     if (!this.destroyed) this.onUi({ ...this.ui });
   }
 
@@ -809,6 +1054,7 @@ export class Player {
           speed: l.speed,
         })),
     );
+    this.refreshReview();
     if (drawn && (this.rv()?.video.paused ?? true)) this.redraw();
   }
 
@@ -840,9 +1086,10 @@ export class Player {
       'pointerup',
       e => {
         this.fingers.delete(e.pointerId);
+        if (this.ui.review?.hand) this.view.style.cursor = 'grab';
         const dragged = this.grab?.moved;
         this.grab = null;
-        if (this.finishBox()) return;
+        if (this.finishBox() || this.finishLasso()) return;
         if (!dragged) this.pointerUp();
       },
       { signal },
@@ -854,6 +1101,7 @@ export class Player {
         this.press = null;
         this.grab = null;
         this.boxing = null;
+        this.lasso = null;
       },
       { signal },
     );
@@ -911,11 +1159,13 @@ export class Player {
       if (to !== null) return this.jumpTo(rv, to);
     }
     if (this.jumping) return;
-    const outline = this.showOutline && !this.recorder;
+    const review = this.ui.review;
+    const outline = (this.showOutline || !!review) && !this.recorder;
     const idx = rv.renderer.render(rv.video, t - rv.start, {
       outline,
       paused,
-      selected: this.ui.selected,
+      selected: review ? review.track : this.ui.selected,
+      roto: review && review.reel === rv.id ? review.track : undefined,
     });
     // the video's picture, fitted into the preview, then the overlays over it
     const ctx = this.ctx;
@@ -929,11 +1179,13 @@ export class Player {
     }
     ctx.drawImage(rv.renderer.canvas, r.x, r.y, r.w, r.h);
     const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
-    this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
-      selected: this.ui.selected,
-      outline,
-      isolate: this.recorder ? null : this.ui.isolated,
-    });
+    // (checking a cutout, just the footage and its outlines)
+    if (!review)
+      this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
+        selected: this.ui.selected,
+        outline,
+        isolate: this.recorder ? null : this.ui.isolated,
+      });
     this.mixer.tick(now, !paused);
     const ui = this.ui;
     const state = {
@@ -947,8 +1199,15 @@ export class Player {
       adding: addingWhat(ui.adding),
       selected: ui.selected,
     };
-    const hint = hintFor(state, this.hints(ed, now), idx);
+    if (review?.pen.on) this.drawPath(LOOP_COLORS[review.tool]);
+    const hint = review
+      ? review.pen.on
+        ? PEN_HINT
+        : HINTS[review.tool]
+      : hintFor(state, this.hints(ed, now), idx);
     if (hint !== ui.hint) this.set({ hint });
+    const at = review && rv.id === review.reel ? idx : -1;
+    if (review && review.at !== at) this.set({ review: { ...review, at, now: ed.frameTime(at) } });
     this.showCutoutNow(now);
   }
 
@@ -1057,6 +1316,18 @@ export class Player {
     return at.x < 0 || at.y < 0 || at.x > rv.workW || at.y > H ? null : at;
   }
 
+  // preview pixels to the showing video's analysis pixels, kept within its picture
+  private toWorkClamped(x: number, y: number): Selection {
+    const rv = this.rv();
+    if (!rv || !rv.workW) return { x: 0, y: 0 };
+    const r = this.fitOf(rv),
+      k = rv.workW / r.w;
+    return {
+      x: Math.max(0, Math.min(rv.workW, (x - r.x) * k)),
+      y: Math.max(0, Math.min(r.h * k, (y - r.y) * k)),
+    };
+  }
+
   // preview pixels to analysis pixels, as a size
   private workScale() {
     const rv = this.rv();
@@ -1077,8 +1348,21 @@ export class Player {
     if (!this.ui.ready || this.camera || this.recorder) return;
     const [x, y] = this.canvasPt(e);
     this.press = { x, y, cx: e.clientX, cy: e.clientY };
-    // cutting something out: a drag draws a box round it (rather than moving the zoomed preview)
     this.boxing = null;
+    this.grab = null;
+    // checking a cutout: a tap picks a piece; a drag draws round one (with the pen, taps place
+    // points, and a drag moves the zoomed preview)
+    if (this.ui.review) {
+      // (the hand: the drag goes on to move the zoomed preview)
+      if (this.ui.review.hand) this.view.style.cursor = 'grabbing';
+      else if (this.paused() && !this.ui.review.pen.on) {
+        this.lasso = [{ x, y }];
+        e.stopPropagation();
+        this.view.setPointerCapture?.(e.pointerId);
+      }
+      return;
+    }
+    // cutting something out: a drag draws a box round it (rather than moving the zoomed preview)
     if (this.paused() && this.ui.adding?.kind === 'cutout' && !this.ui.cutting) {
       this.boxing = { x0: x, y0: y, x1: x, y1: y };
       e.stopPropagation();
@@ -1087,7 +1371,6 @@ export class Player {
     }
     // the selected cutout, showing here: a drag moves it (rather than the zoomed preview)
     const sel = this.ui.selected;
-    this.grab = null;
     const now = this.time();
     if (sel !== null && this.paused() && this.project.showing(sel, now)) {
       const from = this.project.transformAt(sel, now);
@@ -1100,6 +1383,26 @@ export class Player {
   }
 
   private pointerMove(e: PointerEvent) {
+    // the pen's line follows the pointer
+    if (this.ui.review?.pen.on && this.path.length) {
+      const [x, y] = this.canvasPt(e);
+      this.hover = { x, y };
+      if (this.paused()) this.redraw();
+    }
+    const lasso = this.lasso;
+    if (lasso) {
+      const [x, y] = this.canvasPt(e),
+        last = lasso[lasso.length - 1];
+      // (a press that moves is a drawing, not a tap)
+      const p = this.press;
+      if (p && Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP) this.press = null;
+      if (Math.hypot(x - last.x, y - last.y) < LASSO_STEP) return;
+      lasso.push({ x, y });
+      if (this.press) return;
+      this.redraw();
+      this.drawLoop(lasso, false, LOOP_COLORS[this.ui.review?.tool ?? 'add']);
+      return;
+    }
     const p = this.press;
     const g = this.grab;
     const bx = this.boxing;
@@ -1146,6 +1449,16 @@ export class Player {
     }
     const now = this.time();
     const i = this.frameNow();
+    // checking a cutout: the piece tapped is added to its outline, or taken out (with the pen, the
+    // tap is a point of a shape)
+    const review = this.ui.review;
+    if (review?.pen.on) return this.penTap(p.x, p.y);
+    if (review?.hand) return;
+    if (review) {
+      const at = this.toWork(p.x, p.y);
+      if (at && i >= 0 && rv.id === review.reel) ed.addPart(review.track, i, review.tool, { at });
+      return;
+    }
     // picking a body part (or a cutout's background) first
     if (this.ui.choosing || this.ui.cutting) return;
     // an overlay tapped, where it's placed
@@ -1222,6 +1535,44 @@ export class Player {
     this.redraw();
     this.drawBox(bx);
     return true;
+  }
+
+  // a loop drawn on the cutout: what's inside is added to its outline, or taken out. False if
+  // nothing was being drawn, or it was a tap.
+  private finishLasso() {
+    const lasso = this.lasso,
+      r = this.ui.review;
+    this.lasso = null;
+    if (!lasso || this.press) return false;
+    const rv = this.rv(),
+      i = this.frameNow();
+    const shape = lasso.map(p => this.toWorkClamped(p.x, p.y));
+    const ok = !!r && !!rv && rv.id === r.reel && i >= 0 && shape.length >= 3 && area(shape) > 16;
+    if (ok) this.editor(r.reel)?.addPart(r.track, i, r.tool, { loop: shape });
+    else this.say('Draw a loop right round the piece.');
+    this.redraw();
+    return true;
+  }
+
+  // a loop over the preview (preview pixels): being drawn, or drawn (closed, dashed)
+  private drawLoop(pts: readonly { x: number; y: number }[], closed: boolean, color: string) {
+    if (pts.length < 2) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+    if (closed) ctx.closePath();
+    ctx.lineWidth = Math.max(2, this.CW / 360);
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = color;
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    if (closed) ctx.setLineDash([8, 6]);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // the box being drawn, over the preview
@@ -1326,4 +1677,12 @@ function makeVideo() {
   v.playsInline = true;
   v.preload = 'auto';
   return v;
+}
+
+// a loop's area (px²)
+function area(pts: readonly Selection[]) {
+  let a = 0;
+  for (let k = 0, j = pts.length - 1; k < pts.length; j = k++)
+    a += (pts[j].x + pts[k].x) * (pts[j].y - pts[k].y);
+  return Math.abs(a) / 2;
 }

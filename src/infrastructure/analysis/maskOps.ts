@@ -64,7 +64,7 @@ export function pieceAt(
 }
 
 // fills holes inside the outline: whatever the outside can't reach becomes object
-function fillHoles(mask: Uint8Array, W: number, H: number, b: Bounds, queue: Int32Array) {
+export function fillHoles(mask: Uint8Array, W: number, H: number, b: Bounds, queue: Int32Array) {
   const x0 = Math.max(0, b.bx0 - 1);
   const x1 = Math.min(W - 1, b.bx1 + 1);
   const y0 = Math.max(0, b.by0 - 1);

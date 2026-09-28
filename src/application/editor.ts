@@ -48,6 +48,7 @@ import {
   newSpotTrack,
   newTrack,
   duplicate,
+  drawnShapes,
   rangeFrames,
   refreshFrames,
   setHit,
@@ -60,7 +61,16 @@ import {
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
-import { frameIndexAt, type ClipFrame, type Selection, type TrackMeta } from '@/domain/tracking/types';
+import { clampEdge, type EdgeSettings } from '@/domain/project/edge';
+import type { Part, PartOp } from '@/domain/project/parts';
+import { reviewFlags, type Flag } from '@/domain/project/review';
+import {
+  frameIndexAt,
+  type ClipFrame,
+  type Selection,
+  type Shape,
+  type TrackMeta,
+} from '@/domain/tracking/types';
 import { Jobs, type JobHost, type JobStatus, type TrackJob } from './jobs';
 import type { Analysis, CutFrame, EffectLayers } from './ports';
 import { layersOf, timelineOf, type Timeline } from './views';
@@ -100,9 +110,27 @@ const copyTrack = (t: Track): Track => ({
   ...t,
   range: { ...t.range },
   shapes: t.shapes.slice(),
+  parts: t.parts.map(p => ({ ...p, shapes: p.shapes.slice() })),
   keys: t.keys.slice(),
   frames: [],
 });
+
+// what a cutout's outline is made of, to tell later whether it changed
+type OutlineOf = {
+  shapes: (Shape | null)[];
+  parts: { id: number; shapes: (Shape | null)[] }[];
+  edge: EdgeSettings | null;
+};
+const outlineOf = (t: Track): OutlineOf => ({
+  shapes: t.shapes.slice(),
+  parts: t.parts.map(p => ({ id: p.id, shapes: p.shapes.slice() })),
+  edge: t.cutout?.edge ?? null,
+});
+const outlineChanged = (was: OutlineOf, t: Track) =>
+  (t.cutout?.edge ?? null) !== was.edge ||
+  t.shapes.some((sh, i) => sh !== was.shapes[i]) ||
+  t.parts.length !== was.parts.length ||
+  t.parts.some((p, k) => p.id !== was.parts[k].id || p.shapes.some((sh, i) => sh !== was.parts[k].shapes[i]));
 
 export const EMPTY_STATE: EditorState = {
   scan: null,
@@ -166,6 +194,8 @@ export class Editor {
   // used for the next clip added
   private lastFx: FxSettings = { ...DEFAULT_FX };
   private lastImpact: ImpactStyle = 'punch';
+  // the cutout whose outlines are being checked, and its outlines when that started
+  private reviewing: { id: number; was: OutlineOf } | null = null;
 
   // steps to undo and redo; `merge`: the kind of the last step and when, to merge the next into it
   private undos: Snapshot[] = [];
@@ -355,9 +385,77 @@ export class Editor {
     const range = { s: f.t, e: this.defaultEnd(f.t) };
     const t = newCutoutTrack(this.nextId++, this.clip, this.lastFx, range, bg);
     t.focus = focus && { w: Math.max(8, focus.w), h: Math.max(8, focus.h) };
-    const id = this.start(t, i, sel);
-    this.jobs.render(id);
-    return id;
+    // it's cut out once its outlines have been checked (see finishReview)
+    return this.start(t, i, sel);
+  }
+
+  // ---------- checking a cutout's outlines ----------
+
+  // starts checking a cutout's outlines: it isn't cut out again until that's done
+  startReview(id: number) {
+    const t = this.track(id);
+    if (!t?.cutout) return false;
+    this.reviewing = { id, was: outlineOf(t) };
+    return true;
+  }
+
+  // its outlines are right: it's cut out (again, if they changed)
+  finishReview() {
+    const r = this.reviewing;
+    this.reviewing = null;
+    const t = r && this.track(r.id);
+    if (!r || !t?.cutout) return;
+    // (not a step to undo: once checked, it stays checked)
+    const first = !t.cutout.reviewed;
+    if (first) t.cutout = { ...t.cutout, reviewed: true };
+    if (first || outlineChanged(r.was, t)) this.jobs.render(t.id);
+  }
+
+  // what's being checked of a cutout: the frames it's cut from [s, e) and when each starts, the
+  // stretch of the clip that is, which of them look wrong, the frames it was picked or changed on
+  // (its keyframes and pieces), and its edge settings
+  reviewOf(id: number): {
+    s: number;
+    e: number;
+    times: number[]; // each frame's start (the clip's own time)
+    range: { s: number; e: number };
+    length: number; // the clip's
+    flags: Flag[];
+    keys: number[];
+    edge: EdgeSettings;
+  } | null {
+    const t = this.track(id);
+    if (!t?.cutout) return null;
+    const { s, e } = rangeFrames(t, this.clip);
+    const keys = t.keys.filter(k => k.i >= s && k.i < e);
+    return {
+      s,
+      e,
+      times: this.clip.slice(s, e).map(f => f.t),
+      range: { ...t.range },
+      length: this.duration,
+      flags: reviewFlags(drawnShapes(t), s, e),
+      keys: [...new Set([...keys.map(k => k.i), ...t.parts.map(p => p.i)])]
+        .filter(i => i >= s && i < e)
+        .sort((a, b) => a - b),
+      edge: t.cutout.edge,
+    };
+  }
+
+  // a cutout's edge: feathered, smoothed, grown or shrunk, steadied (see edge.ts). Changes
+  // to one setting straight after one another (dragging its slider) are one step to undo.
+  setEdge(id: number, p: Partial<EdgeSettings>) {
+    const t = this.track(id);
+    if (!t?.cutout) return;
+    const edge = clampEdge({ ...t.cutout.edge, ...p });
+    if ((Object.keys(edge) as (keyof EdgeSettings)[]).every(k => edge[k] === t.cutout!.edge[k])) return;
+    this.record(`edge:${id}:${Object.keys(p).join()}`);
+    t.cutout = { ...t.cutout, edge };
+    refreshFrames(t, this.clip);
+    this.syncLayers();
+    this.layers.changed(id);
+    this.publish(true);
+    this.recut(t);
   }
 
   // what a cutout leaves in the footage where it was cut from
@@ -369,7 +467,7 @@ export class Editor {
     this.syncLayers();
     this.publish(true);
     // the background behind it is rebuilt when first asked for
-    if (bg === 'clean') this.jobs.render(id);
+    if (bg === 'clean') this.recut(t);
   }
 
   // what's cut out for a cutout: the stretch of the clip it's cut from (the clip's own time), what
@@ -382,7 +480,7 @@ export class Editor {
     const { s, e } = rangeFrames(t, this.clip);
     const frames: OverlayFrame[] = [];
     for (let i = s; i < e; i++) {
-      const sh = t.shapes[i];
+      const sh = t.frames[i]?.shapes[0];
       if (sh) frames.push({ t: this.clip[i].t, cx: sh.cx / W, cy: sh.cy / H, w: sh.w / W, h: sh.h / H });
     }
     return { range: t.range, bg: t.cutout.bg, frames };
@@ -468,15 +566,48 @@ export class Editor {
       this.record();
       return this.moveSpot(t, i, sel);
     }
-    if (!inSpan(trackSpan(t, this.clip), i)) {
+    return this.addKey(t, { i, x: sel.x, y: sel.y });
+  }
+
+  // a piece added to ('add') or taken out of ('remove') a cutout's outline, picked at frame i: the
+  // piece tapped at `at`, followed through its frames, or a loop drawn round it (see parts.ts)
+  addPart(id: number, i: number, op: PartOp, pick: { at: Selection } | { loop: readonly Selection[] }) {
+    const t = this.track(id);
+    if (!t?.cutout || !inSpan(trackSpan(t, this.clip), i)) return false;
+    if ('loop' in pick && pick.loop.length < 3) return false;
+    this.record();
+    const part: Part = {
+      id: Math.max(0, ...t.parts.map(p => p.id)) + 1,
+      op,
+      i,
+      at: 'at' in pick ? { x: pick.at.x, y: pick.at.y } : null,
+      loop: 'loop' in pick ? pick.loop.map(p => ({ x: p.x, y: p.y })) : null,
+      shapes: new Array(this.clip.length).fill(null),
+    };
+    t.parts = [...t.parts, part];
+    refreshFrames(t, this.clip);
+    this.layers.changed(t.id);
+    this.publish(true);
+    if (part.at) this.jobs.addFirst(this.partJob(t, part));
+    this.recut(t);
+    return true;
+  }
+
+  // following a tapped piece from where it was picked
+  private partJob(t: Track, p: Part): TrackJob {
+    return { id: t.id, key: { i: p.i, x: p.at?.x ?? 0, y: p.at?.y ?? 0 }, part: p.id };
+  }
+
+  // a new keyframe (replacing any on its frame), tracked from first
+  private addKey(t: Track, key: Key) {
+    if (!inSpan(trackSpan(t, this.clip), key.i)) {
       this.events.status(`This moment is outside ${t.name}’s effect. Drag its ends to include it.`);
       return false;
     }
     this.record();
-    const key: Key = { i, x: sel.x, y: sel.y };
     t.keys = insertKey(t.keys, key);
     this.publish();
-    this.jobs.addFirst({ id, key });
+    this.jobs.addFirst({ id: t.id, key });
     this.recut(t);
     return true;
   }
@@ -567,7 +698,14 @@ export class Editor {
       this.publish();
       this.jobs.add(...redo.map(key => ({ id, key })));
     }
-    if (before.s !== after.s || before.e !== after.e) this.recut(t);
+    if (before.s === after.s && before.e === after.e) return;
+    // the pieces tapped are followed over the new frames too
+    const tapped = t.parts.filter(p => p.at && inSpan(after, p.i));
+    if (tapped.length) {
+      this.jobs.drop(j => j.id === id && j.part !== undefined);
+      this.jobs.add(...tapped.map(p => this.partJob(t, p)));
+    }
+    this.recut(t);
   }
 
   // moves an impact to hit at time t
@@ -659,7 +797,7 @@ export class Editor {
     this.publish(true);
     const todo = this.jobs.pending().filter(j => j.id === t.id);
     if (todo.length) this.jobs.add(...todo.map(j => ({ id: d.id, key: j.key })));
-    if (d.cutout) this.jobs.render(d.id);
+    this.recut(d);
     return d.id;
   }
 
@@ -746,6 +884,8 @@ export class Editor {
     this.lastFx = snap.lastFx;
     this.lastImpact = snap.lastImpact;
     this.merge = null;
+    // (a cutout being checked may be gone)
+    if (this.reviewing && !this.track(this.reviewing.id)) this.reviewing = null;
     for (const t of this.tracks) {
       refreshFrames(t, this.clip);
       this.place(t);
@@ -753,10 +893,16 @@ export class Editor {
     this.sendScenes();
     this.syncLayers();
     for (const t of this.tracks) this.layers.changed(t.id);
-    this.jobs.restore(snap.jobs.filter(j => this.track(j.id)?.keys.includes(j.key)));
+    this.jobs.restore(
+      snap.jobs.filter(j => {
+        const t = this.track(j.id);
+        return !!t && (j.part !== undefined ? t.parts.some(p => p.id === j.part) : t.keys.includes(j.key));
+      }),
+    );
     for (const t of this.tracks) {
       const old = was.get(t.id);
-      if (t.cutout && (!old || old.shapes.some((sh, i) => sh !== t.shapes[i]))) this.jobs.render(t.id);
+      if (t.cutout && old?.cutout?.reviewed) t.cutout = { ...t.cutout, reviewed: true };
+      if (!old || outlineChanged(outlineOf(old), t)) this.recut(t);
     }
     this.publish(true);
     this.update(
@@ -800,9 +946,10 @@ export class Editor {
     this.layers.setClip(frames, sceneStarts(this.clip, this.cuts));
   }
 
-  // a cutout's outlines changed: cut it out again once they're tracked
+  // a cutout's outlines changed: cut it out again once they're tracked (if they've been checked,
+  // and aren't being checked now)
   private recut(t: Track) {
-    if (t.cutout) this.jobs.render(t.id);
+    if (t.cutout?.reviewed && this.reviewing?.id !== t.id) this.jobs.render(t.id);
   }
 
   // a spot effect's box in each frame of its range, where the camera has carried the spot

@@ -1,11 +1,12 @@
-// MediaPipe's interactive segmenter and body landmark models (pose, hands, face), for the
+// MediaPipe's interactive segmenter, person segmenter and body landmark models (pose, hands, face), for the
 // analysis worker. The runtime and models are served from public/ (see
 // scripts/setup-mediapipe.mjs), never from another site.
 type MP = typeof import('@mediapipe/tasks-vision');
 type Fileset = Awaited<ReturnType<MP['FilesetResolver']['forVisionTasks']>>;
 
 const abs = (path: string) => new URL(path, self.location.origin).href;
-const SEGMENT_MODEL = '/models/magic_touch.tflite';
+const SEGMENT_MODEL = '/models/magic_touch.tflite',
+  PERSON_MODEL = '/models/selfie_multiclass_256x256.tflite';
 const POSE_MODEL = '/models/pose_landmarker_lite.task',
   HAND_MODEL = '/models/hand_landmarker.task',
   FACE_MODEL = '/models/face_landmarker.task';
@@ -77,38 +78,92 @@ export async function createSegmenter(): Promise<Segmenter> {
       r.close();
     }
   };
-  let crop: OffscreenCanvas | null = null;
+  const crop = new Cropper();
   return {
     segment(image, x, y, region) {
       if (!region) return run(image, x, y);
-      const W = image.width,
-        H = image.height;
-      const x0 = Math.max(0, Math.floor(region.x0)),
-        y0 = Math.max(0, Math.floor(region.y0)),
-        x1 = Math.min(W, Math.ceil(region.x1)),
-        y1 = Math.min(H, Math.ceil(region.y1));
-      const rw = x1 - x0,
-        rh = y1 - y0;
-      const out = new Uint8Array(W * H);
-      if (rw < 4 || rh < 4) return out;
-      const k = REGION_PX / Math.max(rw, rh);
-      const cw = Math.max(1, Math.round(rw * k)),
-        ch = Math.max(1, Math.round(rh * k));
-      if (!crop || crop.width !== cw || crop.height !== ch) crop = new OffscreenCanvas(cw, ch);
-      const g = crop.getContext('2d')!;
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(image, x0, y0, rw, rh, 0, 0, cw, ch);
-      const m = run(crop, (x - x0) * k, (y - y0) * k);
-      // back to the image's pixels: each takes the crop pixel at its middle
-      for (let yy = y0; yy < y1; yy++) {
-        const cy = Math.min(ch - 1, Math.floor((yy - y0 + 0.5) * k)) * cw;
-        for (let xx = x0; xx < x1; xx++)
-          out[yy * W + xx] = m[cy + Math.min(cw - 1, Math.floor((xx - x0 + 0.5) * k))];
-      }
-      return out;
+      return crop.run(image, region, (c, k, r) => run(c, (x - r.x0) * k, (y - r.y0) * k));
     },
     close: () => t.close(),
   };
+}
+
+// Outlines every person in an image (or in a region of it, enlarged as above): a mask the size of
+// the image, 1 = a person (their hair, skin, clothes and what they wear).
+export interface PersonSegmenter {
+  segment(image: OffscreenCanvas, region?: Region): Uint8Array;
+  close(): void;
+}
+
+export async function createPersonSegmenter(): Promise<PersonSegmenter> {
+  const { mp } = await loadRuntime();
+  const t = await createTask((fs, d) =>
+    mp.ImageSegmenter.createFromOptions(fs, {
+      baseOptions: { modelAssetPath: abs(PERSON_MODEL), delegate: d },
+      ...gpuCanvas(d),
+      runningMode: 'IMAGE',
+      outputCategoryMask: false,
+      outputConfidenceMasks: true,
+    }),
+  );
+  // the first confidence mask is the background: anything the model is sure isn't it is a person
+  const run = (image: OffscreenCanvas) => {
+    const r = t.segment(image);
+    try {
+      const bg = r.confidenceMasks![0].getAsFloat32Array(),
+        out = new Uint8Array(bg.length);
+      for (let i = 0; i < bg.length; i++) out[i] = bg[i] < 0.5 ? 1 : 0;
+      return out;
+    } finally {
+      r.close();
+    }
+  };
+  const crop = new Cropper();
+  return {
+    segment: (image, region) => (region ? crop.run(image, region, c => run(c)) : run(image)),
+    close: () => t.close(),
+  };
+}
+
+// Runs a model on a region of an image enlarged to REGION_PX, and puts its mask back in the image's
+// pixels (nothing outside the region is marked)
+class Cropper {
+  private crop: OffscreenCanvas | null = null;
+
+  // run: given the enlarged region, how much it was enlarged by, and where it came from
+  run(
+    image: OffscreenCanvas,
+    region: Region,
+    run: (crop: OffscreenCanvas, k: number, r: Region) => Uint8Array,
+  ): Uint8Array {
+    const W = image.width,
+      H = image.height;
+    const x0 = Math.max(0, Math.floor(region.x0)),
+      y0 = Math.max(0, Math.floor(region.y0)),
+      x1 = Math.min(W, Math.ceil(region.x1)),
+      y1 = Math.min(H, Math.ceil(region.y1));
+    const rw = x1 - x0,
+      rh = y1 - y0;
+    const out = new Uint8Array(W * H);
+    if (rw < 4 || rh < 4) return out;
+    const k = REGION_PX / Math.max(rw, rh);
+    const cw = Math.max(1, Math.round(rw * k)),
+      ch = Math.max(1, Math.round(rh * k));
+    if (!this.crop || this.crop.width !== cw || this.crop.height !== ch)
+      this.crop = new OffscreenCanvas(cw, ch);
+    const crop = this.crop,
+      g = crop.getContext('2d')!;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(image, x0, y0, rw, rh, 0, 0, cw, ch);
+    const m = run(crop, k, { x0, y0, x1, y1 });
+    // back to the image's pixels: each takes the crop pixel at its middle
+    for (let yy = y0; yy < y1; yy++) {
+      const cy = Math.min(ch - 1, Math.floor((yy - y0 + 0.5) * k)) * cw;
+      for (let xx = x0; xx < x1; xx++)
+        out[yy * W + xx] = m[cy + Math.min(cw - 1, Math.floor((xx - x0 + 0.5) * k))];
+    }
+    return out;
+  }
 }
 
 // ---------- body landmarks ----------
