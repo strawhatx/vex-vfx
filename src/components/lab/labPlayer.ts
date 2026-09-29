@@ -16,7 +16,7 @@ import { TextClipPainter } from '@/infrastructure/rendering/textClips';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import { workSize, type TrackFrame } from '@/domain/tracking/types';
 import { loadFonts } from '../editor/fonts';
-import { SCENE_H, SCENE_W, bodyLayer, drawPerson, subject, testFrames } from './bodyStage';
+import { SCENE_H, SCENE_W, bodyLayer, burstLayer, drawPerson, subject, testFrames } from './bodyStage';
 
 export interface LabState {
   t: number; // the effect's time
@@ -48,7 +48,12 @@ export class LabPlayer {
   private stage: Renderer | null = null;
   private stageFor = '';
   private stagePreset: Preset | null = null;
-  private stageClip: { frames: TrackFrame[]; shape: ReturnType<typeof subject> } | null = null;
+  private stageClip: {
+    frames: TrackFrame[];
+    shape: ReturnType<typeof subject>;
+    W: number;
+    H: number;
+  } | null = null;
   private last = 0;
   private sent = 0;
   private raf = 0;
@@ -155,7 +160,7 @@ export class LabPlayer {
       this.drawCut(src, this.preset, W, H);
       return;
     }
-    if (this.preset?.group === 'body') {
+    if (this.preset?.group === 'body' || this.preset?.group === 'impact') {
       const r = this.bodyStage(sw, sh, src === this.scene, this.preset);
       r.render(src, this.state.t, { outline: false, paused: !this.state.playing, selected: null });
       ctx.drawImage(r.canvas, 0, 0, W, H);
@@ -206,19 +211,23 @@ export class LabPlayer {
   // the renderer, set up for the picture (sw x sh) and a clip of the preset on its object
   private bodyStage(sw: number, sh: number, scene: boolean, preset: Preset) {
     const r = (this.stage ??= new Renderer(new OffscreenCanvas(1, 1)));
-    const key = `${sw}x${sh}:${scene}:${preset.length}`;
+    const len = previewLength(preset);
+    const key = `${sw}x${sh}:${scene}:${len}`;
     if (key !== this.stageFor) {
       this.stageFor = key;
       const { W, H } = workSize(sw, sh);
       r.setup(sw, sh, W, H, MAX_W);
-      const frames = testFrames(preset.length);
+      const frames = testFrames(len);
       r.setClip(frames, new Int32Array(frames.length));
-      this.stageClip = { frames, shape: subject(W, H, scene) };
+      this.stageClip = { frames, shape: subject(W, H, scene), W, H };
       this.stagePreset = null;
     }
     if (preset !== this.stagePreset && this.stageClip) {
       this.stagePreset = preset;
-      r.setLayers([bodyLayer(preset, this.stageClip.frames, this.stageClip.shape)]);
+      const { frames, shape, W, H } = this.stageClip;
+      r.setLayers([
+        preset.group === 'impact' ? burstLayer(preset, frames, W, H) : bodyLayer(preset, frames, shape),
+      ]);
     }
     return r;
   }

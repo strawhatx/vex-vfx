@@ -192,7 +192,7 @@ export type AnimTarget = { film: number } | { overlay: number } | { look: number
 // an impact of this style
 export type AddChoice =
   | { kind: 'effect'; fx: Partial<FxSettings>; body?: string }
-  | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings> }
+  | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings>; burst?: string }
   | { kind: 'cutout' };
 
 // what the next tap adds, for the hint
@@ -953,6 +953,18 @@ export class Player {
 
   setBodyControl(id: number, control: string, v: ParamValue) {
     this.clip(id)?.ed.setBodyControl(id, control, v);
+  }
+
+  // ---------- burst impacts ----------
+
+  // the impact made from burst preset `presetId` instead, going off where it did
+  setBurst(id: number, presetId: string) {
+    const p = presetById(presetId);
+    if (p) this.clip(id)?.ed.setBurst(id, p);
+  }
+
+  setBurstControl(id: number, control: string, v: ParamValue) {
+    this.clip(id)?.ed.setBurstControl(id, control, v);
   }
 
   // ---------- transitions ----------
@@ -2351,7 +2363,7 @@ export class Player {
     if (!ed || choice.kind === 'cutout') return;
     const id =
       choice.kind === 'impact'
-        ? ed.addImpact(i, at, choice.style, choice.fx)
+        ? ed.addImpact(i, at, choice.style, choice.fx, choice.burst ? presetById(choice.burst) : null)
         : ed.addTrack(i, at, choice.fx, part, choice.body ? presetById(choice.body) : null);
     if (id !== null) this.select(id);
   }

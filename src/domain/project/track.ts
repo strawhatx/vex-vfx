@@ -11,13 +11,14 @@
 // Clips can overlap, stacked on the timeline. Each keeps one shape per clip frame and the
 // keyframes it was tracked from; a cutout also keeps pieces added to or taken out of its outline
 // (see parts.ts), and what's drawn is its outline with them.
-import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
+import { IMPACTS, familyOf, type ImpactLook, type ImpactStyle } from '../effects/impacts';
+import { lookOf, soundOfBurst } from '../effects/bursts';
 import type { ClipAnim } from '../effects/animation';
 import type { Aim } from '../effects/laser';
 import { passOfFx, soundOf } from '../effects/body';
 import { STEADY } from '../effects/curves';
 import type { ParamValue } from '../effects/params';
-import type { ObjectPass } from '../effects/passes';
+import type { BurstPassOf, ObjectPass } from '../effects/passes';
 import { controlDefaults, fitControl, passesWith, type ControlValues, type Preset } from '../effects/presets';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
@@ -31,8 +32,8 @@ import { reviewFlags } from './review';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
-// a body preset on an effect, and its controls' values
-export interface BodyLook {
+// a preset on a clip (a body effect's, or an impact's), and its controls' values
+export interface PresetLook {
   preset: Preset;
   values: ControlValues;
 }
@@ -47,7 +48,10 @@ export interface Track {
   fx: FxSettings; // look: effect type, colors, size, intensity (impacts use the colors and size)
   // an effect made from a body preset (see effects/body.ts): drawn as its passes rather than as fx
   // (fx.effect is then just the sound it makes)
-  body: BodyLook | null;
+  body: PresetLook | null;
+  // an impact made from a burst preset (see effects/bursts.ts): drawn as that rather than its style
+  // (impact is then just the sound it makes)
+  burst: PresetLook | null;
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
   // for cutouts: what's left in the footage where it was, whether its outlines have been checked
@@ -76,8 +80,17 @@ export const IMPACT_MIN_SPEED = 1 / 8,
   IMPACT_MAX_SPEED = 4;
 
 // how fast an impact plays its burst: 1 = its style's own timing, 0.5 = half speed
-export const impactSpeed = (t: { impact: ImpactStyle | null; range: { s: number; e: number } }) =>
-  t.impact ? IMPACTS[t.impact].duration / Math.max(1e-3, t.range.e - t.range.s) : 1;
+export const impactSpeed = (t: Pick<Track, 'impact' | 'burst' | 'range'>) => {
+  const look = impactLook(t);
+  return look ? look.duration / Math.max(1e-3, t.range.e - t.range.s) : 1;
+};
+
+// what an impact looks like: its burst preset's, or its style's (null: not an impact)
+export function impactLook(t: Pick<Track, 'impact' | 'burst'>): ImpactLook | null {
+  if (t.burst)
+    return lookOf(passesWith(t.burst.preset, t.burst.values) as BurstPassOf[], t.burst.preset.name);
+  return t.impact ? IMPACTS[t.impact] : null;
+}
 
 // what a new clip is called, before its number
 const FAMILY_NAMES = {
@@ -116,6 +129,7 @@ function make(
     spot: false,
     fx: { ...fx },
     body: null,
+    burst: null,
     aim: { h: 90, v: 0, target: null },
     impact,
     cutout: null,
@@ -154,7 +168,8 @@ export function newSpotTrack(id: number, clip: ClipFrame[], fx: FxSettings, rang
   return t;
 }
 
-// an impact going off at frame i
+// an impact going off at frame i: of this style, or made from burst preset `burst` (which says how
+// it sounds)
 export function newImpact(
   id: number,
   clip: ClipFrame[],
@@ -162,8 +177,35 @@ export function newImpact(
   style: ImpactStyle,
   i: number,
   duration: number,
+  burst: Preset | null = null,
 ) {
-  return make(id, 'impact', clip, fx, impactRange(clip, i, style, duration), style, null);
+  const use = burst ? { preset: burst, values: controlDefaults(burst) } : null;
+  const look = impactLook({ impact: style, burst: use })!;
+  const sound = burst ? soundOfBurst(burst.passes as BurstPassOf[]) : style;
+  const t = make(id, 'impact', clip, fx, impactRange(clip, i, look.duration, duration), sound, null);
+  t.burst = use;
+  if (burst) t.name = `${FAMILY_NAMES[look.family]} ${id}`;
+  return t;
+}
+
+// the impact made from another burst preset, going off where it did; a stretched one keeps its
+// length, an unstretched one takes the new one's own
+export function withBurst(t: Track, preset: Preset, clip: ClipFrame[], duration: number): Track {
+  const was = impactLook(t);
+  if (t.kind !== 'impact' || !was) return t;
+  const values = controlDefaults(preset);
+  for (const k of Object.keys(values)) if (t.burst && k in t.burst.values) values[k] = t.burst.values[k];
+  const next: Track = {
+    ...t,
+    burst: { preset, values },
+    impact: soundOfBurst(preset.passes as BurstPassOf[]),
+  };
+  const len = t.range.e - t.range.s,
+    stretched = Math.abs(len - was.duration) > 1e-3;
+  const s = t.range.s;
+  next.range = { s, e: Math.min(duration, s + (stretched ? len : impactLook(next)!.duration)) };
+  refreshFrames(next, clip);
+  return next;
 }
 
 // a new cutout of the object tapped, cut from `range`; bg: what's left in the footage where it was
@@ -179,9 +221,10 @@ export function newCutoutTrack(
   return t;
 }
 
-const impactRange = (clip: ClipFrame[], i: number, style: ImpactStyle, duration: number) => ({
+// an impact lasting `lasts` seconds from frame i, within the video (duration long)
+const impactRange = (clip: ClipFrame[], i: number, lasts: number, duration: number) => ({
   s: clip[i].t,
-  e: Math.min(duration, clip[i].t + IMPACTS[style].duration),
+  e: Math.min(duration, clip[i].t + lasts),
 });
 
 // the effect made from a body preset (the controls both have keep their values); it sounds like
@@ -257,8 +300,9 @@ export function setRange(t: Track, r: { s?: number; e?: number }, duration: numb
   const s = clamp(r.s ?? t.range.s),
     e = clamp(r.e ?? t.range.e);
   if (e - s < MIN_RANGE_S) return false;
-  if (t.impact) {
-    const speed = IMPACTS[t.impact].duration / (e - s);
+  const look = impactLook(t);
+  if (look) {
+    const speed = look.duration / (e - s);
     if (speed < IMPACT_MIN_SPEED || speed > IMPACT_MAX_SPEED) return false;
   }
   t.range = { s, e };
@@ -277,10 +321,11 @@ export function setHit(
 ) {
   if (t.kind !== 'impact' || !style || !t.impact || !clip[i]) return false;
   const len = t.range.e - t.range.s,
-    stretched = Math.abs(len - IMPACTS[t.impact].duration) > 1e-3;
+    was = impactLook(t)!,
+    stretched = Math.abs(len - was.duration) > 1e-3;
   t.impact = style;
   const s = clip[i].t;
-  t.range = { s, e: Math.min(duration, s + (stretched ? len : IMPACTS[style].duration)) };
+  t.range = { s, e: Math.min(duration, s + (stretched ? len : impactLook(t)!.duration)) };
   refreshFrames(t, clip);
   return true;
 }
@@ -347,7 +392,8 @@ export interface Lane {
   kind: TrackKind;
   pinned: boolean; // at a spot in the scene: moved by tapping, nothing to fix
   fx: FxSettings;
-  body: BodyLook | null;
+  body: PresetLook | null;
+  burst: PresetLook | null;
   impact: ImpactStyle | null;
   aim: Aim;
   speed: number; // impacts: how fast the burst plays (1 = its style's own timing)
@@ -455,6 +501,7 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     pinned: isPinned(t),
     fx: t.fx,
     body: t.body,
+    burst: t.burst,
     impact: t.impact,
     aim: t.aim,
     speed: impactSpeed(t),

@@ -106,6 +106,8 @@ export function toolsFor(
     looks: boolean; // the selected effect has styles of its own (Outline, Glitch, Text)
     text: boolean; // the selected look is a text
     body: boolean; // the selected effect is made from a body preset
+    burst: boolean; // the selected impact is made from a burst preset
+    tunable: boolean; // the selected clip's preset has controls of its own
     words: boolean; // the selected effect is Text: its words can be changed
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
@@ -179,19 +181,25 @@ export function toolsFor(
     ];
   if (mode === 'impact')
     return [
-      sheet(
-        'impact',
-        'Style',
-        s.impact === 'explosion'
-          ? I.explosion
-          : s.impact === 'shockwave'
-            ? I.wave
-            : s.impact === 'word'
-              ? I.text
-              : s.impact === 'water'
-                ? I.water
-                : I.burst,
-      ),
+      ...(s.burst ? [sheet('presets', 'Style', I.burst)] : []),
+      ...(s.burst && s.tunable ? [sheet('controls', 'Tune', I.adjust)] : []),
+      ...(s.burst
+        ? []
+        : [
+            sheet(
+              'impact',
+              'Style',
+              s.impact === 'explosion'
+                ? I.explosion
+                : s.impact === 'shockwave'
+                  ? I.wave
+                  : s.impact === 'word'
+                    ? I.text
+                    : s.impact === 'water'
+                      ? I.water
+                      : I.burst,
+            ),
+          ]),
       sheet('color', 'Color', I.color),
       sheet('adjust', 'Adjust', I.adjust),
       // an impact isn't tracked, so has no fixes: tap the preview to move it

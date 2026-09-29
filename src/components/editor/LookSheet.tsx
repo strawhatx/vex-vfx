@@ -7,22 +7,32 @@ import { gradeOf, gradeSwatch } from '@/domain/effects/color';
 import { presetsIn } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import { PALETTES } from '@/domain/effects/palettes';
+import { soundOfBurst } from '@/domain/effects/bursts';
+import type { BurstPassOf } from '@/domain/effects/passes';
+import { IMPACT_ART } from './ToolSheet';
 import type { ControlValues, LookGroup, Preset } from '@/domain/effects/presets';
 import { MAX_SCALE, MAX_WORDS, MIN_SCALE, type TextPlace } from '@/domain/effects/typeset';
 import { Icon, I } from './icons';
 
 // the groups with a menu of presets
-export type MenuGroup = LookGroup | 'body';
+export type MenuGroup = LookGroup | 'body' | 'impact';
 
 export const GROUP_NAMES: Record<MenuGroup, string> = {
   filter: 'Filters',
   screen: 'Video effects',
   text: 'Text',
   body: 'Body effects',
+  impact: 'Impacts',
 };
 // whether a group's presets are split up by category (filters and text aren't: there are few enough
 // to list)
-const BY_CATEGORY: Record<MenuGroup, boolean> = { filter: false, screen: true, text: false, body: true };
+const BY_CATEGORY: Record<MenuGroup, boolean> = {
+  filter: false,
+  screen: true,
+  text: false,
+  body: true,
+  impact: true,
+};
 
 // a preset's picture when there's none of the frame: a filter's colors as it turns them, a body
 // effect's colors round a figure, or a screen effect's glow
@@ -32,6 +42,7 @@ function fallbackArt(p: Preset) {
     const c = gradeSwatch(gradeOf(grade.params));
     return `linear-gradient(160deg, ${c[4]}, ${c[0]} 35%, ${c[2]} 60%, ${c[1]} 80%, ${c[3]})`;
   }
+  if (p.group === 'impact') return IMPACT_ART[soundOfBurst(p.passes as BurstPassOf[])];
   if (p.group === 'body') {
     const [a, b] = bodyColors(p);
     return `radial-gradient(ellipse 16% 30% at 50% 58%, #1d2230 0 90%, transparent 100%), radial-gradient(ellipse 26% 42% at 50% 58%, ${a} 0 40%, ${b}88 70%, transparent 100%), #26262a`;
@@ -73,7 +84,9 @@ export function PresetSheet({
     () => categories.find(c => c.presets.some(p => p.id === current))?.category ?? categories[0]?.category,
   );
   // (once, on opening: pictures of what's showing now)
-  useEffect(onShown, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onShown();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = categories.find(c => c.category === tab) ?? categories[0];
   return (
     <div className="sheet" role="dialog" aria-label={GROUP_NAMES[group]}>

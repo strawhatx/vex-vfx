@@ -105,6 +105,23 @@ import ashes from './ashes.json';
 import frostFade from './frost-fade.json';
 import thunderText from './thunder-text.json';
 import hauntedText from './haunted-text.json';
+import punchImpact from './punch-hit.json';
+import slamImpact from './slam.json';
+import blastImpact from './blast.json';
+import animeImpact from './anime.json';
+import fireballImpact from './fireball.json';
+import grenadeImpact from './grenade.json';
+import bigboomImpact from './bigboom.json';
+import ringImpact from './ring.json';
+import groundImpact from './ground.json';
+import pulseImpact from './pulse.json';
+import novaImpact from './nova.json';
+import powImpact from './pow.json';
+import boomImpact from './boom.json';
+import koImpact from './ko.json';
+import bamImpact from './bam.json';
+import splashImpact from './splash.json';
+import bigsplashImpact from './bigsplash.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -212,4 +229,21 @@ export const PRESET_FILES: readonly unknown[] = [
   frostFade,
   thunderText,
   hauntedText,
+  punchImpact,
+  slamImpact,
+  blastImpact,
+  animeImpact,
+  fireballImpact,
+  grenadeImpact,
+  bigboomImpact,
+  ringImpact,
+  groundImpact,
+  pulseImpact,
+  novaImpact,
+  powImpact,
+  boomImpact,
+  koImpact,
+  bamImpact,
+  splashImpact,
+  bigsplashImpact,
 ];

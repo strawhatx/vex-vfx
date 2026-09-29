@@ -1,0 +1,38 @@
+{
+  "id": "boom",
+  "name": "BOOM!",
+  "group": "impact",
+  "category": "Text",
+  "length": 1.1,
+  "passes": [
+    {
+      "engine": "burst",
+      "kind": "hit",
+      "params": {
+        "family": "word",
+        "sound": "boom",
+        "duration": 1.1,
+        "size": 0.11,
+        "flash": 0.6,
+        "screenFlash": 0.12,
+        "rings": 1,
+        "sparks": 14,
+        "speed": 4,
+        "gravity": 2,
+        "shake": 0.045,
+        "zoom": 0.05,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "burst",
+      "kind": "word",
+      "params": {
+        "text": "BOOM!",
+        "tilt": 0.1,
+        "spikes": 16
+      }
+    }
+  ],
+  "controls": []
+}

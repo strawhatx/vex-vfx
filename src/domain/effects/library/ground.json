@@ -1,0 +1,42 @@
+{
+  "id": "ground",
+  "name": "Ground",
+  "group": "impact",
+  "category": "Shockwave",
+  "length": 1.2,
+  "passes": [
+    {
+      "engine": "burst",
+      "kind": "hit",
+      "params": {
+        "family": "shockwave",
+        "sound": "ground",
+        "duration": 1.2,
+        "size": 0.06,
+        "flash": 0.5,
+        "screenFlash": 0,
+        "rings": 0,
+        "sparks": 20,
+        "speed": 3,
+        "gravity": 6,
+        "shake": 0.03,
+        "zoom": 0.02,
+        "colors": "white"
+      }
+    },
+    {
+      "engine": "burst",
+      "kind": "wave",
+      "params": {
+        "rings": 1,
+        "gap": 0,
+        "reach": 6,
+        "particles": 80,
+        "flatten": 0.3,
+        "dust": "yes",
+        "distort": 0.5
+      }
+    }
+  ],
+  "controls": []
+}

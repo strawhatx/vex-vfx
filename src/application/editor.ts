@@ -63,10 +63,11 @@ import {
   trackSpan,
   withBody,
   withBodyControl,
+  withBurst,
   type Track,
 } from '@/domain/project/track';
 import type { ParamValue } from '@/domain/effects/params';
-import type { Preset } from '@/domain/effects/presets';
+import { fitControl, type Preset } from '@/domain/effects/presets';
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
@@ -661,14 +662,44 @@ export class Editor {
   }
 
   // a new impact going off at the spot tapped at frame i
-  addImpact(i: number, sel: Selection, style: ImpactStyle = this.lastImpact, fx: Partial<FxSettings> = {}) {
+  // burst: a burst preset it's made from (see effects/bursts.ts), which says how it sounds
+  addImpact(
+    i: number,
+    sel: Selection,
+    style: ImpactStyle = this.lastImpact,
+    fx: Partial<FxSettings> = {},
+    burst: Preset | null = null,
+  ) {
     if (!this.clip[i]) return null;
     this.record();
     this.lastImpact = style;
     // impacts stay put in the scene as the camera moves
     this.jobs.needCamera();
-    const t = newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration);
+    const t = newImpact(this.nextId++, this.clip, { ...this.lastFx, ...fx }, style, i, this.duration, burst);
     return this.start(t, i, sel);
+  }
+
+  // an impact made from a burst preset instead, going off where it did
+  setBurst(id: number, preset: Preset) {
+    const t = this.track(id);
+    if (!t || t.kind !== 'impact' || preset.group !== 'impact') return false;
+    this.record();
+    const next = withBurst(t, preset, this.clip, this.duration);
+    Object.assign(t, { burst: next.burst, impact: next.impact, range: next.range });
+    refreshFrames(t, this.clip);
+    this.timingChanged(id);
+    return true;
+  }
+
+  // one of its burst preset's controls set; changes straight after one another are one step to undo
+  setBurstControl(id: number, control: string, v: ParamValue) {
+    const t = this.track(id);
+    const c = t?.burst?.preset.controls.find(x => x.id === control);
+    if (!t?.burst || !c) return;
+    this.record(`burst:${id}:${control}`);
+    t.burst = { ...t.burst, values: { ...t.burst.values, [control]: fitControl(c, v) } };
+    this.syncLayers();
+    this.publish(true);
   }
 
   private start(t: Track, i: number, sel: Selection) {

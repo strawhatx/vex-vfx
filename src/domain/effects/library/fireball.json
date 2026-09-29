@@ -1,0 +1,51 @@
+{
+  "id": "fireball",
+  "name": "Fireball",
+  "group": "impact",
+  "category": "Explosion",
+  "length": 1.6,
+  "passes": [
+    {
+      "engine": "burst",
+      "kind": "hit",
+      "params": {
+        "family": "explosion",
+        "sound": "fireball",
+        "duration": 1.6,
+        "size": 0.11,
+        "flash": 1.3,
+        "screenFlash": 0.3,
+        "rings": 0,
+        "sparks": 30,
+        "speed": 3,
+        "gravity": 3,
+        "shake": 0.035,
+        "zoom": 0.05,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "burst",
+      "kind": "explosion",
+      "params": {
+        "smoke": 0.7,
+        "debris": 14,
+        "mushroom": "no"
+      }
+    },
+    {
+      "engine": "burst",
+      "kind": "wave",
+      "params": {
+        "rings": 1,
+        "gap": 0,
+        "reach": 3.2,
+        "particles": 70,
+        "flatten": 0.4,
+        "dust": "yes",
+        "distort": 0.8
+      }
+    }
+  ],
+  "controls": []
+}

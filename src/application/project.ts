@@ -1112,6 +1112,7 @@ export class Project {
       pinned: false,
       fx: DEFAULT_FX,
       body: null,
+      burst: null,
       impact: null,
       aim: { h: 90, v: 0, target: null },
       speed: 1,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { FAMILY_STYLES } from '@/domain/effects/impacts';
+import { FAMILY_STYLES, IMPACTS } from '@/domain/effects/impacts';
+import { presetById } from '@/domain/effects/library';
 import { parsePreset } from '@/domain/effects/presets';
 import { encodeRle, type ClipFrame, type Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
@@ -247,7 +248,9 @@ describe('impacts', () => {
     expect(lane.range).toEqual({ s: 2, e: 2.7 });
     const spec = layers.specs.find(s => s.id === id)!;
     expect(spec.kind).toBe('impact');
-    expect(spec.impacts).toEqual([{ id, i: 20, style: 'slam', tap: { i: 20, x: 50, y: 50 } }]);
+    expect(spec.impacts).toEqual([
+      { id, i: 20, style: 'slam', look: IMPACTS.slam, tap: { i: 20, x: 50, y: 50 } },
+    ]);
   });
 
   it('a hit goes off at the tapped spot without tracking anything, pinned to the scene by the camera path', () => {
@@ -487,7 +490,9 @@ describe('explosions', () => {
     const lane = state.lanes.find(l => l.id === id)!;
     expect(lane.name).toBe(`Explosion ${id}`);
     expect(lane.range).toEqual({ s: 2, e: 3.6 });
-    expect(layers.specs[0].impacts).toEqual([{ id, i: 20, style: 'fireball', tap: { i: 20, x: 30, y: 40 } }]);
+    expect(layers.specs[0].impacts).toEqual([
+      { id, i: 20, style: 'fireball', look: IMPACTS.fireball, tap: { i: 20, x: 30, y: 40 } },
+    ]);
     expect(editor.pinned(id)).toBe(true);
   });
 
@@ -767,6 +772,31 @@ describe('the speed of a film', () => {
     editor.undo();
     editor.undo();
     expect(state.length).toBe(6);
+  });
+});
+
+describe('impacts made from burst presets', () => {
+  it('go off as their preset says, sounding like it, and last as long as it does', () => {
+    const boom = presetById('bigboom')!;
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, boom)!;
+    expect(state.lanes[0]).toMatchObject({ impact: 'bigboom', burst: { preset: { id: 'bigboom' } } });
+    expect(state.lanes[0].range).toEqual({ s: 2, e: 5.2 });
+    expect(layers.specs[0].impacts[0].look).toMatchObject({
+      family: 'explosion',
+      explosion: { mushroom: true },
+    });
+    expect(state.lanes[0].name).toBe(`Explosion ${id}`);
+  });
+
+  it('are swapped for another where they went off, a stretched one keeping its length', () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, presetById('punch-hit')!)!;
+    expect(editor.setBurst(id, presetById('slam')!)).toBe(true);
+    expect(state.lanes[0]).toMatchObject({ impact: 'slam', range: { s: 2, e: 2.7 } });
+    editor.setRange(id, { e: 3.4 });
+    editor.setBurst(id, presetById('punch-hit')!);
+    expect(state.lanes[0].range).toEqual({ s: 2, e: 3.4 });
+    editor.undo();
+    expect(state.lanes[0].impact).toBe('slam');
   });
 });
 

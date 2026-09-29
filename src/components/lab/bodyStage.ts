@@ -1,10 +1,11 @@
-// What the Preset Lab tries body effects on: a clip as long as the preset, 30 frames a second, with
-// its object found in every frame: the person in the test scene (their silhouette), or on a test
-// clip, a box in its middle (nothing's tracked in the lab). The renderer draws the effect on it just
-// as it would on a tracked clip in the editor.
+// What the Preset Lab tries body effects and impacts on: a clip as long as the preset, 30 frames a
+// second, with its object found in every frame: the person in the test scene (their silhouette), or
+// on a test clip, a box in its middle (nothing's tracked in the lab). An impact goes off at its
+// start, in the middle of the frame. The renderer draws them just as it would in the editor.
 import { DEFAULT_FX } from '@/application/editor';
 import type { LayerSpec } from '@/application/ports';
-import type { ObjectPass } from '@/domain/effects/passes';
+import { lookOf, soundOfBurst } from '@/domain/effects/bursts';
+import type { BurstPassOf, ObjectPass } from '@/domain/effects/passes';
 import { controlDefaults, passesWith, type Preset } from '@/domain/effects/presets';
 import { encodeRle, type Shape, type TrackFrame } from '@/domain/tracking/types';
 
@@ -88,5 +89,22 @@ export function bodyLayer(preset: Preset, frames: TrackFrame[], shape: Shape): L
     tap: null,
     impacts: [],
     cutout: null,
+  };
+}
+
+// the preset as an impact going off at the clip's start, in the middle of a W x H (work pixels) frame
+export function burstLayer(preset: Preset, frames: TrackFrame[], W: number, H: number): LayerSpec {
+  const passes = passesWith(preset, controlDefaults(preset)).filter(
+    (p): p is BurstPassOf => p.engine === 'burst',
+  );
+  const look = lookOf(passes, preset.name);
+  return {
+    ...bodyLayer(preset, frames, { id: 1, cx: 0, cy: 0, w: 0, h: 0 }),
+    kind: 'impact',
+    pinned: true,
+    frames: frames.map(f => ({ ...f, shapes: [] })),
+    passes: null,
+    range: { s: 0, e: look.duration },
+    impacts: [{ id: 1, i: 0, style: soundOfBurst(passes), look, tap: { i: 0, x: W / 2, y: H * 0.55 } }],
   };
 }

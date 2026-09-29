@@ -73,6 +73,13 @@ export const LAB_PAGES: Record<LabPage, LabSpec> = {
     first: [['object', 'edge']],
     length: 3,
   },
+  burst: {
+    name: 'Burst engine',
+    group: 'impact',
+    offers: [{ engine: 'burst' }],
+    first: [['burst', 'hit']],
+    length: 0.5,
+  },
   transition: {
     name: 'Transitions',
     group: 'transition',
@@ -127,11 +134,17 @@ export function newDraft(page: LabPage): Preset {
   return withStrength(p, true);
 }
 
-// how long the lab plays a preset round for: its length, or for a transition, a moment of one
-// picture, the transition, and a moment of the next
+// how long the lab plays a preset round for: its length; for a transition, a moment of one
+// picture, the transition, and a moment of the next; for an impact, its burst and a moment after
 export const TRANSITION_HOLD = 0.6;
-export const previewLength = (p: Pick<Preset, 'group' | 'length'>) =>
-  p.group === 'transition' ? p.length + 2 * TRANSITION_HOLD : p.length;
+export function previewLength(p: Pick<Preset, 'group' | 'length' | 'passes'>) {
+  if (p.group === 'transition') return p.length + 2 * TRANSITION_HOLD;
+  if (p.group === 'impact') {
+    const hit = p.passes.find(x => x.engine === 'burst' && x.kind === 'hit');
+    return ((hit?.params.duration as number | undefined) ?? p.length) + TRANSITION_HOLD;
+  }
+  return p.length;
+}
 
 // a preset loaded to start from: its controls' defaults baked into its passes, so what's edited is
 // what it draws

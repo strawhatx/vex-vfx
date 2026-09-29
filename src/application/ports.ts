@@ -1,6 +1,6 @@
 // What the editor needs from the outside world, named by what it does. The browser adapters
 // in infrastructure/ implement these; tests use in-memory fakes.
-import type { ImpactStyle } from '@/domain/effects/impacts';
+import type { ImpactLook, ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { ObjectPass } from '@/domain/effects/passes';
 import type { SavedFilm } from './project';
@@ -100,7 +100,14 @@ export interface LayerSpec {
   range: { s: number; e: number };
   aim: Aim; // for a laser
   tap: { i: number; x: number; y: number } | null; // where it was first tapped (a laser on an object fires from there)
-  impacts: { id: number; i: number; style: ImpactStyle; tap?: { i: number; x: number; y: number } }[];
+  // (look: what the burst is, from its style or its burst preset)
+  impacts: {
+    id: number;
+    i: number;
+    style: ImpactStyle;
+    look: ImpactLook;
+    tap?: { i: number; x: number; y: number };
+  }[];
   cutout: { bg: Background; edge: EdgeSettings } | null;
 }
 

@@ -1,0 +1,29 @@
+{
+  "id": "blast",
+  "name": "Energy blast",
+  "group": "impact",
+  "category": "Hit",
+  "length": 0.8,
+  "passes": [
+    {
+      "engine": "burst",
+      "kind": "hit",
+      "params": {
+        "family": "hit",
+        "sound": "blast",
+        "duration": 0.8,
+        "size": 0.07,
+        "flash": 2.2,
+        "screenFlash": 0.3,
+        "rings": 3,
+        "sparks": 56,
+        "speed": 6,
+        "gravity": 0,
+        "shake": 0.02,
+        "zoom": 0.08,
+        "colors": "palette"
+      }
+    }
+  ],
+  "controls": []
+}

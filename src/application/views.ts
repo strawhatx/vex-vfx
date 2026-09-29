@@ -4,6 +4,7 @@ import { pieceAt, toProgram, type Piece } from '@/domain/project/edit';
 import {
   assignLayerRows,
   hitFrame,
+  impactLook,
   isPinned,
   layerOf,
   objectPasses,
@@ -68,7 +69,7 @@ export function layersOf(tracks: Track[], clip: ClipFrame[]): LayerSpec[] {
     tap: t.keys[0] ?? null,
     impacts:
       t.kind === 'impact' && t.impact
-        ? [{ id: t.id, i: hitFrame(t, clip), style: t.impact, tap: t.keys[0] }]
+        ? [{ id: t.id, i: hitFrame(t, clip), style: t.impact, look: impactLook(t)!, tap: t.keys[0] }]
         : [],
     cutout: t.cutout,
   }));

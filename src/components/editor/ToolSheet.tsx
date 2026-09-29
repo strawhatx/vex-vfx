@@ -3,7 +3,6 @@
 // floats beside the preview.
 import type { CSSProperties } from 'react';
 import {
-  FAMILY_STYLES,
   IMPACTS,
   IMPACT_STYLES,
   stylesLike,
@@ -16,6 +15,9 @@ import { EDGE_LIMITS, type EdgeSettings } from '@/domain/project/edge';
 import { MAX_VOLUME } from '@/domain/project/music';
 import { MAX_SPEED, MIN_SPEED } from '@/domain/project/edit';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
+import { soundOfBurst } from '@/domain/effects/bursts';
+import { presetsIn } from '@/domain/effects/library';
+import type { BurstPassOf } from '@/domain/effects/passes';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
 import { FONTS, MAX_TEXT, TEXT_STYLES, type TextStyle } from '@/domain/effects/text';
@@ -238,10 +240,13 @@ const swatchBg = (i: number) => {
 const pct = (v: number, min: number, max: number) =>
   ({ '--p': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
 
+// the burst presets in an Impact category
+const burstsIn = (category: string) => presetsIn('impact').find(c => c.category === category)?.presets ?? [];
+
 // what picking a style in a category adds
 export type Pick =
   | { kind: 'effect'; effect: Effect; pal: number; fx?: Partial<FxSettings> }
-  | { kind: 'impact'; style: ImpactStyle };
+  | { kind: 'impact'; style: ImpactStyle; burst?: string };
 
 export function ToolSheet({
   tool,
@@ -335,17 +340,21 @@ export function ToolSheet({
       )}
       {tool === 'styles' && category && isImpactCategory(category) && (
         <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-          {FAMILY_STYLES[IMPACT_CATEGORIES[category].family].map(st => (
-            <button
-              key={st}
-              type="button"
-              className="tile"
-              onClick={() => onPick?.({ kind: 'impact', style: st })}
-            >
-              <span className="tile-art" style={{ background: IMPACT_ART[st] }} />
-              {IMPACTS[st].label}
-            </button>
-          ))}
+          {/* (the burst presets of this kind; each shown as the style it sounds like) */}
+          {burstsIn(IMPACT_CATEGORIES[category].name).map(p => {
+            const st = soundOfBurst(p.passes as BurstPassOf[]);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className="tile"
+                onClick={() => onPick?.({ kind: 'impact', style: st, burst: p.id })}
+              >
+                <span className="tile-art" style={{ background: IMPACT_ART[st] }} />
+                {p.name}
+              </button>
+            );
+          })}
         </div>
       )}
       {tool === 'styles' && category && !isImpactCategory(category) && LOOKS[category] && (

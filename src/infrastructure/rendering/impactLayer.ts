@@ -1,7 +1,6 @@
 // The impacts playing out at a frame: bursts at their spots in the scene (explosions with their
 // fireball, smoke and debris; shockwaves with their rings of particles), then the camera jolt and
 // flash over the whole frame. An impact plays out fully even past the end of its clip's range.
-import { IMPACTS } from '@/domain/effects/impacts';
 import { PALETTES } from '@/domain/effects/palettes';
 import type { LayerSpec } from '@/application/ports';
 import { drawExplosion } from './explosion';
@@ -76,7 +75,7 @@ function hitsAt(v: View, layers: Iterable<Layer>, idx: number) {
     if (l.spec.frames.length !== v.clip.length) continue;
     const len = l.spec.range.e - l.spec.range.s;
     for (const m of l.spec.impacts) {
-      const look = IMPACTS[m.style];
+      const look = m.look;
       const age = t - v.clip[m.i].t;
       if (age < -1e-6 || age >= len) continue;
       const burstAge = (Math.max(0, age) * look.duration) / Math.max(1e-3, len);

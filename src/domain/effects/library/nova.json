@@ -1,0 +1,39 @@
+{
+  "id": "nova",
+  "name": "Nova",
+  "group": "impact",
+  "category": "Shockwave",
+  "length": 1.8,
+  "passes": [
+    {
+      "engine": "burst",
+      "kind": "hit",
+      "params": {
+        "family": "shockwave",
+        "sound": "nova",
+        "duration": 1.8,
+        "size": 0.07,
+        "flash": 1.2,
+        "screenFlash": 0.2,
+        "rings": 0,
+        "sparks": 0,
+        "speed": 0,
+        "gravity": 0,
+        "shake": 0.025,
+        "zoom": 0.05,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "burst",
+      "kind": "nova",
+      "params": {
+        "particles": 480,
+        "reach": 4,
+        "curl": 0.8,
+        "distort": 0.8
+      }
+    }
+  ],
+  "controls": []
+}

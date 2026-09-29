@@ -5,6 +5,7 @@
 //   - text: styled, animated words (see typeset.ts)
 //   - motion: how a clip moves as a whole (see animation.ts)
 //   - object: effects on a tracked person or object (see body.ts)
+//   - burst: impacts, going off at a spot (see bursts.ts)
 // Each engine lists its kinds of pass and their settings as data, so passes can be checked, filled
 // in and given sliders without knowing what each one is.
 import { GRADE_PARAMS, gradeOf, type Grade } from './color';
@@ -14,8 +15,9 @@ import { SCREEN_KINDS, isScreenKind, screenValues, type ScreenKind } from './scr
 import { TEXT_KINDS, isTextKind, type TextPass } from './typeset';
 import { ANIMATION_KINDS, isAnimKind, type AnimKind } from './animation';
 import { BODY_KINDS, isBodyKind, type BodyKind } from './body';
+import { BURST_KINDS, isBurstKind, type BurstKind } from './bursts';
 
-export type Engine = 'color' | 'screen' | 'text' | 'motion' | 'object';
+export type Engine = 'color' | 'screen' | 'text' | 'motion' | 'object' | 'burst';
 
 // what's drawn over the whole frame (filters and screen effects)
 export type LookPass =
@@ -26,7 +28,9 @@ export type MotionPass = { engine: 'motion'; kind: AnimKind; params: Params; mot
 
 export type ObjectPass = { engine: 'object'; kind: BodyKind; params: Params; motion: Motion };
 
-export type Pass = LookPass | TextPass | MotionPass | ObjectPass;
+export type BurstPassOf = { engine: 'burst'; kind: BurstKind; params: Params; motion: Motion };
+
+export type Pass = LookPass | TextPass | MotionPass | ObjectPass | BurstPassOf;
 
 // a color pass's settings are its grade and `amount`, how strongly it's mixed in
 const COLOR_PARAMS: readonly ParamSpec[] = [
@@ -41,6 +45,7 @@ export const ENGINES: Record<Engine, Record<string, { label: string; params: rea
   text: TEXT_KINDS,
   motion: ANIMATION_KINDS,
   object: BODY_KINDS,
+  burst: BURST_KINDS,
 };
 
 export const paramsOf = (engine: Engine, kind: string): readonly ParamSpec[] =>
@@ -73,6 +78,8 @@ export function fitPass(raw: unknown): Pass {
     return { engine, kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
   if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
     return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
+  if (engine === 'burst' && typeof kind === 'string' && isBurstKind(kind))
+    return { engine, kind, params: fitParams(BURST_KINDS[kind].params, params), motion };
   if (engine === 'object' && typeof kind === 'string' && isBodyKind(kind))
     return { engine, kind, params: fitParams(BODY_KINDS[kind].params, params), motion };
   if (engine === 'motion' && typeof kind === 'string' && isAnimKind(kind))

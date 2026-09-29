@@ -11,12 +11,13 @@
 //   - transition: how one film gives way to the next at the join (see project/transitions.ts); its
 //     length is how long a new one lasts
 //   - body: effects on a tracked person or object (see body.ts), picked from Effects
+//   - impact: bursts going off at a spot (see bursts.ts); its length is how long the burst lasts
 import { fitParam, isColor, type ParamValue } from './params';
 import { fitPass, paramsOf, type Pass } from './passes';
 
 // the groups whose presets make clips on the timeline (looks: see project/looks.ts)
 export type LookGroup = 'filter' | 'screen' | 'text';
-export type PresetGroup = LookGroup | 'motion' | 'transition' | 'body';
+export type PresetGroup = LookGroup | 'motion' | 'transition' | 'body' | 'impact';
 export const PRESET_GROUPS: readonly PresetGroup[] = [
   'filter',
   'screen',
@@ -24,6 +25,7 @@ export const PRESET_GROUPS: readonly PresetGroup[] = [
   'motion',
   'transition',
   'body',
+  'impact',
 ];
 
 // A control drives settings of the preset's passes. A slider runs 0..1 and sets each setting it

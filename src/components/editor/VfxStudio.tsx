@@ -107,8 +107,13 @@ export default function VfxStudio({ id }: { id: string }) {
   // the presets menu showing: one to add a look from, or the selected look's to swap it for
   // (a body effect selected: its body presets)
   const bodyLane = lane?.kind === 'effect' && lane.body ? lane : null;
+  // (an impact made from a burst preset selected: the burst presets)
+  const burstLane = lane?.kind === 'impact' && lane.burst ? lane : null;
+  const presetLane = bodyLane ?? burstLane;
+  const presetOf = presetLane ? (presetLane.body ?? presetLane.burst) : null;
   const menuGroup: MenuGroup | null =
-    lookMenu ?? (tool === 'presets' ? (look ? lookGroup(look) : bodyLane ? 'body' : null) : null);
+    lookMenu ??
+    (tool === 'presets' ? (look ? lookGroup(look) : bodyLane ? 'body' : burstLane ? 'impact' : null) : null);
   const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
@@ -243,6 +248,7 @@ export default function VfxStudio({ id }: { id: string }) {
   // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
   // selected, swapped in for it, so presets can be tried one after another
   function pickLook(group: MenuGroup, presetId: string) {
+    if (group === 'impact') return burstLane && player()?.setBurst(burstLane.id, presetId);
     if (group === 'body') {
       if (bodyLane) return player()?.setBody(bodyLane.id, presetId);
       setLookMenu(null);
@@ -264,7 +270,7 @@ export default function VfxStudio({ id }: { id: string }) {
     setCatalog(null);
     player()?.startAdding(
       p.kind === 'impact'
-        ? { kind: 'impact', style: p.style, fx: startPal(p.style) }
+        ? { kind: 'impact', style: p.style, fx: startPal(p.style), burst: p.burst }
         : { kind: 'effect', fx: { effect: p.effect, pal: p.pal, ...p.fx } },
     );
   }
@@ -312,6 +318,8 @@ export default function VfxStudio({ id }: { id: string }) {
     looks: lane?.kind === 'effect' && hasLooks(lane.fx.effect),
     text: !!look?.text,
     body: !!bodyLane,
+    burst: !!burstLane,
+    tunable: !!presetOf?.preset.controls.length,
     words: lane?.kind === 'effect' && lane.fx.effect === 'text',
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
@@ -598,8 +606,8 @@ export default function VfxStudio({ id }: { id: string }) {
             key={menuGroup}
             group={menuGroup}
             current={
-              menuGroup === 'body'
-                ? (bodyLane?.body?.preset.id ?? null)
+              menuGroup === 'body' || menuGroup === 'impact'
+                ? (presetOf?.preset.id ?? null)
                 : look && lookGroup(look) === menuGroup
                   ? look.preset.id
                   : null
@@ -610,7 +618,9 @@ export default function VfxStudio({ id }: { id: string }) {
               setLookMenu(null);
               setTool(null);
             }}
-            onShown={() => menuGroup !== 'body' && player()?.makeLookThumbs(menuGroup)}
+            onShown={() =>
+              menuGroup !== 'body' && menuGroup !== 'impact' && player()?.makeLookThumbs(menuGroup)
+            }
           />
         )}
         {tool === 'controls' && look && (
@@ -624,12 +634,16 @@ export default function VfxStudio({ id }: { id: string }) {
             onClose={() => setTool(null)}
           />
         )}
-        {tool === 'controls' && bodyLane?.body && (
+        {tool === 'controls' && presetLane && presetOf && (
           <PresetControls
-            name={bodyLane.name}
-            preset={bodyLane.body.preset}
-            values={bodyLane.body.values}
-            onChange={(c, v) => player()?.setBodyControl(bodyLane.id, c, v)}
+            name={presetLane.name}
+            preset={presetOf.preset}
+            values={presetOf.values}
+            onChange={(c, v) =>
+              presetLane.kind === 'impact'
+                ? player()?.setBurstControl(presetLane.id, c, v)
+                : player()?.setBodyControl(presetLane.id, c, v)
+            }
             onClose={() => setTool(null)}
           />
         )}
