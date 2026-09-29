@@ -17,7 +17,6 @@ import { MAX_SPEED, MIN_SPEED } from '@/domain/project/edit';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import { soundOfBurst } from '@/domain/effects/bursts';
 import { presetsIn } from '@/domain/effects/library';
-import type { BurstPassOf } from '@/domain/effects/passes';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
 import { FONTS, MAX_TEXT, TEXT_STYLES, type TextStyle } from '@/domain/effects/text';
@@ -342,7 +341,7 @@ export function ToolSheet({
         <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
           {/* (the burst presets of this kind; each shown as the style it sounds like) */}
           {burstsIn(IMPACT_CATEGORIES[category].name).map(p => {
-            const st = soundOfBurst(p.passes as BurstPassOf[]);
+            const st = soundOfBurst(p.passes);
             return (
               <button
                 key={p.id}

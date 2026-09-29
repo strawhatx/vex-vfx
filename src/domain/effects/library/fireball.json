@@ -6,7 +6,7 @@
   "length": 1.6,
   "passes": [
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "hit",
       "params": {
         "family": "explosion",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "explosion",
       "params": {
         "smoke": 0.7,
@@ -34,7 +34,7 @@
       }
     },
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "wave",
       "params": {
         "rings": 1,

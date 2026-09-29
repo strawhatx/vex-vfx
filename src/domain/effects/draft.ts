@@ -7,6 +7,8 @@
 // drives moves the control's default (or, for Strength and controls driving several settings, where
 // the control takes that setting) to match.
 import type { Motion } from './curves';
+import { BODY_KINDS } from './body';
+import { BURST_KINDS } from './bursts';
 import { ENGINES, fitPass, paramsOf, type Engine, type Pass } from './passes';
 import { fitParam, type ParamValue } from './params';
 import {
@@ -45,7 +47,7 @@ export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
   },
   body: {
     name: 'An object',
-    offers: [{ engine: 'object' }],
+    offers: [{ engine: 'object', kinds: Object.keys(BODY_KINDS) }],
     first: [['object', 'edge']],
     length: 3,
   },
@@ -78,8 +80,8 @@ export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
   },
   impact: {
     name: 'An impact',
-    offers: [{ engine: 'burst' }],
-    first: [['burst', 'hit']],
+    offers: [{ engine: 'object', kinds: [...Object.keys(BURST_KINDS), 'emitter'] }],
+    first: [['object', 'hit']],
     length: 0.5,
   },
 };
@@ -127,7 +129,7 @@ export const TRANSITION_HOLD = 0.6;
 export function previewLength(p: Pick<Preset, 'group' | 'length' | 'passes'>) {
   if (p.group === 'transition') return p.length + 2 * TRANSITION_HOLD;
   if (p.group === 'impact') {
-    const hit = p.passes.find(x => x.engine === 'burst' && x.kind === 'hit');
+    const hit = p.passes.find(x => x.engine === 'object' && x.kind === 'hit');
     return ((hit?.params.duration as number | undefined) ?? p.length) + TRANSITION_HOLD;
   }
   return p.length;

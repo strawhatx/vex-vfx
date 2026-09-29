@@ -6,7 +6,7 @@
   "length": 0.8,
   "passes": [
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "hit",
       "params": {
         "family": "hit",

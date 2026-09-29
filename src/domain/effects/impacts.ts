@@ -8,6 +8,7 @@
 //   - water: a splash where something hits the surface
 
 import { palIndex } from './palettes';
+import type { Params } from './params';
 
 export type HitStyle = 'punch' | 'slam' | 'blast' | 'anime';
 export type ExplosionStyle = 'fireball' | 'grenade' | 'bigboom';
@@ -78,6 +79,7 @@ export interface ImpactLook {
   nova?: NovaLook;
   word?: WordLook;
   splash?: SplashLook;
+  emitters?: Params[]; // particle emitters going off at the hit (see particles.ts)
 }
 
 export const FAMILY_STYLES: Record<ImpactFamily, ImpactStyle[]> = {

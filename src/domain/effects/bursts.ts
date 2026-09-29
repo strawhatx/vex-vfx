@@ -1,4 +1,6 @@
-// The burst engine: impacts (a moment, going off at a spot) as passes, so new ones are presets.
+// Impacts (a moment, going off at a spot) as passes, so new ones are presets. They're the object
+// engine's layers for a point (the spot the impact goes off at), with its particle emitters, which
+// start at the hit:
 //   - hit: the burst itself: a flash at the spot, the whole frame flashing, rings, sparks, a camera
 //     jolt, how long it lasts, how big it is, whether it's in the palette's colors or white-hot, and
 //     which hit sound it makes
@@ -7,7 +9,9 @@
 //   - nova: hundreds of particles curling out in a ring
 //   - splash: water thrown up, and ripples
 //   - word: a comic word popping up on a spiky burst
-// An impact is the first pass of each kind; the hit one is always there (its defaults, if left out).
+//   - emitter: particles (see particles.ts), from the spot
+// An impact is the first pass of each kind (every emitter, though); the hit one is always there (its
+// defaults, if left out).
 import { IMPACTS, type ImpactFamily, type ImpactLook, type ImpactStyle } from './impacts';
 import { choice, num, text, type ParamSpec, type Params } from './params';
 
@@ -107,16 +111,18 @@ export const BURST_KINDS: Record<BurstKind, { label: string; params: readonly Pa
 export const isBurstKind = (k: string): k is BurstKind => Object.hasOwn(BURST_KINDS, k);
 
 export interface BurstPass {
-  engine: 'burst';
   kind: BurstKind;
   params: Params;
 }
+
+// an impact preset's layers, as far as it's concerned
+type Layer = { kind: string; params: Params };
 
 const defaults = (kind: BurstKind): Params =>
   Object.fromEntries(BURST_KINDS[kind].params.map(s => [s.key, s.def]));
 
 // the impact a stack of burst passes makes (named `label`)
-export function lookOf(passes: readonly Pick<BurstPass, 'kind' | 'params'>[], label: string): ImpactLook {
+export function lookOf(passes: readonly Layer[], label: string): ImpactLook {
   const of = (kind: BurstKind) => passes.find(p => p.kind === kind)?.params;
   const h = of('hit') ?? defaults('hit');
   const n = (p: Params, k: string) => p[k] as number;
@@ -165,11 +171,13 @@ export function lookOf(passes: readonly Pick<BurstPass, 'kind' | 'params'>[], la
     };
   if (s) look.splash = { drops: Math.round(n(s, 'drops')), height: n(s, 'height') };
   if (d) look.word = { text: d.text as string, tilt: n(d, 'tilt'), spikes: Math.round(n(d, 'spikes')) };
+  const emitters = passes.filter(p => p.kind === 'emitter').map(p => p.params);
+  if (emitters.length) look.emitters = emitters;
   return look;
 }
 
 // the sound an impact made of these passes makes
-export const soundOfBurst = (passes: readonly Pick<BurstPass, 'kind' | 'params'>[]): ImpactStyle =>
+export const soundOfBurst = (passes: readonly Layer[]): ImpactStyle =>
   (passes.find(p => p.kind === 'hit')?.params.sound as ImpactStyle | undefined) ?? 'punch';
 
 // one of the impact styles as burst passes (what its preset holds)

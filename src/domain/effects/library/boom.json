@@ -6,7 +6,7 @@
   "length": 1.1,
   "passes": [
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "hit",
       "params": {
         "family": "word",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "word",
       "params": {
         "text": "BOOM!",

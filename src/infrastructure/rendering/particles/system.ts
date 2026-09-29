@@ -51,7 +51,7 @@ export class ParticleSystem {
       const e = new Emitter(f, { size: 1, intensity: 1 }, r, []);
       const rate = s.rate * s.amount * k.intensity * (s.from.startsWith('frame') ? 1 : k.area);
       let n = Math.floor(rate * f.dt + r());
-      if (s.burst > 0 && local >= -1e-6 && local < f.dt + 1e-6) n += Math.round(s.burst * s.amount);
+      if (s.burst > 0 && local >= -1e-6 && local < f.dt - 1e-6) n += Math.round(s.burst * s.amount);
       for (; n > 0 && this.parts.length < MAX; n--) this.parts.push(this.birth(f, s, k, e, r));
     }
     this.move(f, s, k);

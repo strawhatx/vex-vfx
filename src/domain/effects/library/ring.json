@@ -6,7 +6,7 @@
   "length": 0.9,
   "passes": [
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "hit",
       "params": {
         "family": "shockwave",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "engine": "burst",
+      "engine": "object",
       "kind": "wave",
       "params": {
         "rings": 1,

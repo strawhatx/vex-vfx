@@ -1,6 +1,7 @@
-// The frame engine's color grade: a grade (a filter's look) as settings, what it does to a color, and the same
-// baked into a lookup table (a LUT) the GPU applies to every pixel in one step. Every filter is one
-// of these with different settings; how strongly it's applied is mixed in when drawing.
+// The frame engine's color grade: a grade (a filter's look) as settings, what it does to a
+// color, and the same baked into a lookup table (a LUT) the GPU applies to every pixel in one
+// step. Every filter is one of these with different settings; how strongly it's applied is mixed
+// in when drawing.
 import { color, hexOf, num, rgbOf, type ParamSpec, type Params } from './params';
 
 export const GRADE_PARAMS: readonly ParamSpec[] = [

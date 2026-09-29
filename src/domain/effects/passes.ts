@@ -5,9 +5,9 @@
 //     `frame`.)
 //   - text: styled, animated words (see typeset.ts)
 //   - motion: how a clip moves as a whole (see animation.ts)
-//   - object: effects on a tracked person or object (see body.ts), including particle emitters,
-//     which text and screen presets can hold too (see particles.ts)
-//   - burst: impacts, going off at a spot (see bursts.ts)
+//   - object: effects on a target: a tracked person or object (see body.ts), or the spot an impact
+//     goes off at (see bursts.ts); and particle emitters (see particles.ts), which also go on text
+//     and on the frame. (Impact layers from before say `burst`: they're read as `object`.)
 // Each engine lists its kinds of pass and their settings as data, so passes can be checked, filled
 // in and given sliders without knowing what each one is.
 import { GRADE_PARAMS, gradeOf, type Grade } from './color';
@@ -19,7 +19,7 @@ import { ANIMATION_KINDS, isAnimKind, type AnimKind } from './animation';
 import { BODY_KINDS, isBodyKind, type BodyKind } from './body';
 import { BURST_KINDS, isBurstKind, type BurstKind } from './bursts';
 
-export type Engine = 'frame' | 'text' | 'motion' | 'object' | 'burst';
+export type Engine = 'frame' | 'text' | 'motion' | 'object';
 
 // what's drawn over the whole frame (filters and screen effects)
 export type LookPass = { engine: 'frame'; kind: 'grade' | ScreenKind; params: Params; motion: Motion };
@@ -28,9 +28,14 @@ export type MotionPass = { engine: 'motion'; kind: AnimKind; params: Params; mot
 
 export type ObjectPass = { engine: 'object'; kind: BodyKind; params: Params; motion: Motion };
 
-export type BurstPassOf = { engine: 'burst'; kind: BurstKind; params: Params; motion: Motion };
+// an impact's layers: the object engine's, at a point
+export type ImpactPass = { engine: 'object'; kind: BurstKind; params: Params; motion: Motion };
 
-export type Pass = LookPass | TextPass | MotionPass | ObjectPass | BurstPassOf;
+export type Pass = LookPass | TextPass | MotionPass | ObjectPass | ImpactPass;
+
+// the object engine's layers on a tracked object, and at an impact's spot
+export const isBodyPass = (p: Pass): p is ObjectPass => p.engine === 'object' && isBodyKind(p.kind);
+export const isImpactPass = (p: Pass): p is ImpactPass => p.engine === 'object' && isBurstKind(p.kind);
 
 // an object engine's particle emitter (the one object pass text and screen presets can hold)
 export type EmitterPass = ObjectPass & { kind: 'emitter' };
@@ -47,8 +52,7 @@ export const ENGINES: Record<Engine, Record<string, { label: string; params: rea
   frame: { grade: { label: 'Color grade', params: COLOR_PARAMS }, ...SCREEN_KINDS },
   text: TEXT_KINDS,
   motion: ANIMATION_KINDS,
-  object: BODY_KINDS,
-  burst: BURST_KINDS,
+  object: { ...BODY_KINDS, ...BURST_KINDS },
 };
 
 export const paramsOf = (engine: Engine, kind: string): readonly ParamSpec[] =>
@@ -82,10 +86,11 @@ export function fitPass(raw: unknown): Pass {
     return { engine: 'frame', kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
   if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
     return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
-  if (engine === 'burst' && typeof kind === 'string' && isBurstKind(kind))
-    return { engine, kind, params: fitParams(BURST_KINDS[kind].params, params), motion };
-  if (engine === 'object' && typeof kind === 'string' && isBodyKind(kind))
-    return { engine, kind, params: fitParams(BODY_KINDS[kind].params, params), motion };
+  const object = engine === 'object' || engine === 'burst';
+  if (object && typeof kind === 'string' && isBodyKind(kind))
+    return { engine: 'object', kind, params: fitParams(BODY_KINDS[kind].params, params), motion };
+  if (object && typeof kind === 'string' && isBurstKind(kind))
+    return { engine: 'object', kind, params: fitParams(BURST_KINDS[kind].params, params), motion };
   if (engine === 'motion' && typeof kind === 'string' && isAnimKind(kind))
     return { engine, kind, params: fitParams(ANIMATION_KINDS[kind].params, params), motion };
   throw new Error(`unknown pass: ${String(engine)}/${String(kind)}`);

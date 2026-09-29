@@ -9,20 +9,24 @@ import { drawWord } from './words';
 import { drawSplash } from './splash';
 import { distortWave, drawWave } from './shockwave';
 import { cameraFor, drawHit, screenFlash, type Hit } from './impacts';
+import type { ImpactParticles } from './impactParticles';
 import type { Layer } from './layer';
 import { sceneSpotAt, type View } from './view';
 
 type Impact = LayerSpec['impacts'][number];
 
-// frame: the output canvas as drawn so far; jolt: a scratch canvas the same size
+// frame: the output canvas as drawn so far; jolt: a scratch canvas the same size; particles: the
+// impacts' emitters
 export function drawImpacts(
   v: View,
   layers: Iterable<Layer>,
   idx: number,
   frame: CanvasImageSource,
   jolt: OffscreenCanvas,
+  particles: ImpactParticles,
 ) {
   const hits = hitsAt(v, layers, idx);
+  particles.sweep();
   if (!hits.length) return;
   const { ctx, CW, CH } = v;
   for (const h of hits) {
@@ -35,6 +39,7 @@ export function drawImpacts(
     if (wave) drawWave(ctx, h, wave);
     if (nova) drawNova(ctx, h, nova);
     if (h.look.splash) drawSplash(ctx, h, h.look.splash);
+    particles.draw(ctx, h);
     drawHit(ctx, h);
     if (h.look.word) drawWord(ctx, h, h.look.word, v.fonts);
   }

@@ -8,7 +8,6 @@ import { presetsIn } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import { PALETTES } from '@/domain/effects/palettes';
 import { soundOfBurst } from '@/domain/effects/bursts';
-import type { BurstPassOf } from '@/domain/effects/passes';
 import { IMPACT_ART } from './ToolSheet';
 import type { ControlValues, LookGroup, Preset } from '@/domain/effects/presets';
 import { MAX_SCALE, MAX_WORDS, MIN_SCALE, type TextPlace } from '@/domain/effects/typeset';
@@ -42,7 +41,7 @@ function fallbackArt(p: Preset) {
     const c = gradeSwatch(gradeOf(grade.params));
     return `linear-gradient(160deg, ${c[4]}, ${c[0]} 35%, ${c[2]} 60%, ${c[1]} 80%, ${c[3]})`;
   }
-  if (p.group === 'impact') return IMPACT_ART[soundOfBurst(p.passes as BurstPassOf[])];
+  if (p.group === 'impact') return IMPACT_ART[soundOfBurst(p.passes)];
   if (p.group === 'body') {
     const [a, b] = bodyColors(p);
     return `radial-gradient(ellipse 16% 30% at 50% 58%, #1d2230 0 90%, transparent 100%), radial-gradient(ellipse 26% 42% at 50% 58%, ${a} 0 40%, ${b}88 70%, transparent 100%), #26262a`;

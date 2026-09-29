@@ -13,6 +13,7 @@
 // Times: the project keeps the clip's own time (source time). Outside, times are program time: the
 // film as edited, with deleted films left out (see edit.ts). Every time in or out of the editor's
 // methods is program time; frame indices are the clip's.
+import { upToDate } from '@/domain/effects/presets';
 import type { AnimKind, AnimSlot } from '@/domain/effects/animation';
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
@@ -122,6 +123,9 @@ function fitSave(s: EditorSave, n: number): EditorSave {
       shapes: fit(t.shapes),
       parts: t.parts.map(p => ({ ...p, shapes: fit(p.shapes) })),
       keys: t.keys.filter(k => k.i < n),
+      // (presets kept from before, read as they would be now)
+      body: t.body && { ...t.body, preset: upToDate(t.body.preset) },
+      burst: t.burst && { ...t.burst, preset: upToDate(t.burst.preset) },
     })),
   };
 }

@@ -3,6 +3,7 @@
 // Adding a layer in the Preset Lab: one list of every layer that can go on the preset, whichever
 // engine draws it, narrowed by typing.
 import { useState } from 'react';
+import { isBurstKind } from '@/domain/effects/bursts';
 import type { Engine } from '@/domain/effects/passes';
 
 export interface LayerKind {
@@ -17,7 +18,6 @@ const WHAT: Record<Engine, string> = {
   text: 'text',
   motion: 'motion',
   object: 'object',
-  burst: 'impact',
 };
 
 export function AddLayer({ kinds, onAdd }: { kinds: readonly LayerKind[]; onAdd(k: LayerKind): void }) {
@@ -63,7 +63,9 @@ export function AddLayer({ kinds, onAdd }: { kinds: readonly LayerKind[]; onAdd(
           <li key={`${k.engine}:${k.kind}`}>
             <button type="button" onClick={() => add(k)}>
               {k.label}
-              <small>{k.kind === 'emitter' ? 'particles' : WHAT[k.engine]}</small>
+              <small>
+                {k.kind === 'emitter' ? 'particles' : isBurstKind(k.kind) ? 'impact' : WHAT[k.engine]}
+              </small>
             </button>
           </li>
         ))}

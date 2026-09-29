@@ -1,8 +1,8 @@
-// The frame engine's screen effects: on the whole picture (blur, shake, flash, glitchy color splits, light
-// leaks…). Each kind is one small shader on the GPU; its settings are listed here as data, and
-// what moves over time (a shake's wobble, a leak's drift) is worked out here, so every frame of an
-// effect is the same whenever it's drawn. `amount` is how strong each is: motions and sliders
-// scale it.
+// The frame engine's screen effects: on the whole picture (blur, shake, flash, glitchy color
+// splits, light leaks…). Each kind is one small shader on the GPU; its settings are listed here as
+// data, and what moves over time (a shake's wobble, a leak's drift) is worked out here, so every
+// frame of an effect is the same whenever it's drawn. `amount` is how strong each is: motions and
+// sliders scale it.
 import { noise } from './curves';
 import { choice, color, num, type ParamSpec, type Params } from './params';
 

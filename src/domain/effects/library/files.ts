@@ -132,6 +132,7 @@ import risingEmbers from './rising-embers.json';
 import energyOrbs from './energy-orbs.json';
 import risingAsh from './rising-ash.json';
 import sparkleTitle from './sparkle-title.json';
+import sparkShower from './spark-shower.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -266,4 +267,5 @@ export const PRESET_FILES: readonly unknown[] = [
   energyOrbs,
   risingAsh,
   sparkleTitle,
+  sparkShower,
 ];

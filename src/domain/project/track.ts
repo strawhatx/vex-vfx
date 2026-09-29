@@ -18,7 +18,7 @@ import type { Aim } from '../effects/laser';
 import { passOfFx, soundOf } from '../effects/body';
 import { STEADY } from '../effects/curves';
 import type { ParamValue } from '../effects/params';
-import type { BurstPassOf, ObjectPass } from '../effects/passes';
+import { isBodyPass, type ObjectPass } from '../effects/passes';
 import { controlDefaults, fitControl, passesWith, type ControlValues, type Preset } from '../effects/presets';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
@@ -87,8 +87,7 @@ export const impactSpeed = (t: Pick<Track, 'impact' | 'burst' | 'range'>) => {
 
 // what an impact looks like: its burst preset's, or its style's (null: not an impact)
 export function impactLook(t: Pick<Track, 'impact' | 'burst'>): ImpactLook | null {
-  if (t.burst)
-    return lookOf(passesWith(t.burst.preset, t.burst.values) as BurstPassOf[], t.burst.preset.name);
+  if (t.burst) return lookOf(passesWith(t.burst.preset, t.burst.values), t.burst.preset.name);
   return t.impact ? IMPACTS[t.impact] : null;
 }
 
@@ -181,7 +180,7 @@ export function newImpact(
 ) {
   const use = burst ? { preset: burst, values: controlDefaults(burst) } : null;
   const look = impactLook({ impact: style, burst: use })!;
-  const sound = burst ? soundOfBurst(burst.passes as BurstPassOf[]) : style;
+  const sound = burst ? soundOfBurst(burst.passes) : style;
   const t = make(id, 'impact', clip, fx, impactRange(clip, i, look.duration, duration), sound, null);
   t.burst = use;
   if (burst) t.name = `${FAMILY_NAMES[look.family]} ${id}`;
@@ -198,7 +197,7 @@ export function withBurst(t: Track, preset: Preset, clip: ClipFrame[], duration:
   const next: Track = {
     ...t,
     burst: { preset, values },
-    impact: soundOfBurst(preset.passes as BurstPassOf[]),
+    impact: soundOfBurst(preset.passes),
   };
   const len = t.range.e - t.range.s,
     stretched = Math.abs(len - was.duration) > 1e-3;
@@ -247,8 +246,7 @@ export function withBodyControl(t: Track, id: string, v: ParamValue): Track {
 // pass; null for the effects drawn their own way (see body.ts)
 export function objectPasses(t: Pick<Track, 'body' | 'fx' | 'kind' | 'spot'>): ObjectPass[] | null {
   if (t.kind !== 'effect') return null;
-  if (t.body)
-    return passesWith(t.body.preset, t.body.values).filter((p): p is ObjectPass => p.engine === 'object');
+  if (t.body) return passesWith(t.body.preset, t.body.values).filter(isBodyPass);
   const one = passOfFx(t.fx, isPinned(t));
   return one ? [{ engine: 'object', ...one, motion: STEADY }] : null;
 }

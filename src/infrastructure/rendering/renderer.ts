@@ -30,6 +30,7 @@ import { GpuFire } from './fire';
 import { FrameGeometry } from './geometry';
 import { CutoutStore, drawCutoutHole } from './cutoutLayer';
 import { drawImpacts } from './impactLayer';
+import { ImpactParticles } from './impactParticles';
 import { drawLaser } from './laserLayer';
 import { Layer } from './layer';
 import { MaskPainter } from './masks';
@@ -70,6 +71,7 @@ export class Renderer implements EffectLayers {
   private glitch = new GlitchPainter(1, 1);
   private text = new TextPainter(1, 1);
   private water = new WaterPainter(1, 1);
+  private impactParticles = new ImpactParticles();
   private clones = new ClonePainter(1, 1);
   // tints and dissolves (its WebGL context is only made when one is drawn)
   private gpu = new LookPainter();
@@ -207,7 +209,7 @@ export class Renderer implements EffectLayers {
       if (sel && opts.paused) drawSceneSpot(v, sel, idx);
     }
 
-    drawImpacts(v, this.layers.values(), idx, this.canvas, this.jolt);
+    drawImpacts(v, this.layers.values(), idx, this.canvas, this.jolt, this.impactParticles);
     return idx;
   }
 
