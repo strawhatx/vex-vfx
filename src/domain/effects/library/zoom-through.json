@@ -22,7 +22,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "zoomBlur",
       "params": {
         "amount": 0.8

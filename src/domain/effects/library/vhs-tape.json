@@ -6,14 +6,14 @@
   "length": 5,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "rgbSplit",
       "params": {
         "amount": 0.35
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "scanlines",
       "params": {
         "amount": 0.45,
@@ -21,7 +21,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "grain",
       "params": {
         "amount": 0.4,
@@ -29,7 +29,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "wave",
       "params": {
         "amount": 0.06,

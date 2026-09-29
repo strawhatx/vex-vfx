@@ -6,7 +6,7 @@
   "length": 2,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "invert",
       "params": {
         "amount": 1

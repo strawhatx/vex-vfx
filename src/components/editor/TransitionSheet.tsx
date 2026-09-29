@@ -94,7 +94,7 @@ function CutArt({ preset }: { preset: Preset }) {
     if (!a.current?.animate || !b.current || !flash.current) return;
     const move = (kind: 'in' | 'out') => preset.passes.find(p => p.engine === 'motion' && p.kind === kind);
     const screen = (kind: string) =>
-      preset.passes.find(p => p.engine === 'screen' && p.kind === kind)?.params ?? null;
+      preset.passes.find(p => p.engine === 'frame' && p.kind === kind)?.params ?? null;
     const flashed = screen('flash'),
       blur = Math.max(
         (screen('blur')?.amount as number) ?? 0,

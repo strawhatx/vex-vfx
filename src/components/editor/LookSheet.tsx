@@ -37,7 +37,7 @@ const BY_CATEGORY: Record<MenuGroup, boolean> = {
 // a preset's picture when there's none of the frame: a filter's colors as it turns them, a body
 // effect's colors round a figure, or a screen effect's glow
 function fallbackArt(p: Preset) {
-  const grade = p.passes.find(x => x.engine === 'color');
+  const grade = p.passes.find(x => x.engine === 'frame' && x.kind === 'grade');
   if (grade) {
     const c = gradeSwatch(gradeOf(grade.params));
     return `linear-gradient(160deg, ${c[4]}, ${c[0]} 35%, ${c[2]} 60%, ${c[1]} 80%, ${c[3]})`;

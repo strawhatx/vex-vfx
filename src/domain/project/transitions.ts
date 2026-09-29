@@ -87,7 +87,7 @@ export function transitionAt(
     // strongest at the join
     const strength = ease('inOut', 1 - Math.abs(t - join) / half);
     const passes = tr.preset.passes
-      .filter((p): p is LookPass => p.engine === 'color' || p.engine === 'screen')
+      .filter((p): p is LookPass => p.engine === 'frame')
       .map(p => passAt(p, t - (join - half), 2 * half, strength, k * 7 + 1))
       .filter(drawsAnything);
     return { pose, passes };

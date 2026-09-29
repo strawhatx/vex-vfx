@@ -21,7 +21,7 @@ const filter = parsePreset({
   group: 'filter',
   length: 5,
   fade: { in: 1 },
-  passes: [{ engine: 'color', kind: 'grade', params: { saturation: -1 } }],
+  passes: [{ engine: 'frame', kind: 'grade', params: { saturation: -1 } }],
   controls: [
     {
       id: 'strength',
@@ -36,7 +36,7 @@ const flash = parsePreset({
   id: 'flash',
   name: 'Flash',
   group: 'screen',
-  passes: [{ engine: 'screen', kind: 'flash', params: { amount: 1 } }],
+  passes: [{ engine: 'frame', kind: 'flash', params: { amount: 1 } }],
   controls: [
     {
       id: 'strength',
@@ -117,7 +117,7 @@ describe("a preset's button", () => {
       name: 'Build',
       group: 'screen',
       length: 2,
-      passes: [{ engine: 'screen', kind: 'zoom', params: { amount: 0.4 }, motion: { kind: 'rise' } }],
+      passes: [{ engine: 'frame', kind: 'zoom', params: { amount: 0.4 }, motion: { kind: 'rise' } }],
     });
     const [z] = previewOf(hit);
     expect(z.engine === 'screen' && z.values.amount).toBeCloseTo(0.4, 2); // (at the end, all built up)
@@ -181,7 +181,7 @@ describe('particles on the film', () => {
     length: 4,
     fade: { in: 1 },
     passes: [
-      { engine: 'screen', kind: 'flash', params: { amount: 0.5 } },
+      { engine: 'frame', kind: 'flash', params: { amount: 0.5 } },
       { engine: 'object', kind: 'emitter', params: { from: 'frame', amount: 1 } },
     ],
   });

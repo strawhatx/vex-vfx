@@ -15,7 +15,7 @@ const whip = parsePreset({
   passes: [
     { engine: 'motion', kind: 'out', params: { ease: 'linear', x: -1 } },
     { engine: 'motion', kind: 'in', params: { ease: 'linear', x: 1 } },
-    { engine: 'screen', kind: 'flash', params: { amount: 1 } },
+    { engine: 'frame', kind: 'flash', params: { amount: 1 } },
   ],
 });
 

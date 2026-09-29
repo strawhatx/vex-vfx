@@ -6,7 +6,7 @@
   "length": 0.6,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "shake",
       "params": {
         "amount": 1,
@@ -15,14 +15,14 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "zoomBlur",
       "params": {
         "amount": 0.4
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "flash",
       "params": {
         "amount": 0.3,

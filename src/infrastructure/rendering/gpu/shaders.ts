@@ -27,7 +27,7 @@ vec3 blurred(vec2 uv, float r) {
 
 const shader = (uniforms: string, body: string) => `${HEAD}${uniforms}\nvoid main() {\n${body}\n}`;
 
-// the color engine: the grade looked up in its LUT, mixed in by amount; with a mask (uWhere 1: on
+// the frame engine's grade: the grade looked up in its LUT, mixed in by amount; with a mask (uWhere 1: on
 // just what it covers, 2: on all but that), its edge softened by reading a blurrier mip of it
 export const GRADE = shader(
   `uniform highp sampler3D uLut;
@@ -64,7 +64,7 @@ float vnoise(vec2 p) {
   outColor = vec4(mix(c, o, clamp(u_amount, 0.0, 1.0)), 1.0);`,
 );
 
-// the screen engine. mips: it reads blurred mip levels of the picture
+// the frame engine's screen effects. mips: it reads blurred mip levels of the picture
 export const SCREEN: Record<ScreenKind, { frag: string; mips?: boolean }> = {
   blur: {
     mips: true,

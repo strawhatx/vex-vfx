@@ -50,7 +50,7 @@ import {
   type LookClip,
 } from '@/domain/project/looks';
 import type { ParamValue } from '@/domain/effects/params';
-import type { LookGroup, Preset } from '@/domain/effects/presets';
+import { upToDate, type LookGroup, type Preset } from '@/domain/effects/presets';
 import type { TextPlace } from '@/domain/effects/typeset';
 import {
   effectRange,
@@ -927,8 +927,8 @@ export class Project {
     this.overlays = s.overlays.slice();
     this.music = s.music.map(m => m.clip);
     this.musicFiles = new Map(s.music.map(m => [m.clip.id, m.file]));
-    this.looks = s.looks.slice();
-    this.transitions = s.transitions.slice();
+    this.looks = s.looks.map(c => ({ ...c, preset: upToDate(c.preset) }));
+    this.transitions = s.transitions.map(c => ({ ...c, preset: upToDate(c.preset) }));
     this.effectClips = (s.effectClips ?? []).slice();
     this.packFiles = new Map((s.packs ?? []).map(p => [p.id, p.file]));
     this.nextEffect = s.next.effect ?? EFFECT_IDS;

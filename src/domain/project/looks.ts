@@ -131,7 +131,7 @@ export function looksAt(clips: readonly LookClip[], t: number): DrawnPass[] {
     const local = t - c.at,
       strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
     return passesWith(c.preset, c.values)
-      .filter((p): p is LookPass => p.engine === 'color' || p.engine === 'screen')
+      .filter((p): p is LookPass => p.engine === 'frame')
       .map(p => passAt(p, local, c.len, strength, c.id))
       .filter(drawsAnything);
   });
@@ -212,7 +212,7 @@ const PREVIEW_FLASH = 0.5;
 // softened, so the picture under it still shows)
 export function previewOf(preset: Preset): DrawnPass[] {
   const passes = passesWith(preset, controlDefaults(preset)).filter(
-      (p): p is LookPass => p.engine === 'color' || p.engine === 'screen',
+      (p): p is LookPass => p.engine === 'frame',
     ),
     len = preset.length;
   let best: DrawnPass[] = [],

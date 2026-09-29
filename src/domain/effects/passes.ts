@@ -1,7 +1,8 @@
 // A pass: one step an engine draws, with its settings, and how its strength moves over time. An
 // effect is a stack of passes (see presets.ts), drawn in order. Engines:
-//   - color: grades the picture (see color.ts)
-//   - screen: an effect over the whole picture (see screen.ts)
+//   - frame: over the whole picture: a color grade (see color.ts), or a screen effect (see
+//     screen.ts). (Files and saved projects from before say `color` or `screen`: both are read as
+//     `frame`.)
 //   - text: styled, animated words (see typeset.ts)
 //   - motion: how a clip moves as a whole (see animation.ts)
 //   - object: effects on a tracked person or object (see body.ts), including particle emitters,
@@ -18,12 +19,10 @@ import { ANIMATION_KINDS, isAnimKind, type AnimKind } from './animation';
 import { BODY_KINDS, isBodyKind, type BodyKind } from './body';
 import { BURST_KINDS, isBurstKind, type BurstKind } from './bursts';
 
-export type Engine = 'color' | 'screen' | 'text' | 'motion' | 'object' | 'burst';
+export type Engine = 'frame' | 'text' | 'motion' | 'object' | 'burst';
 
 // what's drawn over the whole frame (filters and screen effects)
-export type LookPass =
-  | { engine: 'color'; kind: 'grade'; params: Params; motion: Motion }
-  | { engine: 'screen'; kind: ScreenKind; params: Params; motion: Motion };
+export type LookPass = { engine: 'frame'; kind: 'grade' | ScreenKind; params: Params; motion: Motion };
 
 export type MotionPass = { engine: 'motion'; kind: AnimKind; params: Params; motion: Motion };
 
@@ -45,8 +44,7 @@ const COLOR_PARAMS: readonly ParamSpec[] = [
 
 // every kind of pass each engine draws, and its settings
 export const ENGINES: Record<Engine, Record<string, { label: string; params: readonly ParamSpec[] }>> = {
-  color: { grade: { label: 'Grade', params: COLOR_PARAMS } },
-  screen: SCREEN_KINDS,
+  frame: { grade: { label: 'Color grade', params: COLOR_PARAMS }, ...SCREEN_KINDS },
   text: TEXT_KINDS,
   motion: ANIMATION_KINDS,
   object: BODY_KINDS,
@@ -77,10 +75,11 @@ export function fitPass(raw: unknown): Pass {
     kind = r.kind;
   const params = (r.params ?? {}) as Record<string, unknown>;
   const motion = fitMotion(r.motion);
-  if (engine === 'color' && kind === 'grade')
-    return { engine, kind, params: fitParams(COLOR_PARAMS, params), motion };
-  if (engine === 'screen' && typeof kind === 'string' && isScreenKind(kind))
-    return { engine, kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
+  const frame = engine === 'frame' || engine === 'color' || engine === 'screen';
+  if (frame && kind === 'grade')
+    return { engine: 'frame', kind, params: fitParams(COLOR_PARAMS, params), motion };
+  if (frame && typeof kind === 'string' && isScreenKind(kind))
+    return { engine: 'frame', kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
   if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
     return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
   if (engine === 'burst' && typeof kind === 'string' && isBurstKind(kind))
@@ -92,7 +91,7 @@ export function fitPass(raw: unknown): Pass {
   throw new Error(`unknown pass: ${String(engine)}/${String(kind)}`);
 }
 
-// a pass as drawn at one moment: what the GPU needs
+// a frame pass as drawn at one moment: what the GPU needs (a grade, or a screen effect's shader)
 export type DrawnPass =
   { engine: 'color'; grade: Grade; amount: number } | { engine: 'screen'; kind: ScreenKind; values: Params };
 
@@ -100,7 +99,7 @@ export type DrawnPass =
 // seed: which wobble (each clip its own)
 export function passAt(p: LookPass, t: number, len: number, strength: number, seed: number): DrawnPass {
   const k = strength * motionAt(p.motion, t, len, seed);
-  if (p.engine === 'color')
+  if (p.kind === 'grade')
     return { engine: 'color', grade: gradeOf(p.params), amount: (p.params.amount as number) * k };
   return { engine: 'screen', kind: p.kind, values: screenValues(p.kind, p.params, k, t, seed) };
 }

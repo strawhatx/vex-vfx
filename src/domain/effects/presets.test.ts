@@ -11,8 +11,8 @@ const shake = {
   name: 'Test shake',
   group: 'screen',
   passes: [
-    { engine: 'screen', kind: 'shake', params: { amount: 0.5, speed: 10 } },
-    { engine: 'screen', kind: 'flash', params: { amount: 0.4 } },
+    { engine: 'frame', kind: 'shake', params: { amount: 0.5, speed: 10 } },
+    { engine: 'frame', kind: 'flash', params: { amount: 0.4 } },
   ],
   controls: [
     {
@@ -33,7 +33,7 @@ describe('a preset from data', () => {
   it('fills in what was left out and fits settings to their ranges', () => {
     const p = parsePreset({
       ...shake,
-      passes: [{ engine: 'screen', kind: 'shake', params: { amount: 9 } }, shake.passes[1]],
+      passes: [{ engine: 'frame', kind: 'shake', params: { amount: 9 } }, shake.passes[1]],
     });
     expect(p.passes[0].params).toEqual({ amount: 1, speed: 12, turn: 0.3 });
     expect(p.passes[0].motion.kind).toBe('steady');
@@ -45,7 +45,7 @@ describe('a preset from data', () => {
     expect(() => parsePreset({ ...shake, id: 'Bad Id' })).toThrow(/lower-case/);
     expect(() => parsePreset({ ...shake, group: 'sticker' })).toThrow(/group/);
     expect(() => parsePreset({ ...shake, passes: [] })).toThrow(/at least one pass/);
-    expect(() => parsePreset({ ...shake, passes: [{ engine: 'screen', kind: 'teleport' }] })).toThrow(
+    expect(() => parsePreset({ ...shake, passes: [{ engine: 'frame', kind: 'teleport' }] })).toThrow(
       /pass 0: unknown pass/,
     );
     const drives = (d: object) => ({ ...shake, controls: [{ ...shake.controls[0], drives: [d] }] });
@@ -80,6 +80,15 @@ describe('controls', () => {
   });
 });
 
+describe('frame passes', () => {
+  it('are read from before color and screen were one engine', () => {
+    expect(fitPass({ engine: 'color', kind: 'grade' })).toMatchObject({ engine: 'frame', kind: 'grade' });
+    expect(fitPass({ engine: 'screen', kind: 'flash' })).toMatchObject({ engine: 'frame', kind: 'flash' });
+    expect(() => fitPass({ engine: 'color', kind: 'flash' })).not.toThrow();
+    expect(() => fitPass({ engine: 'frame', kind: 'sparkles' })).toThrow();
+  });
+});
+
 describe('passes over time', () => {
   it('scale their strength by the clip fading and by their motion', () => {
     const pulse = <LookPass>fitPass({
@@ -91,7 +100,7 @@ describe('passes over time', () => {
     const peak = passAt(pulse, 0.5, 2, 0.5, 1);
     expect(peak.engine === 'screen' && peak.values.amount).toBeCloseTo(0.5);
     const grade = <LookPass>(
-      fitPass({ engine: 'color', kind: 'grade', params: { amount: 0.8, saturation: -1 } })
+      fitPass({ engine: 'frame', kind: 'grade', params: { amount: 0.8, saturation: -1 } })
     );
     const g = passAt(grade, 0, 1, 0.5, 1);
     expect(g.engine === 'color' && g.amount).toBeCloseTo(0.4);
@@ -99,7 +108,7 @@ describe('passes over time', () => {
   });
 
   it('shake the same way every time the same frame is drawn', () => {
-    const s = <LookPass>fitPass({ engine: 'screen', kind: 'shake', params: { amount: 1 } });
+    const s = <LookPass>fitPass({ engine: 'frame', kind: 'shake', params: { amount: 1 } });
     expect(passAt(s, 1.3, 3, 1, 7)).toEqual(passAt(s, 1.3, 3, 1, 7));
     expect(passAt(s, 1.3, 3, 1, 7)).not.toEqual(passAt(s, 1.3, 3, 1, 8));
   });

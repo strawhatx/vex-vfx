@@ -38,9 +38,9 @@ const drawsAsEdited = (p: Preset) =>
 describe('a new draft', () => {
   it('has one pass of its engine and a Strength slider', () => {
     const c = newDraft('filter');
-    expect(c).toMatchObject({ group: 'filter', passes: [{ engine: 'color', kind: 'grade' }] });
+    expect(c).toMatchObject({ group: 'filter', passes: [{ engine: 'frame', kind: 'grade' }] });
     expect(hasStrength(c)).toBe(true);
-    expect(newDraft('screen')).toMatchObject({ group: 'screen', passes: [{ engine: 'screen' }] });
+    expect(newDraft('screen')).toMatchObject({ group: 'screen', passes: [{ engine: 'frame' }] });
     drawsAsEdited(c);
   });
 
@@ -69,7 +69,7 @@ describe('editing passes', () => {
   });
 
   it('adds, moves and removes passes, with the controls following them', () => {
-    let p = addPass(newDraft('screen'), 'screen', 'shake');
+    let p = addPass(newDraft('screen'), 'frame', 'shake');
     p = expose(p, 1, 'speed', true);
     expect(p.controls.map(c => c.id)).toEqual(['strength', 'speed']);
     // Strength covers the new pass too
@@ -115,7 +115,7 @@ describe('the sliders users get', () => {
     expect(exposedBy(p, 0, 'color')).toMatchObject({ type: 'color', def: '#ffffff' });
     p = setParam(p, 0, 'color', '#FF0000');
     expect(exposedBy(p, 0, 'color')!.def).toBe('#ff0000');
-    const m = addPass(p, 'screen', 'mirror');
+    const m = addPass(p, 'frame', 'mirror');
     expect(expose(m, 1, 'mode', true)).toBe(m);
   });
 
@@ -128,7 +128,7 @@ describe('the sliders users get', () => {
 
 describe('loading and saving', () => {
   it('saves a file that loads back as the same preset', () => {
-    let p = setMeta(addPass(newDraft('screen'), 'screen', 'glow'), {
+    let p = setMeta(addPass(newDraft('screen'), 'frame', 'glow'), {
       name: 'Hot Flash',
       category: 'Light',
       fadeIn: 0.2,
@@ -151,14 +151,14 @@ describe('loading and saving', () => {
   });
 });
 
-describe('lab pages', () => {
-  it('make transitions from motion and screen passes', () => {
+describe('lab targets', () => {
+  it('make transitions from motion and frame passes', () => {
     const t = newDraft('transition');
     expect(t).toMatchObject({ group: 'transition', length: 0.6 });
-    expect(t.passes.map(p => `${p.engine}:${p.kind}`)).toEqual(['motion:out', 'motion:in', 'screen:blur']);
+    expect(t.passes.map(p => `${p.engine}:${p.kind}`)).toEqual(['motion:out', 'motion:in', 'frame:blur']);
     const offered = kindsOf('transition').map(k => `${k.engine}:${k.kind}`);
     expect(offered).toContain('motion:in');
-    expect(offered).toContain('screen:flash');
+    expect(offered).toContain('frame:flash');
     expect(offered).not.toContain('motion:combo');
     expect(previewLength(t)).toBeCloseTo(0.6 + 2 * TRANSITION_HOLD);
     expect(previewLength(newDraft('filter'))).toBe(5);

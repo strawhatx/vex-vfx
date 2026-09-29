@@ -8,7 +8,7 @@
 //   - glitch: its own pixels broken up
 //   - edge: a glowing stroke round its silhouette
 //   - clones: copies of it beside it, tinted and glowing; with a delay, a trail of where it was
-//   - tint: a color grade on just it, or on everything but it (the color engine's grades)
+//   - tint: a color grade on just it, or on everything but it (the frame engine's grades)
 //   - dissolve: it burns away over the clip, with a glowing edge
 // Effects clips made the old way (an effect, a palette, a size) are drawn as one pass too (see
 // passesOfFx), so there's one way effects on objects are drawn.

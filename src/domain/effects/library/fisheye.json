@@ -6,7 +6,7 @@
   "length": 3,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "warp",
       "params": {
         "amount": 0.6

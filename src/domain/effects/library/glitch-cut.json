@@ -6,7 +6,7 @@
   "length": 0.5,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "rgbSplit",
       "params": {
         "amount": 1,
@@ -14,14 +14,14 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "pixelate",
       "params": {
         "amount": 0.5
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "shake",
       "params": {
         "amount": 0.6,

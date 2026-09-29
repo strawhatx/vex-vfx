@@ -33,14 +33,14 @@ interface LabTarget {
 export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
   filter: {
     name: 'The frame: a filter',
-    offers: [{ engine: 'color' }],
-    first: [['color', 'grade']],
+    offers: [{ engine: 'frame', kinds: ['grade'] }],
+    first: [['frame', 'grade']],
     length: 5,
   },
   screen: {
     name: 'The frame: an effect',
-    offers: [{ engine: 'screen' }, { engine: 'object', kinds: ['emitter'] }],
-    first: [['screen', 'flash']],
+    offers: [{ engine: 'frame' }, { engine: 'object', kinds: ['emitter'] }],
+    first: [['frame', 'flash']],
     length: 3,
   },
   body: {
@@ -68,11 +68,11 @@ export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
   },
   transition: {
     name: 'Between clips',
-    offers: [{ engine: 'motion', kinds: ['out', 'in'] }, { engine: 'screen' }],
+    offers: [{ engine: 'motion', kinds: ['out', 'in'] }, { engine: 'frame' }],
     first: [
       ['motion', 'out'],
       ['motion', 'in'],
-      ['screen', 'blur'],
+      ['frame', 'blur'],
     ],
     length: 0.6,
   },

@@ -6,7 +6,7 @@
   "length": 5,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "grain",
       "params": {
         "amount": 0.6,
@@ -14,7 +14,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "vignette",
       "params": {
         "amount": 0.65,
@@ -23,7 +23,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "flash",
       "params": {
         "amount": 0.08,

@@ -449,6 +449,33 @@ describe('saving the film', () => {
     expect(project.saved().reels[0].editor.tracks).toHaveLength(1);
   });
 
+  it('opens a film saved before color and screen were one engine', () => {
+    addVideo(6);
+    addVideo(4);
+    project.addLook(presetById('noir')!, 1);
+    project.setTransition(1, presetById('blur-cut')!);
+    const saved = project.saved();
+    // (as it was kept then: the grade a color pass, the blur a screen one)
+    const old = <T extends { preset: { passes: { engine: string }[] } }>(c: T) => ({
+      ...c,
+      preset: {
+        ...c.preset,
+        passes: c.preset.passes.map(p => ({ ...p, engine: p.engine === 'frame' ? 'color' : p.engine })),
+      },
+    });
+    project = newProject();
+    project.open({
+      ...saved,
+      looks: saved.looks.map(old),
+      transitions: saved.transitions.map(old),
+    } as typeof saved);
+    expect(project.saved().looks[0].preset.passes.map(p => p.engine)).toEqual(['frame']);
+    expect(project.looksAt(1.5).length).toBeGreaterThan(0);
+    expect(project.saved().transitions[0].preset.passes.every(p => p.engine !== ('color' as string))).toBe(
+      true,
+    );
+  });
+
   it("won't open a film saved some other way", () => {
     addVideo(6);
     expect(project.open({ ...project.saved(), version: 99 as 1 })).toBe(false);

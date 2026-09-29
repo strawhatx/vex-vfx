@@ -6,7 +6,7 @@
   "length": 5,
   "passes": [
     {
-      "engine": "color",
+      "engine": "frame",
       "kind": "grade",
       "params": {
         "amount": 1,

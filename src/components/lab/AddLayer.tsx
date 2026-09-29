@@ -13,8 +13,7 @@ export interface LayerKind {
 
 // what each engine's layers are, in a word, shown beside them
 const WHAT: Record<Engine, string> = {
-  color: 'grade',
-  screen: 'frame',
+  frame: 'frame',
   text: 'text',
   motion: 'motion',
   object: 'object',

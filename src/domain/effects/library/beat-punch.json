@@ -6,7 +6,7 @@
   "length": 3,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "zoom",
       "params": {
         "amount": 0.15
@@ -18,7 +18,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "flash",
       "params": {
         "amount": 0.25

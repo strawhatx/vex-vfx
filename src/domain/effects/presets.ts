@@ -152,3 +152,19 @@ export function passesWith(p: Preset, values: ControlValues): Pass[] {
   }
   return passes;
 }
+
+// a preset kept from before (in a saved film) read as it would be now: engines renamed since
+// (color and screen are the frame engine now) and new settings filled in. A pass that can't be read
+// any more is kept as it was.
+export function upToDate(p: Preset): Preset {
+  return {
+    ...p,
+    passes: p.passes.map(x => {
+      try {
+        return fitPass(x);
+      } catch {
+        return x;
+      }
+    }),
+  };
+}

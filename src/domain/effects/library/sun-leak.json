@@ -6,7 +6,7 @@
   "length": 4,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "leak",
       "params": {
         "amount": 0.75,
@@ -18,7 +18,7 @@
       }
     },
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "glow",
       "params": {
         "amount": 0.3,

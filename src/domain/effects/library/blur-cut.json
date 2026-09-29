@@ -6,7 +6,7 @@
   "length": 0.6,
   "passes": [
     {
-      "engine": "screen",
+      "engine": "frame",
       "kind": "blur",
       "params": {
         "amount": 1
