@@ -8,6 +8,6 @@ the device.
 
 ## The Preset Lab
 
-`/lab` has a page per engine for building effect presets on a test clip. It's always there in
+`/lab` is one page for building effect presets on a test clip: pick what a preset is for, then add layers. It's always there in
 development. A production build leaves it out unless it's built with `FLARECUT_LAB=on` (for a
 private test site); the public site should be built without it.
