@@ -40,7 +40,8 @@ const SHEETS_OF_THEIR_OWN = new Set<Tool>(['presets', 'controls', 'animation']);
 // which list of categories the toolbar shows, if any
 type Catalog = 'effects' | 'elements' | 'impacts' | null;
 
-export default function VfxStudio() {
+// id: the project's, which it's saved under on this device
+export default function VfxStudio({ id }: { id: string }) {
   const viewRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLInputElement>(null);
@@ -64,13 +65,13 @@ export default function VfxStudio() {
   const [draftFx, setDraftFx] = useState<FxSettings>(DEFAULT_FX);
 
   useEffect(() => {
-    const player = new Player(viewRef.current!, setUi);
+    const player = new Player(viewRef.current!, setUi, id);
     playerRef.current = player;
     return () => {
       player.destroy();
       playerRef.current = null;
     };
-  }, []);
+  }, [id]);
 
   // on desktop: the space bar plays/pauses; Ctrl/⌘+Z undoes, Ctrl/⌘+Shift+Z (or Ctrl+Y) redoes
   useEffect(() => {

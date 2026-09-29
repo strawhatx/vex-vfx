@@ -5,5 +5,5 @@ import { isProjectId } from '@/components/editor/start';
 export default async function EditorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isProjectId(id)) notFound();
-  return <VfxStudio key={id} />;
+  return <VfxStudio key={id} id={id} />;
 }

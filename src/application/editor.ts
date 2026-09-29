@@ -95,8 +95,8 @@ export interface EditorState extends Timeline {
 }
 
 // the project as it was at one moment, to go back to: everything the user edits, and the tracking
-// that was still to do then
-interface Snapshot {
+// that was still to do then. Saved, it's what opening the project again puts back (see saved).
+export interface EditorSave {
   tracks: Track[];
   nextId: number;
   cuts: number[];
@@ -107,6 +107,22 @@ interface Snapshot {
   jobs: TrackJob[];
   lastFx: FxSettings;
   lastImpact: ImpactStyle;
+}
+
+// a saved project fitted to a clip of n frames: each clip's tracked outlines one per frame (the
+// same file lists the same frames, but a clip read differently mustn't break it)
+function fitSave(s: EditorSave, n: number): EditorSave {
+  const fit = <X>(a: (X | null)[]) =>
+    a.length === n ? a : Array.from({ length: n }, (_, i) => a[i] ?? null);
+  return {
+    ...s,
+    tracks: s.tracks.map(t => ({
+      ...t,
+      shapes: fit(t.shapes),
+      parts: t.parts.map(p => ({ ...p, shapes: fit(p.shapes) })),
+      keys: t.keys.filter(k => k.i < n),
+    })),
+  };
 }
 
 // how many steps back undo goes
@@ -213,12 +229,14 @@ export class Editor {
   private reviewing: { id: number; was: OutlineOf } | null = null;
 
   // steps to undo and redo; `merge`: the kind of the last step and when, to merge the next into it
-  private undos: Snapshot[] = [];
-  private redos: Snapshot[] = [];
+  private undos: EditorSave[] = [];
+  private redos: EditorSave[] = [];
   private merge: { key: string; at: number } | null = null;
 
   private jobs: Jobs;
   private state: EditorState = EMPTY_STATE;
+  // a saved project to put back once the clip's frames are listed (see restoreSaved)
+  private pending: EditorSave | null = null;
 
   // idBase: clip ids start after it, so several videos' clips never share one
   constructor(
@@ -323,8 +341,28 @@ export class Editor {
     this.undos = [];
     this.redos = [];
     this.merge = null;
+    this.pending = null;
     this.syncLayers();
     this.update(EMPTY_STATE, true);
+  }
+
+  // ---------- saving ----------
+
+  // everything to open it again later: its edits and its tracking (not what can be undone). Before
+  // its frames are listed, the saved project still waiting to be put back.
+  saved(): EditorSave {
+    return this.pending ?? this.snapshot();
+  }
+
+  // a saved project put back, once the clip's frames are listed: its tracking carries on, and its
+  // checked cutouts are cut out again
+  restoreSaved(s: EditorSave) {
+    if (!this.clip.length) {
+      this.pending = s;
+      return;
+    }
+    this.pending = null;
+    this.restore(fitSave(s, this.clip.length));
   }
 
   // lists every frame; nothing can be tracked until this is done
@@ -346,6 +384,7 @@ export class Editor {
       },
       done: () => {
         this.update({ scan: null, ...this.filmState() }, true);
+        if (this.pending) this.restoreSaved(this.pending);
         this.jobs.pump();
       },
       error: message => {
@@ -949,7 +988,7 @@ export class Editor {
     if (!this.state.canUndo || this.state.canRedo) this.update({ canUndo: true, canRedo: false });
   }
 
-  private snapshot(): Snapshot {
+  private snapshot(): EditorSave {
     return {
       tracks: this.tracks.map(copyTrack),
       nextId: this.nextId,
@@ -966,7 +1005,7 @@ export class Editor {
 
   // puts the project back as it was; its tracking still to do carries on, and cutouts whose
   // outlines differ from what's cut out are cut out again
-  private restore(snap: Snapshot) {
+  private restore(snap: EditorSave) {
     const was = new Map(this.tracks.map(t => [t.id, t]));
     this.tracks = snap.tracks.map(copyTrack);
     this.nextId = snap.nextId;

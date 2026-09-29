@@ -23,6 +23,7 @@ src/
 ├── infrastructure/  # browser adapters that implement the ports
 │   ├── analysis/    #   worker, MediaPipe models (segmenter, pose, hands, face), object and body-part trackers (implements Analysis)
 │   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); body effects as passes; gpu/: color, screen, tint and dissolve passes
+│   ├── storage/     #   films saved on this device, in IndexedDB (implements FilmStore)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root
 ├── components/lab/     # the Preset Lab (/lab/<engine>): builds presets on a test clip; labPlayer.ts is its root

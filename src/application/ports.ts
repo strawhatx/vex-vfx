@@ -3,6 +3,7 @@
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { ObjectPass } from '@/domain/effects/passes';
+import type { SavedFilm } from './project';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Background } from '@/domain/project/cutout';
 import type { EdgeSettings } from '@/domain/project/edge';
@@ -139,4 +140,11 @@ export interface OverlayPictures {
   trim(id: number, span: { s: number; e: number }): void;
   // gives overlay `to` the same pictures as `from` (a copy of it)
   copy(from: number, to: number): void;
+}
+
+// Keeps films on this device, to open again later (the clips never leave it).
+export interface FilmStore {
+  // the film saved under this id, or null if there's none (or it can't be read)
+  load(id: string): Promise<SavedFilm | null>;
+  save(id: string, film: SavedFilm): Promise<void>;
 }

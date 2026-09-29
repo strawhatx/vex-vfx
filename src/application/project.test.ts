@@ -18,6 +18,12 @@ const shape = (): Shape => ({ id: 0, cx: 50, cy: 25, w: 20, h: 40 });
 // adds a video `seconds` long (10 fps, 100 x 100) and lists its frames
 function addVideo(seconds: number, index?: number) {
   const id = project.addVideo(new Blob(), index);
+  scanVideo(id, seconds);
+  return id;
+}
+
+// lists video id's frames (it's `seconds` long)
+function scanVideo(id: number, seconds: number) {
   project.scanVideo(id, seconds);
   const scan = analyses.get(id)!.last;
   if (scan.kind !== 'scan') throw new Error('expected a scan');
@@ -26,7 +32,6 @@ function addVideo(seconds: number, index?: number) {
     clipOf(seconds),
   );
   scan.on.done();
-  return id;
 }
 
 // finishes video `reel`'s running track job with the object found in every frame
@@ -47,7 +52,12 @@ beforeEach(() => {
   analyses = new Map();
   layers = new Map();
   pictures = new FakePictures();
-  project = new Project(
+  project = newProject();
+});
+
+// a project on fresh fakes of its own (the ones before are forgotten)
+function newProject() {
+  return new Project(
     reel => {
       const a = new FakeAnalysis(),
         l = new FakeLayers();
@@ -64,7 +74,7 @@ beforeEach(() => {
       meta: () => {},
     },
   );
-});
+}
 
 describe('several videos', () => {
   it('play one after another', () => {
@@ -386,5 +396,61 @@ describe('transitions', () => {
       [true, 3],
       [false, 0],
     ]);
+  });
+});
+
+describe('saving the film', () => {
+  it('opens again as it was saved, each video put back once its frames are listed', () => {
+    const a = addVideo(6),
+      b = addVideo(4);
+    const fx = project.editorOf(a)!.addTrack(10, { x: 50, y: 25 }, { effect: 'fire', pal: 2 })!;
+    finishTrack(a);
+    const cut = project.addCutout(b, 5, { x: 50, y: 25 }, 'keep', null)!;
+    finishTrack(b);
+    project.startReview(cut);
+    project.finishReview(cut);
+    project.addLook(presetById('noir')!, 1);
+    const song = new Blob(['la']);
+    project.addMusic('song', 30, 0, song);
+    project.setTransition(1, presetById('blur-cut')!);
+    project.setFilmAnim(0, 'in', { preset: 'grow-in', params: presetById('grow-in')!.passes[0].params });
+    const was = state,
+      frames = project.overlay(cut)!.frames;
+    const saved = project.saved();
+
+    project = newProject();
+    expect(project.open(saved)).toBe(true);
+    // (film-wide things are back at once; each video's own edits once it's been read)
+    expect(state.reels.map(r => r.id)).toEqual([a, b]);
+    expect(state.looks.map(l => l.name)).toEqual(['Noir']);
+    expect(state.music.map(m => m.name)).toEqual(['song']);
+    expect(project.files.music).toEqual([{ id: state.music[0].id, file: song }]);
+    expect(state.canUndo).toBe(false);
+    scanVideo(a, 6);
+    scanVideo(b, 4);
+    expect(state.lanes.map(l => [l.id, l.kind])).toEqual(was.lanes.map(l => [l.id, l.kind]));
+    expect(state.lanes.find(l => l.id === fx)?.fx.pal).toBe(2);
+    expect(state.films[0].anim.in?.preset).toBe('grow-in');
+    expect(state.transitions).toHaveLength(1);
+    expect(project.overlay(cut)?.frames).toEqual(frames);
+    // its checked cutout is cut out again, to have its pictures
+    expect(analyses.get(b)!.last.kind).toBe('cutout');
+    // numbering carries on after what was there
+    expect(project.addLook(presetById('silver')!, 0)).toBe(saved.next.look);
+  });
+
+  it('keeps a video still being read as it was saved', () => {
+    const a = addVideo(6);
+    project.editorOf(a)!.addTrack(10, { x: 50, y: 25 }, { effect: 'fire' });
+    const saved = project.saved();
+    project = newProject();
+    project.open(saved);
+    // (saved again before its frames were listed: nothing lost)
+    expect(project.saved().reels[0].editor.tracks).toHaveLength(1);
+  });
+
+  it("won't open a film saved some other way", () => {
+    addVideo(6);
+    expect(project.open({ ...project.saved(), version: 99 as 1 })).toBe(false);
   });
 });

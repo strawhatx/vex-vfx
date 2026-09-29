@@ -54,6 +54,7 @@ import { Mixer } from '@/infrastructure/audio/mixer';
 import { soundLength } from '@/infrastructure/audio/soundFile';
 import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
 import { OverlayPainter } from '@/infrastructure/rendering/overlays';
+import { IndexedDbFilmStore } from '@/infrastructure/storage/filmStore';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
@@ -270,6 +271,9 @@ const LASSO_STEP = 3;
 const TAP_SLOP = 10;
 // the preview is the film's first video scaled to at most this wide
 const MAX_W = 960;
+// changes are saved this long after they stop, and at least this often while they don't (ms)
+const SAVE_AFTER_MS = 1000,
+  SAVE_AT_LEAST_MS = 5000;
 // how wide the presets' pictures are (px)
 const LOOK_THUMB_W = 144;
 
@@ -307,6 +311,13 @@ export class Player {
   private thumbsFor: LookGroup | null = null;
   // stops an animation's preview (see previewAnim)
   private previewTimer = 0;
+  // saving the project on this device: whether what was saved has been opened yet (nothing's saved
+  // before, so it isn't written over), whether there are changes to save, and when it last was
+  private store = new IndexedDbFilmStore();
+  private opened = false;
+  private unsaved = false;
+  private saveTimer = 0;
+  private savedAt = 0;
   // everything is drawn on the stage (the film's whole frame, CW x CH), then shown on the preview
   // cropped (see present)
   private stage = document.createElement('canvas');
@@ -362,9 +373,11 @@ export class Player {
   private events = new AbortController();
   private destroyed = false;
 
+  // filmId: the project this is, saved on this device as it's edited and opened again from there
   constructor(
     private view: HTMLCanvasElement,
     private onUi: (ui: UiState) => void,
+    private filmId: string | null = null,
   ) {
     this.ctx = this.stage.getContext('2d')!;
     this.out = view.getContext('2d')!;
@@ -380,6 +393,8 @@ export class Player {
       },
     });
     this.listen();
+    if (filmId) void this.openSaved();
+    else this.opened = true;
     void loadFonts().then(fonts => {
       if (this.destroyed) return;
       this.fonts = fonts;
@@ -395,6 +410,11 @@ export class Player {
     this.stopCamera();
     const id = replace !== null ? this.project.replaceVideo(replace, f) : this.project.addVideo(f);
     this.set({ adding: null, result: null, status: 'Loading…' });
+    this.playVideo(id, f);
+  }
+
+  // video `id`'s file into its element, and its sound's waveform read
+  private playVideo(id: number, f: Blob) {
     const rv = this.views.get(id);
     if (!rv) return;
     this.mixer.setOriginal(this.ui.muted ? 0 : 1);
@@ -870,7 +890,7 @@ export class Player {
       this.say('This sound file can’t be played in this browser. Try an MP3 or M4A.');
       return;
     }
-    const id = this.project.addMusic(f.name.replace(/\.[^.]+$/, '') || 'Music', length, this.time());
+    const id = this.project.addMusic(f.name.replace(/\.[^.]+$/, '') || 'Music', length, this.time(), f);
     this.mixer.addMusicFile(id, f);
     void clipPeaks(f).then(wave => {
       this.waves.set(id, wave);
@@ -1238,6 +1258,7 @@ export class Player {
       rv.video.pause();
       if (rv.url) URL.revokeObjectURL(rv.url);
     }
+    this.saveNow();
     this.camera?.cancel();
     clearTimeout(this.previewTimer);
     this.recorder?.stop();
@@ -1247,6 +1268,48 @@ export class Player {
   }
 
   // ---------- internals ----------
+
+  // ---------- saving ----------
+
+  // the project saved on this device opened, if there is one; after that, changes are saved
+  private async openSaved() {
+    const id = this.filmId;
+    if (!id) return;
+    const saved = await this.store.load(id);
+    if (this.destroyed) return;
+    if (saved && this.project.open(saved)) {
+      const { reels, music } = this.project.files;
+      for (const r of reels) this.playVideo(r.id, r.file);
+      for (const m of music) {
+        this.mixer.addMusicFile(m.id, m.file);
+        void clipPeaks(m.file).then(wave => {
+          this.waves.set(m.id, wave);
+          this.refreshMusic();
+        });
+      }
+      if (reels.length) this.set({ status: 'Opening…' });
+    } else if (saved) this.say('This project was saved by another version of the app and can’t be opened.');
+    this.opened = true;
+  }
+
+  // a change: saved a second after changes stop (and at least every few seconds while they don't)
+  private saveSoon() {
+    if (!this.filmId || !this.opened) return;
+    this.unsaved = true;
+    clearTimeout(this.saveTimer);
+    const overdue = Date.now() - this.savedAt > SAVE_AT_LEAST_MS;
+    this.saveTimer = window.setTimeout(() => this.saveNow(), overdue ? 0 : SAVE_AFTER_MS);
+  }
+
+  private saveNow() {
+    clearTimeout(this.saveTimer);
+    if (!this.filmId || !this.unsaved) return;
+    this.unsaved = false;
+    this.savedAt = Date.now();
+    this.store
+      .save(this.filmId, this.project.saved())
+      .catch(() => this.say('This project couldn’t be saved on this device (it may be out of space).'));
+  }
 
   private set(p: Partial<UiState>) {
     Object.assign(this.ui, p);
@@ -1549,6 +1612,7 @@ export class Player {
 
   private projectChanged(s: ProjectState, drawn: boolean) {
     this.state = s;
+    this.saveSoon();
     // the video shown was taken out: show the one playing where the playhead is
     if (this.active !== null && !s.reels.some(r => r.id === this.active)) {
       this.active = null;
@@ -1613,6 +1677,13 @@ export class Player {
 
   private listen() {
     const signal = this.events.signal;
+    // the page closed or hidden (a tab switched, the phone locked): what's not saved yet, now
+    window.addEventListener('pagehide', () => this.saveNow(), { signal });
+    document.addEventListener(
+      'visibilitychange',
+      () => document.visibilityState === 'hidden' && this.saveNow(),
+      { signal },
+    );
     // browsers only start sound from a touch, click or key: start it on the first one anywhere
     for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
       document.addEventListener(ev, () => this.mixer.start(), { signal, capture: true });

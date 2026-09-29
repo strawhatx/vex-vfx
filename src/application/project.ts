@@ -6,7 +6,7 @@
 // Times: everything in and out is the film's time unless said otherwise. Clip ids are unique across
 // the film: each video numbers its clips from its own base (REEL_IDS apart); an overlay takes the
 // id of the cutout that cuts it (a copy of one gets a number of the film's own, below REEL_IDS).
-import { DEFAULT_FX, Editor, type EditorState } from './editor';
+import { DEFAULT_FX, Editor, type EditorSave, type EditorState } from './editor';
 import {
   STILL,
   setTransformAt,
@@ -126,7 +126,24 @@ interface Reel {
   editor: Editor;
   state: EditorState;
   srcLength: number; // its own length, as the player plays it
+  file: Blob; // the video
 }
+
+// the film as it's kept to open again later: its videos (the files and each one's edits and
+// tracking), what's over and under them, and where numbering carries on from. What can be undone
+// isn't kept.
+export interface SavedFilm {
+  version: typeof SAVE_VERSION;
+  reels: { id: number; file: Blob; editor: EditorSave }[];
+  overlays: Overlay[];
+  music: { clip: MusicClip; file: Blob }[];
+  looks: LookClip[];
+  transitions: Transition[];
+  crop: Crop;
+  next: { reel: number; overlay: number; music: number; look: number };
+}
+
+export const SAVE_VERSION = 1;
 
 // the film as it was, to go back to (each video's own edits are undone by its editor)
 interface Snap {
@@ -173,6 +190,8 @@ export class Project {
   private reels: Reel[] = [];
   private overlays: Overlay[] = [];
   private music: MusicClip[] = [];
+  // each music clip's sound file (kept after it's deleted, as it can come back with undo)
+  private musicFiles = new Map<number, Blob>();
   private looks: LookClip[] = [];
   private transitions: Transition[] = [];
   private crop: Crop = FULL;
@@ -563,10 +582,12 @@ export class Project {
 
   // ---------- music ----------
 
-  // a sound file `length` seconds long, placed at film time `at` on the Audio layer
-  addMusic(name: string, length: number, at: number) {
+  // a sound file `length` seconds long, placed at film time `at` on the Audio layer (file: the sound,
+  // kept to save with the film)
+  addMusic(name: string, length: number, at: number, file?: Blob) {
     return this.step(undefined, () => {
       const m = newMusic(this.nextMusic++, name, length, Math.max(0, at), this.length);
+      if (file) this.musicFiles.set(m.id, file);
       this.music.push(m);
       this.publish();
       return m.id;
@@ -763,6 +784,63 @@ export class Project {
     return this.state.films.map(f => ({ reel: f.reel, s: f.s, at: f.at, length: playTime(f) }));
   }
 
+  // ---------- saving ----------
+
+  // the film as it's kept to open again later
+  saved(): SavedFilm {
+    return {
+      version: SAVE_VERSION,
+      reels: this.reels.map(r => ({ id: r.id, file: r.file, editor: r.editor.saved() })),
+      overlays: this.overlays.slice(),
+      music: this.music.flatMap(clip => {
+        const file = this.musicFiles.get(clip.id);
+        return file ? [{ clip, file }] : [];
+      }),
+      looks: this.looks.slice(),
+      transitions: this.transitions.slice(),
+      crop: this.crop,
+      next: { reel: this.nextReel, overlay: this.nextOverlay, music: this.nextMusic, look: this.nextLook },
+    };
+  }
+
+  // a saved film opened, in place of what's here: its videos come back with the same ids (each
+  // one's edits put back once its frames are listed: see scanVideo), and nothing to undo. False if
+  // it was saved in a way this can't open.
+  open(s: SavedFilm) {
+    if (s?.version !== SAVE_VERSION) return false;
+    this.reels = [];
+    s.reels.forEach((r, k) => {
+      this.insertReel(r.file, k, r.id);
+      this.reel(r.id)!.editor.restoreSaved(r.editor);
+    });
+    this.overlays = s.overlays.slice();
+    this.music = s.music.map(m => m.clip);
+    this.musicFiles = new Map(s.music.map(m => [m.clip.id, m.file]));
+    this.looks = s.looks.slice();
+    this.transitions = s.transitions.slice();
+    this.crop = s.crop;
+    this.nextReel = s.next.reel;
+    this.nextOverlay = s.next.overlay;
+    this.nextMusic = s.next.music;
+    this.nextLook = s.next.look;
+    this.undos = [];
+    this.redos = [];
+    this.merge = null;
+    this.publish(true);
+    return true;
+  }
+
+  // the videos' files, and the music's, by id (to play them)
+  get files() {
+    return {
+      reels: this.reels.map(r => ({ id: r.id, file: r.file })),
+      music: this.music.flatMap(m => {
+        const file = this.musicFiles.get(m.id);
+        return file ? [{ id: m.id, file }] : [];
+      }),
+    };
+  }
+
   // ---------- undo ----------
 
   undo() {
@@ -850,10 +928,9 @@ export class Project {
 
   // ---------- internals ----------
 
-  private insertReel(file: Blob, index: number) {
-    const id = this.nextReel++;
+  private insertReel(file: Blob, index: number, id = this.nextReel++) {
     const { analysis, layers } = this.ports(id);
-    const reel = { id, srcLength: 0 } as Reel;
+    const reel = { id, srcLength: 0, file } as Reel;
     reel.editor = new Editor(
       analysis,
       layers,
