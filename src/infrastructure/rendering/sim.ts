@@ -3,7 +3,7 @@
 // exporting produce the same pictures. No particle lives longer than MAX_LIFE, so the state at any
 // frame can be rebuilt by simulating from MAX_LIFE seconds earlier.
 //
-// Fire, aura and sparks are the particle engine's emitters (see domain/effects/particles.ts and
+// Fire, aura and sparks are emitters (the object engine's) (see domain/effects/particles.ts and
 // particles/system.ts), drawn round what only they have: fire's glow and its GPU flames, aura's
 // halo. Lightning is its own (particles/lightning.ts).
 import type { FxSettings } from '@/domain/effects/palettes';

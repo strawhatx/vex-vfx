@@ -182,7 +182,7 @@ describe('particles on the film', () => {
     fade: { in: 1 },
     passes: [
       { engine: 'screen', kind: 'flash', params: { amount: 0.5 } },
-      { engine: 'particle', kind: 'emitter', params: { from: 'frame', amount: 1 } },
+      { engine: 'object', kind: 'emitter', params: { from: 'frame', amount: 1 } },
     ],
   });
   const sparkle = parsePreset({
@@ -193,7 +193,7 @@ describe('particles on the film', () => {
     passes: [
       { engine: 'text', kind: 'type', params: { words: 'HI' } },
       { engine: 'text', kind: 'fill' },
-      { engine: 'particle', kind: 'emitter', params: { shape: 'star' } },
+      { engine: 'object', kind: 'emitter', params: { shape: 'star' } },
     ],
   });
 

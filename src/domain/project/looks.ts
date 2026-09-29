@@ -3,7 +3,14 @@
 // plays then; each group has a timeline layer of its own. Like music (see music.ts), a look belongs
 // to the film, not to one video. A text look also keeps its own words and where it's placed.
 import { envelope, motionAt } from '../effects/curves';
-import { passAt, drawsAnything, type DrawnPass, type LookPass, type ParticlePass } from '../effects/passes';
+import {
+  passAt,
+  drawsAnything,
+  type DrawnPass,
+  type LookPass,
+  type EmitterPass,
+  isEmitter,
+} from '../effects/passes';
 import { arriving, type LetterAnim } from '../effects/letters';
 import { NO_ANIM, poseAt, type ClipAnim } from '../effects/animation';
 import {
@@ -147,7 +154,7 @@ export function particlesAt(clips: readonly LookClip[], t: number): DrawnEmitter
       const local = t - c.at,
         strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
       return passesWith(c.preset, c.values).flatMap((p, k) =>
-        p.engine === 'particle'
+        isEmitter(p)
           ? [
               {
                 key: `${c.id}:${k}`,
@@ -176,7 +183,7 @@ export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
       const local = t - c.at;
       const strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
       const passes = passesWith(c.preset, c.values).filter(
-        (p): p is TextPass | ParticlePass => p.engine === 'text' || p.engine === 'particle',
+        (p): p is TextPass | EmitterPass => p.engine === 'text' || isEmitter(p),
       );
       const d = textAt(c.id, passes, c.text!, local, c.len, strength, c.id);
       return { ...d, pose: poseAt(c.anim, local, c.len) };
@@ -186,7 +193,7 @@ export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
 // a text preset as its button shows it: its words, in the middle, all come in
 export function textPreviewOf(preset: Preset): DrawnText {
   const passes = passesWith(preset, controlDefaults(preset)).filter(
-    (p): p is TextPass | ParticlePass => p.engine === 'text' || p.engine === 'particle',
+    (p): p is TextPass | EmitterPass => p.engine === 'text' || isEmitter(p),
   );
   const inn = passes.find(p => p.kind === 'in')?.params;
   const n = Array.from(startWords(passes)).length;

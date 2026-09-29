@@ -303,7 +303,7 @@ describe('impact families', () => {
 });
 
 describe('objectPasses', () => {
-  it("keeps a body preset's object and particle passes", () => {
+  it("keeps a body preset's passes, particle emitters too", () => {
     const preset = parsePreset({
       id: 'dust',
       name: 'Dust',
@@ -311,10 +311,10 @@ describe('objectPasses', () => {
       length: 3,
       passes: [
         { engine: 'object', kind: 'edge' },
-        { engine: 'particle', kind: 'emitter' },
+        { engine: 'object', kind: 'emitter' },
       ],
     });
     const t = { kind: 'effect', spot: false, fx: {} as FxSettings, body: { preset, values: {} } } as const;
-    expect(objectPasses(t)?.map(p => `${p.engine}:${p.kind}`)).toEqual(['object:edge', 'particle:emitter']);
+    expect(objectPasses(t)?.map(p => `${p.engine}:${p.kind}`)).toEqual(['object:edge', 'object:emitter']);
   });
 });

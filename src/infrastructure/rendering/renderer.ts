@@ -237,10 +237,6 @@ export class Renderer implements EffectLayers {
     l.geo.prepareCanvas(l.spec.frames[idx]);
     passes.forEach((p, k) => {
       if ((p.kind === 'glitch') !== glitches) return;
-      if (p.engine === 'particle') {
-        l.system(k).draw(this.ctx, f, specOf(p.params), l.scale(f));
-        return;
-      }
       const s = fxOf(p.kind, p.params, l.spec.settings);
       const particles = () => this.particles(l, k, f, s, mask);
       const draw: Record<BodyKind, () => void> = {
@@ -248,6 +244,7 @@ export class Renderer implements EffectLayers {
         lightning: particles,
         aura: particles,
         sparks: particles,
+        emitter: () => l.system(k).draw(this.ctx, f, specOf(p.params), l.scale(f)),
         outline: () => drawOutlineFx(this.ctx, this.masks, mask, f, s, l.spec.id),
         glitch: () => {
           if (!f.tgt.active) return;

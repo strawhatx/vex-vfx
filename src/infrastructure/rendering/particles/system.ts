@@ -1,4 +1,4 @@
-// The particle engine's simulation: one emitter (see domain/effects/particles.ts) on an object, on
+// The particle simulation: one emitter (see domain/effects/particles.ts) on an object, on
 // text, or over the frame. Stepped once per video frame, all its randomness from the frame's own
 // generator, so replaying, scrubbing and exporting draw the same; no particle lives longer than
 // MAX_LIFE, so a frame's state can be rebuilt by stepping from that far back.

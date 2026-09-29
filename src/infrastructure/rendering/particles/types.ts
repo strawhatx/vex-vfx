@@ -36,7 +36,7 @@ export interface Layers {
   fire?: (ctx: Ctx2D, f: FxFrame, u: number, intensity: number) => boolean;
 }
 
-// lightning's sparks (the other effects' particles are the particle engine's: see system.ts)
+// lightning's sparks (the other effects' particles are emitters: see system.ts)
 export type Particle = { k: 's'; x: number; y: number; vx: number; vy: number; life: number; max: number };
 
 // smooth pseudo-noise, -1..1

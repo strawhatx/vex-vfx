@@ -44,8 +44,8 @@ describe('an emitter', () => {
     expect(particleGrowth({ grow: -1 }, 1)).toBe(0);
   });
 
-  it('is a pass of the particle engine, its settings fitted to their ranges', () => {
-    const p = fitPass({ engine: 'particle', kind: 'emitter', params: { rate: 9999, shape: 'blob' } });
+  it('is a pass of the object engine, its settings fitted to their ranges', () => {
+    const p = fitPass({ engine: 'object', kind: 'emitter', params: { rate: 9999, shape: 'blob' } });
     expect(p.params.rate).toBe(400);
     expect(p.params.shape).toBe('dot');
   });

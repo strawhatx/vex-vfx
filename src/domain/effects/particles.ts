@@ -1,4 +1,4 @@
-// The particle engine: a particle system described as data, so embers, snow, sparks, magic dust
+// Particles described as data (the object engine's emitter pass: see body.ts), so embers, snow, sparks, magic dust
 // and the rest are presets rather than code. An emitter pass says:
 //   - where particles are born: on the object (its outline, its top, inside it, its middle) or on
 //     the frame (its top, bottom, sides, anywhere); how many a second, and how many at once at the
@@ -101,10 +101,6 @@ export const EMITTER_PARAMS: readonly ParamSpec[] = [
     'add',
   ),
 ];
-
-export const PARTICLE_KINDS = { emitter: { label: 'Emitter', params: EMITTER_PARAMS } } as const;
-export type ParticleKind = keyof typeof PARTICLE_KINDS;
-export const isParticleKind = (k: string): k is ParticleKind => k === 'emitter';
 
 const DEFAULTS: Params = Object.fromEntries(EMITTER_PARAMS.map(s => [s.key, s.def]));
 

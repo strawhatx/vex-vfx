@@ -10,7 +10,7 @@
   },
   "passes": [
     {
-      "engine": "particle",
+      "engine": "object",
       "kind": "emitter",
       "params": {
         "palette": "prism",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "engine": "particle",
+      "engine": "object",
       "kind": "emitter",
       "params": {
         "palette": "prism",
@@ -66,7 +66,7 @@
       }
     },
     {
-      "engine": "particle",
+      "engine": "object",
       "kind": "emitter",
       "params": {
         "palette": "prism",

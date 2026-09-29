@@ -2,7 +2,7 @@
 //   - type: the words it starts with, its font, size and letter spacing (the first one counts)
 //   - fill, stroke, glow, shadow, fire, lightning, aura: style layers, drawn in order, so the first
 //     is at the back. Fire, lightning and aura come off the letters' shape, as they do off a
-//     tracked object; so do the particle engine's emitters, which a text preset can hold too
+//     tracked object; so do emitters (the object engine's), which a text preset can hold too
 //     (drawn in order with the styles).
 //   - in, out: how the letters come in and go out (the first of each counts)
 // A text clip keeps its own words and where it's placed; what it draws at a moment is worked out
@@ -13,7 +13,7 @@ import { FONTS } from './text';
 import { LETTER_ANIMS, REST, combine, letterIn, letterOut, type LetterAnim, type Pose } from './letters';
 import { PALETTES } from './palettes';
 import { choice, color, num, text, type ParamSpec, type Params } from './params';
-import type { ParticlePass } from './passes';
+import type { EmitterPass } from './passes';
 
 export type TextKind =
   'type' | 'fill' | 'stroke' | 'glow' | 'shadow' | 'fire' | 'lightning' | 'aura' | 'in' | 'out';
@@ -148,7 +148,7 @@ const typeOf = (passes: readonly TextPass[]) =>
 // which flicker (each clip its own)
 export function textAt(
   id: number,
-  passes: readonly (TextPass | ParticlePass)[],
+  passes: readonly (TextPass | EmitterPass)[],
   place: TextPlace,
   t: number,
   len: number,
@@ -178,7 +178,7 @@ export function textAt(
     return pose;
   });
   const styles = passes
-    .filter(p => p.engine === 'particle' || STYLES.has(p.kind))
+    .filter(p => p.engine === 'object' || STYLES.has(p.kind))
     .map(p => ({
       kind: p.kind,
       values: {

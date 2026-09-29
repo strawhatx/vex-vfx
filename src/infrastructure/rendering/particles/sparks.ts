@@ -1,5 +1,5 @@
-// Lightning's sparks: streaks thrown off the object that fall (the Sparks effect itself is the
-// particle engine's: see sim.ts).
+// Lightning's sparks: streaks thrown off the object that fall (the Sparks effect itself is an
+// emitter: see sim.ts).
 import type { Painter } from './painter';
 
 export function drawSparks(p: Painter) {

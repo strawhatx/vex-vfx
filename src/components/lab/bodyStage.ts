@@ -5,7 +5,7 @@
 import { DEFAULT_FX } from '@/application/editor';
 import type { LayerSpec } from '@/application/ports';
 import { lookOf, soundOfBurst } from '@/domain/effects/bursts';
-import type { BodyPass, BurstPassOf } from '@/domain/effects/passes';
+import type { BurstPassOf, ObjectPass } from '@/domain/effects/passes';
 import { controlDefaults, passesWith, type Preset } from '@/domain/effects/presets';
 import { encodeRle, type Shape, type TrackFrame } from '@/domain/tracking/types';
 
@@ -74,7 +74,7 @@ export function subject(W: number, H: number, scene: boolean): Shape {
 // the preset as a clip on that object, its controls at their defaults
 export function bodyLayer(preset: Preset, frames: TrackFrame[], shape: Shape): LayerSpec {
   const passes = passesWith(preset, controlDefaults(preset)).filter(
-    (p): p is BodyPass => p.engine === 'object' || p.engine === 'particle',
+    (p): p is ObjectPass => p.engine === 'object',
   );
   return {
     id: 1,

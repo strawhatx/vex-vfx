@@ -1,6 +1,9 @@
 // The object engine: effects on a tracked person or object, drawn from its outline and silhouette.
 // Its passes, drawn in order (so the first is at the back):
 //   - fire, lightning, aura, sparks: particles off the object, in a palette's colors
+//   - emitter: particles described as data (see particles.ts): embers, snow, magic dust. It's the
+//     one pass that also works on text (the letters are its object) and on the whole frame (a
+//     screen effect's emitter has the frame as its object)
 //   - outline: a line traced round it, in one of the outline styles
 //   - glitch: its own pixels broken up
 //   - edge: a glowing stroke round its silhouette
@@ -15,10 +18,21 @@ import { GLITCH_STYLES } from './glitches';
 import { OUTLINE_STYLES } from './outlines';
 import { PALETTES, type Effect, type FxSettings } from './palettes';
 import { choice, color, num, type ParamSpec, type Params } from './params';
-import type { BodyPass } from './passes';
+import { EMITTER_PARAMS } from './particles';
+import type { ObjectPass } from './passes';
 
 export type BodyKind =
-  'fire' | 'lightning' | 'aura' | 'sparks' | 'outline' | 'glitch' | 'edge' | 'clones' | 'tint' | 'dissolve';
+  | 'fire'
+  | 'lightning'
+  | 'aura'
+  | 'sparks'
+  | 'emitter'
+  | 'outline'
+  | 'glitch'
+  | 'edge'
+  | 'clones'
+  | 'tint'
+  | 'dissolve';
 
 // the particle effects, each run by a simulation of its own
 export const PARTICLE_KINDS: readonly BodyKind[] = ['fire', 'lightning', 'aura', 'sparks'];
@@ -33,6 +47,7 @@ export const BODY_KINDS: Record<BodyKind, { label: string; params: readonly Para
   lightning: { label: 'Lightning', params: [amount(1, 2), size(), palette('blue')] },
   aura: { label: 'Aura', params: [amount(1, 2), size(), palette('void')] },
   sparks: { label: 'Sparks', params: [amount(1, 2), size(), palette('ember')] },
+  emitter: { label: 'Particles', params: EMITTER_PARAMS },
   outline: {
     label: 'Outline',
     params: [amount(1, 2), size(), palette('prism'), choice('style', 'Style', OUTLINE_STYLES, 'neon')],
@@ -139,7 +154,7 @@ export function soundOf(kinds: readonly string[]): Effect {
 
 // the passes at t seconds into a clip len long: each one's strength moved as its motion says
 // (seed: which flicker)
-export function bodyAt(passes: readonly BodyPass[], t: number, len: number, seed: number): BodyPass[] {
+export function bodyAt(passes: readonly ObjectPass[], t: number, len: number, seed: number): ObjectPass[] {
   return passes.map(p =>
     p.motion.kind === 'steady'
       ? p

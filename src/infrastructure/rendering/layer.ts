@@ -4,7 +4,7 @@
 // forward just steps them along.
 import type { LayerSpec } from '@/application/ports';
 import { PARTICLE_KINDS, bodyAt, fxOf } from '@/domain/effects/body';
-import type { BodyPass } from '@/domain/effects/passes';
+import type { ObjectPass } from '@/domain/effects/passes';
 import { specOf } from '@/domain/effects/particles';
 import { ParticleSystem } from './particles/system';
 import { areaMul, unit } from './particles/types';
@@ -57,7 +57,7 @@ export class Layer {
   }
 
   // its passes at frame i, their strength moved over time
-  passesAt(i: number): BodyPass[] {
+  passesAt(i: number): ObjectPass[] {
     const { passes, range, frames, id } = this.spec;
     if (!passes) return [];
     return bodyAt(passes, (frames[i]?.t ?? 0) - range.s, range.e - range.s, id);
@@ -98,7 +98,7 @@ export class Layer {
       const f = this.fxFrame(j, shot);
       const local = frames[j].t - this.spec.range.s;
       this.passesAt(j).forEach((p, k) => {
-        if (p.engine === 'particle') this.system(k).step(f, specOf(p.params), this.scale(f), local);
+        if (p.kind === 'emitter') this.system(k).step(f, specOf(p.params), this.scale(f), local);
         else if (PARTICLE_KINDS.includes(p.kind))
           this.sim(k).step(f, fxOf(p.kind, p.params, this.spec.settings));
       });

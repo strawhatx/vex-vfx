@@ -4,9 +4,9 @@
 //   - screen: an effect over the whole picture (see screen.ts)
 //   - text: styled, animated words (see typeset.ts)
 //   - motion: how a clip moves as a whole (see animation.ts)
-//   - object: effects on a tracked person or object (see body.ts)
+//   - object: effects on a tracked person or object (see body.ts), including particle emitters,
+//     which text and screen presets can hold too (see particles.ts)
 //   - burst: impacts, going off at a spot (see bursts.ts)
-//   - particle: particle systems, on an object, on text or over the frame (see particles.ts)
 // Each engine lists its kinds of pass and their settings as data, so passes can be checked, filled
 // in and given sliders without knowing what each one is.
 import { GRADE_PARAMS, gradeOf, type Grade } from './color';
@@ -17,9 +17,8 @@ import { TEXT_KINDS, isTextKind, type TextPass } from './typeset';
 import { ANIMATION_KINDS, isAnimKind, type AnimKind } from './animation';
 import { BODY_KINDS, isBodyKind, type BodyKind } from './body';
 import { BURST_KINDS, isBurstKind, type BurstKind } from './bursts';
-import { PARTICLE_KINDS, isParticleKind, type ParticleKind } from './particles';
 
-export type Engine = 'color' | 'screen' | 'text' | 'motion' | 'object' | 'burst' | 'particle';
+export type Engine = 'color' | 'screen' | 'text' | 'motion' | 'object' | 'burst';
 
 // what's drawn over the whole frame (filters and screen effects)
 export type LookPass =
@@ -32,12 +31,11 @@ export type ObjectPass = { engine: 'object'; kind: BodyKind; params: Params; mot
 
 export type BurstPassOf = { engine: 'burst'; kind: BurstKind; params: Params; motion: Motion };
 
-export type ParticlePass = { engine: 'particle'; kind: ParticleKind; params: Params; motion: Motion };
+export type Pass = LookPass | TextPass | MotionPass | ObjectPass | BurstPassOf;
 
-export type Pass = LookPass | TextPass | MotionPass | ObjectPass | BurstPassOf | ParticlePass;
-
-// what a body effect draws on its object: object passes, and particle emitters
-export type BodyPass = ObjectPass | ParticlePass;
+// an object engine's particle emitter (the one object pass text and screen presets can hold)
+export type EmitterPass = ObjectPass & { kind: 'emitter' };
+export const isEmitter = (p: Pass): p is EmitterPass => p.engine === 'object' && p.kind === 'emitter';
 
 // a color pass's settings are its grade and `amount`, how strongly it's mixed in
 const COLOR_PARAMS: readonly ParamSpec[] = [
@@ -53,7 +51,6 @@ export const ENGINES: Record<Engine, Record<string, { label: string; params: rea
   motion: ANIMATION_KINDS,
   object: BODY_KINDS,
   burst: BURST_KINDS,
-  particle: PARTICLE_KINDS,
 };
 
 export const paramsOf = (engine: Engine, kind: string): readonly ParamSpec[] =>
@@ -86,8 +83,6 @@ export function fitPass(raw: unknown): Pass {
     return { engine, kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
   if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
     return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
-  if (engine === 'particle' && typeof kind === 'string' && isParticleKind(kind))
-    return { engine, kind, params: fitParams(PARTICLE_KINDS[kind].params, params), motion };
   if (engine === 'burst' && typeof kind === 'string' && isBurstKind(kind))
     return { engine, kind, params: fitParams(BURST_KINDS[kind].params, params), motion };
   if (engine === 'object' && typeof kind === 'string' && isBodyKind(kind))

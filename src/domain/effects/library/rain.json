@@ -10,7 +10,7 @@
   },
   "passes": [
     {
-      "engine": "particle",
+      "engine": "object",
       "kind": "emitter",
       "params": {
         "palette": "blue",

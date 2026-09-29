@@ -18,7 +18,7 @@ import type { Aim } from '../effects/laser';
 import { passOfFx, soundOf } from '../effects/body';
 import { STEADY } from '../effects/curves';
 import type { ParamValue } from '../effects/params';
-import type { BodyPass, BurstPassOf } from '../effects/passes';
+import type { BurstPassOf, ObjectPass } from '../effects/passes';
 import { controlDefaults, fitControl, passesWith, type ControlValues, type Preset } from '../effects/presets';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
@@ -245,12 +245,10 @@ export function withBodyControl(t: Track, id: string, v: ParamValue): Track {
 
 // what an effect draws on its object: its body preset's passes, or its old-style settings as one
 // pass; null for the effects drawn their own way (see body.ts)
-export function objectPasses(t: Pick<Track, 'body' | 'fx' | 'kind' | 'spot'>): BodyPass[] | null {
+export function objectPasses(t: Pick<Track, 'body' | 'fx' | 'kind' | 'spot'>): ObjectPass[] | null {
   if (t.kind !== 'effect') return null;
   if (t.body)
-    return passesWith(t.body.preset, t.body.values).filter(
-      (p): p is BodyPass => p.engine === 'object' || p.engine === 'particle',
-    );
+    return passesWith(t.body.preset, t.body.values).filter((p): p is ObjectPass => p.engine === 'object');
   const one = passOfFx(t.fx, isPinned(t));
   return one ? [{ engine: 'object', ...one, motion: STEADY }] : null;
 }
