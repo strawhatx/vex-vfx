@@ -13,7 +13,7 @@ export class Emitter {
 
   constructor(
     readonly f: FxFrame,
-    s: FxSettings,
+    s: Pick<FxSettings, 'size' | 'intensity'>,
     readonly r: Rng,
     private parts: Particle[],
   ) {

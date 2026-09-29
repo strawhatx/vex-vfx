@@ -15,7 +15,7 @@ import { GLITCH_STYLES } from './glitches';
 import { OUTLINE_STYLES } from './outlines';
 import { PALETTES, type Effect, type FxSettings } from './palettes';
 import { choice, color, num, type ParamSpec, type Params } from './params';
-import type { ObjectPass } from './passes';
+import type { BodyPass } from './passes';
 
 export type BodyKind =
   'fire' | 'lightning' | 'aura' | 'sparks' | 'outline' | 'glitch' | 'edge' | 'clones' | 'tint' | 'dissolve';
@@ -139,7 +139,7 @@ export function soundOf(kinds: readonly string[]): Effect {
 
 // the passes at t seconds into a clip len long: each one's strength moved as its motion says
 // (seed: which flicker)
-export function bodyAt(passes: readonly ObjectPass[], t: number, len: number, seed: number): ObjectPass[] {
+export function bodyAt(passes: readonly BodyPass[], t: number, len: number, seed: number): BodyPass[] {
   return passes.map(p =>
     p.motion.kind === 'steady'
       ? p

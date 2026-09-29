@@ -43,14 +43,14 @@ export const LAB_PAGES: Record<LabPage, LabSpec> = {
   screen: {
     name: 'Screen engine',
     group: 'screen',
-    offers: [{ engine: 'screen' }],
+    offers: [{ engine: 'screen' }, { engine: 'particle' }],
     first: [['screen', 'flash']],
     length: 3,
   },
   text: {
     name: 'Text engine',
     group: 'text',
-    offers: [{ engine: 'text' }],
+    offers: [{ engine: 'text' }, { engine: 'particle' }],
     first: [
       ['text', 'type'],
       ['text', 'fill'],
@@ -69,8 +69,16 @@ export const LAB_PAGES: Record<LabPage, LabSpec> = {
   object: {
     name: 'Object engine',
     group: 'body',
-    offers: [{ engine: 'object' }],
+    offers: [{ engine: 'object' }, { engine: 'particle' }],
     first: [['object', 'edge']],
+    length: 3,
+  },
+  // (its presets are body effects, like the Object engine's: particles on the person)
+  particle: {
+    name: 'Particle engine',
+    group: 'body',
+    offers: [{ engine: 'particle' }, { engine: 'object', kinds: ['edge', 'tint'] }],
+    first: [['particle', 'emitter']],
     length: 3,
   },
   burst: {

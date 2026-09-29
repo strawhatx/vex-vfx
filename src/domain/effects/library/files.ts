@@ -122,6 +122,16 @@ import koImpact from './ko.json';
 import bamImpact from './bam.json';
 import splashImpact from './splash.json';
 import bigsplashImpact from './bigsplash.json';
+import snowfall from './snowfall.json';
+import rain from './rain.json';
+import confetti from './confetti.json';
+import fireflies from './fireflies.json';
+import driftingEmbers from './drifting-embers.json';
+import magicDust from './magic-dust.json';
+import risingEmbers from './rising-embers.json';
+import energyOrbs from './energy-orbs.json';
+import risingAsh from './rising-ash.json';
+import sparkleTitle from './sparkle-title.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -246,4 +256,14 @@ export const PRESET_FILES: readonly unknown[] = [
   bamImpact,
   splashImpact,
   bigsplashImpact,
+  snowfall,
+  rain,
+  confetti,
+  fireflies,
+  driftingEmbers,
+  magicDust,
+  risingEmbers,
+  energyOrbs,
+  risingAsh,
+  sparkleTitle,
 ];

@@ -1,12 +1,15 @@
-// Lightning and aura on text: the letters' shape (a mask, usually at half the frame's size) made
+// Lightning, aura and particle emitters on text: the letters' shape (a mask, usually at half the frame's size) made
 // into what a tracked object gives the particle effects (its outline and where it is), so the same
 // simulations run on words as on people. Each text's simulation carries on while it plays; after a
 // jump (a seek, or its start), it's rebuilt from MAX_LIFE seconds before on the shape then, so a
 // frame comes out the same however it's reached.
 import type { FxSettings } from '@/domain/effects/palettes';
+import type { EmitterSpec } from '@/domain/effects/particles';
 import { encodeRle, type Shape, type TrackFrame } from '@/domain/tracking/types';
 import { FrameGeometry } from './geometry';
 import { MaskPainter } from './masks';
+import { ParticleSystem } from './particles/system';
+import { unit } from './particles/types';
 import { EffectSim, MAX_LIFE, type FxFrame } from './sim';
 import type { Ctx2D } from './sprites';
 
@@ -14,19 +17,23 @@ import type { Ctx2D } from './sprites';
 const STEP = 1 / 30,
   MAX_STEP = 0.25;
 
+// what runs on the letters: a built-in effect (s: which, its colors, size and strength), or an
+// emitter
+export type TextFx = { fx: FxSettings } | { emitter: EmitterSpec };
+
 export class TextParticles {
-  private sims = new Map<string, { sim: EffectSim; t: number }>();
+  private sims = new Map<string, { sim: EffectSim | ParticleSystem; t: number }>();
   private geo: FrameGeometry | null = null;
   private masks = new MaskPainter(1, 1);
   private W = 0;
   private H = 0;
 
-  // the effect (s: which, its colors, size and strength) on the letters in `mask`, at t seconds into
-  // the text, onto g (W x H); key: which text and effect, seed: which randomness
+  // the effect on the letters in `mask`, at t seconds into the text, onto g (W x H); key: which
+  // text and effect, seed: which randomness
   draw(
     g: Ctx2D,
     mask: OffscreenCanvas,
-    s: FxSettings,
+    s: TextFx,
     t: number,
     W: number,
     H: number,
@@ -55,19 +62,29 @@ export class TextParticles {
         hasShape: o.hasShape,
       };
     };
+    // (an emitter is sized by the text, and bursts at its start)
+    const scale = (f: FxFrame) => ({ u: unit(f.tgt, 1), intensity: 1, area: 1, W, H });
+    const step = (sim: EffectSim | ParticleSystem, f: FxFrame) => {
+      if ('fx' in s) (sim as EffectSim).step(f, s.fx);
+      else (sim as ParticleSystem).step(f, s.emitter, scale(f), f.t);
+    };
     let state = this.sims.get(key);
+    const wanted = 'fx' in s ? EffectSim : ParticleSystem;
+    if (state && !(state.sim instanceof wanted)) state = undefined;
     if (!state || t < state.t - 1e-6 || t - state.t > MAX_STEP) {
-      state = { sim: state?.sim ?? new EffectSim(seed), t: Math.max(0, t - MAX_LIFE) };
+      state = { sim: state?.sim ?? new wanted(seed), t: Math.max(0, t - MAX_LIFE) };
       state.sim.reset();
-      for (let u = state.t; u < t - 1e-6; u += STEP) state.sim.step(at(u, STEP), s);
+      for (let u = state.t; u < t - 1e-6; u += STEP) step(state.sim, at(u, STEP));
       this.sims.set(key, state);
     }
-    if (t > state.t + 1e-6) state.sim.step(at(t, t - state.t), s);
+    if (t > state.t + 1e-6) step(state.sim, at(t, t - state.t));
     state.t = t;
     const f = at(t, STEP);
-    state.sim.draw(g, f, s, {
-      maskGlow: (c, col, blur, alpha) => this.masks.glow(geo.maskCanvas, c, col, blur, alpha),
-    });
+    if ('fx' in s)
+      (state.sim as EffectSim).draw(g, f, s.fx, {
+        maskGlow: (c, col, blur, alpha) => this.masks.glow(geo.maskCanvas, c, col, blur, alpha),
+      });
+    else (state.sim as ParticleSystem).draw(g, f, s.emitter, scale(f));
   }
 
   // forgets the simulations of texts not drawn now

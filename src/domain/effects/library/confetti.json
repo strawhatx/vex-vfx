@@ -1,0 +1,125 @@
+{
+  "id": "confetti",
+  "name": "Confetti",
+  "group": "screen",
+  "category": "Particles",
+  "length": 4,
+  "fade": {
+    "in": 0,
+    "out": 0.5
+  },
+  "passes": [
+    {
+      "engine": "particle",
+      "kind": "emitter",
+      "params": {
+        "palette": "prism",
+        "from": "frame",
+        "rate": 14,
+        "burst": 40,
+        "life": 3.6,
+        "lifeRandom": 0.3,
+        "speed": 3,
+        "speedRandom": 0.6,
+        "direction": 180,
+        "spread": 40,
+        "gravity": 3,
+        "drag": 0.6,
+        "sway": 24,
+        "shape": "confetti",
+        "size": 1,
+        "sizeRandom": 0.4,
+        "colorStart": "hot",
+        "colorEnd": "hot",
+        "opacity": 1,
+        "fadeIn": 0.05,
+        "twinkle": 0,
+        "blend": "over"
+      }
+    },
+    {
+      "engine": "particle",
+      "kind": "emitter",
+      "params": {
+        "palette": "prism",
+        "from": "frame",
+        "rate": 14,
+        "burst": 40,
+        "life": 3.6,
+        "lifeRandom": 0.3,
+        "speed": 3,
+        "speedRandom": 0.6,
+        "direction": 180,
+        "spread": 40,
+        "gravity": 3,
+        "drag": 0.6,
+        "sway": 24,
+        "shape": "confetti",
+        "size": 1,
+        "sizeRandom": 0.4,
+        "colorStart": "bright",
+        "colorEnd": "bright",
+        "opacity": 1,
+        "fadeIn": 0.05,
+        "twinkle": 0,
+        "blend": "over"
+      }
+    },
+    {
+      "engine": "particle",
+      "kind": "emitter",
+      "params": {
+        "palette": "prism",
+        "from": "frame",
+        "rate": 14,
+        "burst": 40,
+        "life": 3.6,
+        "lifeRandom": 0.3,
+        "speed": 3,
+        "speedRandom": 0.6,
+        "direction": 180,
+        "spread": 40,
+        "gravity": 3,
+        "drag": 0.6,
+        "sway": 24,
+        "shape": "confetti",
+        "size": 1,
+        "sizeRandom": 0.4,
+        "colorStart": "deep",
+        "colorEnd": "deep",
+        "opacity": 1,
+        "fadeIn": 0.05,
+        "twinkle": 0,
+        "blend": "over"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 0.6666666666666666,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        },
+        {
+          "pass": 2,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        }
+      ]
+    }
+  ]
+}

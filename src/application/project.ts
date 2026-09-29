@@ -39,6 +39,7 @@ import {
 import {
   looksAt,
   lookRange,
+  particlesAt,
   newLook,
   placeLook,
   trimLook,
@@ -684,6 +685,11 @@ export class Project {
   // what the looks draw at film time t, in order
   looksAt(t: number) {
     return looksAt(this.looks, t);
+  }
+
+  // the particle emitters the looks draw over the frame at film time t
+  particlesAt(t: number) {
+    return particlesAt(this.looks, t);
   }
 
   // the texts on at film time t, as they're drawn

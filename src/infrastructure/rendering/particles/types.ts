@@ -2,7 +2,7 @@
 // themselves, and the drawing the renderer does for them.
 import type { Ctx2D } from '../sprites';
 
-export const MAX_LIFE = 2.2; // seconds: no particle lives longer
+export const MAX_LIFE = 4.2; // seconds: no particle lives longer
 export const MAX_PARTS = 2600;
 
 // the object, as an ellipse, and how it's moving
@@ -36,48 +36,8 @@ export interface Layers {
   fire?: (ctx: Ctx2D, f: FxFrame, u: number, intensity: number) => boolean;
 }
 
-export type Particle =
-  // f: flame tongue
-  | {
-      k: 'f';
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      life: number;
-      max: number;
-      s: number;
-      seed: number;
-      inner: boolean;
-    }
-  // e: ember, m: smoke
-  | {
-      k: 'e' | 'm';
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      life: number;
-      max: number;
-      s: number;
-      seed: number;
-    }
-  // w: aura wisp, g: aura glint (both relative to the target, so they stick to the body)
-  | {
-      k: 'w';
-      ox: number;
-      oy: number;
-      out: number;
-      rise: number;
-      life: number;
-      max: number;
-      len: number;
-      wid: number;
-      seed: number;
-    }
-  | { k: 'g'; ox: number; oy: number; rise: number; life: number; max: number; s: number; seed: number }
-  // s: spark
-  | { k: 's'; x: number; y: number; vx: number; vy: number; life: number; max: number };
+// lightning's sparks (the other effects' particles are the particle engine's: see system.ts)
+export type Particle = { k: 's'; x: number; y: number; vx: number; vy: number; life: number; max: number };
 
 // smooth pseudo-noise, -1..1
 export const noise = (t: number, s: number) =>

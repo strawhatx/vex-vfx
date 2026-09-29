@@ -2,8 +2,8 @@
 // effects/presets.ts). A look lasts from when it's placed for as long as it's set to, over whatever
 // plays then; each group has a timeline layer of its own. Like music (see music.ts), a look belongs
 // to the film, not to one video. A text look also keeps its own words and where it's placed.
-import { envelope } from '../effects/curves';
-import { passAt, drawsAnything, type DrawnPass, type LookPass } from '../effects/passes';
+import { envelope, motionAt } from '../effects/curves';
+import { passAt, drawsAnything, type DrawnPass, type LookPass, type ParticlePass } from '../effects/passes';
 import { arriving, type LetterAnim } from '../effects/letters';
 import { NO_ANIM, poseAt, type ClipAnim } from '../effects/animation';
 import {
@@ -24,7 +24,7 @@ import {
   type LookGroup,
   type Preset,
 } from '../effects/presets';
-import type { ParamValue } from '../effects/params';
+import type { ParamValue, Params } from '../effects/params';
 
 export interface LookClip {
   id: number;
@@ -123,10 +123,45 @@ export function looksAt(clips: readonly LookClip[], t: number): DrawnPass[] {
   return on.flatMap(c => {
     const local = t - c.at,
       strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
-    return (passesWith(c.preset, c.values) as LookPass[])
+    return passesWith(c.preset, c.values)
+      .filter((p): p is LookPass => p.engine === 'color' || p.engine === 'screen')
       .map(p => passAt(p, local, c.len, strength, c.id))
       .filter(drawsAnything);
   });
+}
+
+// a particle emitter a look draws over the whole frame (see effects/particles.ts)
+export interface DrawnEmitter {
+  key: string; // which look and pass
+  seed: number;
+  params: Params; // `amount` scaled by the look's fades and the pass's motion
+  local: number; // seconds into the look
+}
+
+// the emitters of the looks on at film time t (drawn over the looks, under the texts)
+export function particlesAt(clips: readonly LookClip[], t: number): DrawnEmitter[] {
+  return onAt(clips, t)
+    .filter(c => c.preset.group !== 'text')
+    .sort((a, b) => (b.row ?? 0) - (a.row ?? 0))
+    .flatMap(c => {
+      const local = t - c.at,
+        strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
+      return passesWith(c.preset, c.values).flatMap((p, k) =>
+        p.engine === 'particle'
+          ? [
+              {
+                key: `${c.id}:${k}`,
+                seed: c.id * 31 + k,
+                params: {
+                  ...p.params,
+                  amount: (p.params.amount as number) * strength * motionAt(p.motion, local, c.len, c.id),
+                },
+                local,
+              },
+            ]
+          : [],
+      );
+    });
 }
 
 const onAt = (clips: readonly LookClip[], t: number) =>
@@ -140,7 +175,9 @@ export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
     .map(c => {
       const local = t - c.at;
       const strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
-      const passes = passesWith(c.preset, c.values) as TextPass[];
+      const passes = passesWith(c.preset, c.values).filter(
+        (p): p is TextPass | ParticlePass => p.engine === 'text' || p.engine === 'particle',
+      );
       const d = textAt(c.id, passes, c.text!, local, c.len, strength, c.id);
       return { ...d, pose: poseAt(c.anim, local, c.len) };
     });
@@ -148,7 +185,9 @@ export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
 
 // a text preset as its button shows it: its words, in the middle, all come in
 export function textPreviewOf(preset: Preset): DrawnText {
-  const passes = passesWith(preset, controlDefaults(preset)) as TextPass[];
+  const passes = passesWith(preset, controlDefaults(preset)).filter(
+    (p): p is TextPass | ParticlePass => p.engine === 'text' || p.engine === 'particle',
+  );
   const inn = passes.find(p => p.kind === 'in')?.params;
   const n = Array.from(startWords(passes)).length;
   const settled = inn
@@ -165,7 +204,9 @@ const PREVIEW_FLASH = 0.5;
 // defaults, at whichever of a dozen moments over its length they're strongest together (a flash
 // softened, so the picture under it still shows)
 export function previewOf(preset: Preset): DrawnPass[] {
-  const passes = passesWith(preset, controlDefaults(preset)) as LookPass[],
+  const passes = passesWith(preset, controlDefaults(preset)).filter(
+      (p): p is LookPass => p.engine === 'color' || p.engine === 'screen',
+    ),
     len = preset.length;
   let best: DrawnPass[] = [],
     most = -1;

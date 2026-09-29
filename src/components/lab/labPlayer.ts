@@ -7,12 +7,13 @@
 import type { Preset } from '@/domain/effects/presets';
 import { TRANSITION_HOLD, previewLength } from '@/domain/effects/draft';
 import { transitionAt } from '@/domain/project/transitions';
-import { looksAt, newLook, textsAt } from '@/domain/project/looks';
+import { looksAt, newLook, particlesAt, textsAt } from '@/domain/project/looks';
 import { NO_ANIM, isAnimKind, poseAt, type ClipAnim } from '@/domain/effects/animation';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
+import { FrameParticles } from '@/infrastructure/rendering/frameParticles';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import { workSize, type TrackFrame } from '@/domain/tracking/types';
 import { loadFonts } from '../editor/fonts';
@@ -35,6 +36,7 @@ export class LabPlayer {
   private ctx: CanvasRenderingContext2D;
   private painter = new LookPainter();
   private texts = new TextClipPainter();
+  private particles = new FrameParticles();
   private fonts: Fonts = FALLBACK_FONTS;
   private scene = testScene(DAY);
   // what a transition cuts to
@@ -173,6 +175,7 @@ export class LabPlayer {
     const clip = { ...newLook(1, this.preset, 0, this.preset.length), row: 0 };
     const gpu = this.painter.apply(ctx, looksAt([clip], this.state.t));
     if (gpu !== this.state.gpu) this.set({ gpu });
+    this.particles.draw(ctx, particlesAt([clip], this.state.t));
     this.texts.draw(ctx, textsAt([clip], this.state.t), this.fonts);
     this.drawCompare(src, sw, sh, W, H);
   }

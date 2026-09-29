@@ -41,7 +41,7 @@ import type { MusicClip } from '@/domain/project/music';
 import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import type { LookGroup } from '@/domain/effects/presets';
-import { previewOf, textPreviewOf, type LookClip } from '@/domain/project/looks';
+import { newLook, particlesAt, previewOf, textPreviewOf, type LookClip } from '@/domain/project/looks';
 import type { TextPlace } from '@/domain/effects/typeset';
 import type { PartOp } from '@/domain/project/parts';
 import { nextFlagged, type Flag } from '@/domain/project/review';
@@ -62,6 +62,7 @@ import { probeVideo } from '@/infrastructure/video/probe';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
+import { FrameParticles } from '@/infrastructure/rendering/frameParticles';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { loadFonts } from './fonts';
@@ -290,6 +291,8 @@ const SAVE_AFTER_MS = 1000,
   SAVE_AT_LEAST_MS = 5000;
 // how wide the presets' pictures are (px)
 const LOOK_THUMB_W = 144;
+// how far into a preset its thumbnail shows its particles (s)
+const THUMB_PARTICLES_AT = 1.5;
 
 // one video of the film, in the player
 interface ReelView {
@@ -319,6 +322,7 @@ export class Player {
   // the looks, drawn over the whole frame on the GPU, then the film's text over them
   private looks = new LookPainter();
   private textClips = new TextClipPainter();
+  private frameParticles = new FrameParticles();
   // drawing the frame without them (for the presets' pictures)
   private plain = false;
   // a group whose presets' pictures are wanted, made once a frame is drawn
@@ -1193,6 +1197,7 @@ export class Player {
       this.redraw();
     }
     const texts = new TextClipPainter(),
+      particles = new FrameParticles(),
       fonts = this.fonts ?? FALLBACK_FONTS;
     const made: Record<string, string> = {};
     for (const p of presets()) {
@@ -1206,6 +1211,9 @@ export class Player {
         const out = this.looks.render(frame, w, h, previewOf(p));
         if (!out) break; // (no GPU here: the menus show swatches)
         pg.drawImage(out, 0, 0);
+        // (its particles, a while in)
+        const at = Math.min(THUMB_PARTICLES_AT, p.length * 0.6);
+        particles.draw(pg, particlesAt([newLook(1, p, 0, p.length)], at));
       }
       const blob = await pic.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
       if (this.destroyed) return;
@@ -1954,6 +1962,7 @@ export class Player {
         });
       if (!this.plain && (this.recorder || this.ui.isolated === null)) {
         this.looks.apply(ctx, this.project.looksAt(now));
+        this.frameParticles.draw(ctx, this.project.particlesAt(now));
         this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
           selected: this.ui.selected,
           outline: outline && paused,

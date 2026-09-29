@@ -4,12 +4,16 @@
 // forward just steps them along.
 import type { LayerSpec } from '@/application/ports';
 import { PARTICLE_KINDS, bodyAt, fxOf } from '@/domain/effects/body';
-import type { ObjectPass } from '@/domain/effects/passes';
+import type { BodyPass } from '@/domain/effects/passes';
+import { specOf } from '@/domain/effects/particles';
+import { ParticleSystem } from './particles/system';
+import { areaMul, unit } from './particles/types';
 import { FrameGeometry } from './geometry';
 import { EffectSim, MAX_LIFE, type FxFrame } from './sim';
 
 export class Layer {
   private sims = new Map<number, EffectSim>(); // by pass
+  private systems = new Map<number, ParticleSystem>(); // a particle emitter pass's, by pass
   private simIdx = -1; // the frame the simulations are at
   private dirty = true; // they have to be rebuilt
   private passKey: string;
@@ -39,8 +43,21 @@ export class Layer {
     return s;
   }
 
+  // the particle system of emitter pass k
+  system(k: number) {
+    let s = this.systems.get(k);
+    if (!s) this.systems.set(k, (s = new ParticleSystem(this.spec.id * 7919 + k)));
+    return s;
+  }
+
+  // what an emitter is sized and spread by on frame f: its object's size, and the frame's
+  scale(f: FxFrame) {
+    const g = this.geo;
+    return { u: unit(f.tgt, 1), intensity: 1, area: areaMul(f.tgt), W: g.W * g.q, H: g.H * g.q };
+  }
+
   // its passes at frame i, their strength moved over time
-  passesAt(i: number): ObjectPass[] {
+  passesAt(i: number): BodyPass[] {
     const { passes, range, frames, id } = this.spec;
     if (!passes) return [];
     return bodyAt(passes, (frames[i]?.t ?? 0) - range.s, range.e - range.s, id);
@@ -73,13 +90,17 @@ export class Layer {
       // no particle outlives MAX_LIFE, so simulating from that far back (or the shot's start)
       // rebuilds the state exactly
       for (const s of this.sims.values()) s.reset();
+      for (const s of this.systems.values()) s.reset();
       j = idx;
       while (j > shotStart && frames[j - 1].t >= frames[idx].t - MAX_LIFE) j--;
     }
     for (; j <= idx; j++) {
       const f = this.fxFrame(j, shot);
+      const local = frames[j].t - this.spec.range.s;
       this.passesAt(j).forEach((p, k) => {
-        if (PARTICLE_KINDS.includes(p.kind)) this.sim(k).step(f, fxOf(p.kind, p.params, this.spec.settings));
+        if (p.engine === 'particle') this.system(k).step(f, specOf(p.params), this.scale(f), local);
+        else if (PARTICLE_KINDS.includes(p.kind))
+          this.sim(k).step(f, fxOf(p.kind, p.params, this.spec.settings));
       });
     }
     this.simIdx = idx;

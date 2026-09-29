@@ -13,6 +13,7 @@ export const PALETTES = [
   { name: 'Void', c: ['#fbeaff', '#d98bff', '#8a2be2', '#3a0a6b'] },
   { name: 'Red', c: ['#fff0f0', '#ff6b6b', '#ff1f3d', '#8a0019'] },
   { name: 'Prism', c: ['#ffd6f6', '#62d8ff', '#a24bff', '#ff8a1f'] },
+  { name: 'Ash', c: ['#ffffff', '#d9d4ce', '#8f8984', '#3b3734'] },
 ] as const;
 
 export const palIndex = (name: (typeof PALETTES)[number]['name']) => PALETTES.findIndex(p => p.name === name);

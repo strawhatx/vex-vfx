@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { FxSettings } from '../effects/palettes';
+import { parsePreset } from '../effects/presets';
 import { encodeRle, paintRle, type ClipFrame, type Shape } from '../tracking/types';
 import {
   hitFrame,
@@ -6,6 +8,7 @@ import {
   isPinned,
   nearestOther,
   newImpact,
+  objectPasses,
   newTrack,
   assignRows,
   rangeFrames,
@@ -296,5 +299,22 @@ describe('impact families', () => {
     const wave = newImpact(5, clip, FX, 'ground', 5, 3);
     expect(wave.name).toBe('Shockwave 5');
     expect(isPinned(wave)).toBe(true);
+  });
+});
+
+describe('objectPasses', () => {
+  it("keeps a body preset's object and particle passes", () => {
+    const preset = parsePreset({
+      id: 'dust',
+      name: 'Dust',
+      group: 'body',
+      length: 3,
+      passes: [
+        { engine: 'object', kind: 'edge' },
+        { engine: 'particle', kind: 'emitter' },
+      ],
+    });
+    const t = { kind: 'effect', spot: false, fx: {} as FxSettings, body: { preset, values: {} } } as const;
+    expect(objectPasses(t)?.map(p => `${p.engine}:${p.kind}`)).toEqual(['object:edge', 'particle:emitter']);
   });
 });

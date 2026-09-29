@@ -2,7 +2,7 @@
 // in infrastructure/ implement these; tests use in-memory fakes.
 import type { ImpactLook, ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
-import type { ObjectPass } from '@/domain/effects/passes';
+import type { BodyPass } from '@/domain/effects/passes';
 import type { PackItem } from '@/domain/project/effectClips';
 import type { SavedFilm } from './project';
 import type { Aim, Cam } from '@/domain/effects/laser';
@@ -96,7 +96,7 @@ export interface LayerSpec {
   settings: FxSettings;
   // what it draws on its object, back to front (see effects/body.ts); null: drawn its own way
   // (water, lasers, text, a glitch over the whole frame, impacts, cutouts)
-  passes: ObjectPass[] | null;
+  passes: BodyPass[] | null;
   color: string;
   range: { s: number; e: number };
   aim: Aim; // for a laser

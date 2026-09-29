@@ -18,11 +18,11 @@ src/
 ├── domain/          # pure TypeScript: no React, DOM, canvas, workers or Next.js
 │   ├── project/     #   effects on the timeline: ranges, keyframes, stacking (the editing rules)
 │   ├── tracking/    #   track data types, clip time, body parts (from pose/hand/face landmarks)
-│   └── effects/     #   effect settings and palettes; the engines' passes and presets (library/: one JSON per preset)
+│   └── effects/     #   effect settings and palettes; the engines' passes and presets (library/: one JSON per preset); particles.ts: emitters as data
 ├── application/     # use cases: editor.ts (actions + job queue), ports.ts (interfaces it needs)
 ├── infrastructure/  # browser adapters that implement the ports
 │   ├── analysis/    #   worker, MediaPipe models (segmenter, pose, hands, face), object and body-part trackers (implements Analysis)
-│   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); body effects as passes; gpu/: color, screen, tint and dissolve passes
+│   ├── rendering/   #   canvas renderer, particle system (particles/system.ts, on objects, text and the frame), WebGL fire (implements EffectLayers); body effects as passes; gpu/: color, screen, tint and dissolve passes
 │   ├── storage/     #   films and the effects library, kept on this device in IndexedDB (implements FilmStore, PackLibrary)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root

@@ -2,7 +2,8 @@
 //   - type: the words it starts with, its font, size and letter spacing (the first one counts)
 //   - fill, stroke, glow, shadow, fire, lightning, aura: style layers, drawn in order, so the first
 //     is at the back. Fire, lightning and aura come off the letters' shape, as they do off a
-//     tracked object.
+//     tracked object; so do the particle engine's emitters, which a text preset can hold too
+//     (drawn in order with the styles).
 //   - in, out: how the letters come in and go out (the first of each counts)
 // A text clip keeps its own words and where it's placed; what it draws at a moment is worked out
 // here, letter by letter, so any frame draws the same.
@@ -12,6 +13,7 @@ import { FONTS } from './text';
 import { LETTER_ANIMS, REST, combine, letterIn, letterOut, type LetterAnim, type Pose } from './letters';
 import { PALETTES } from './palettes';
 import { choice, color, num, text, type ParamSpec, type Params } from './params';
+import type { ParticlePass } from './passes';
 
 export type TextKind =
   'type' | 'fill' | 'stroke' | 'glow' | 'shadow' | 'fire' | 'lightning' | 'aura' | 'in' | 'out';
@@ -127,13 +129,13 @@ export interface DrawnText {
   size: number;
   spacing: number;
   place: Omit<TextPlace, 'words'>;
-  styles: { kind: TextKind; values: Params }[]; // back to front, `amount` scaled
+  styles: { kind: TextKind | 'emitter'; values: Params }[]; // back to front, `amount` scaled
   t: number; // seconds into it (fire moves with it)
   pose: ClipPose; // how the clip's animation moves the whole of it (see animation.ts)
 }
 
 // the words a text starts with: its type's
-export function startWords(passes: readonly TextPass[]) {
+export function startWords(passes: readonly { kind: string; params: Params }[]) {
   const type = passes.find(p => p.kind === 'type');
   return (type?.params.words as string | undefined) ?? 'TITLE';
 }
@@ -146,19 +148,20 @@ const typeOf = (passes: readonly TextPass[]) =>
 // which flicker (each clip its own)
 export function textAt(
   id: number,
-  passes: readonly TextPass[],
+  passes: readonly (TextPass | ParticlePass)[],
   place: TextPlace,
   t: number,
   len: number,
   strength: number,
   seed: number,
 ): DrawnText {
-  const type = typeOf(passes);
+  const texts = passes.filter((p): p is TextPass => p.engine === 'text');
+  const type = typeOf(texts);
   const words = type.caps === 'upper' ? place.words.toUpperCase() : place.words;
   const letters = Array.from(words),
     n = letters.length;
-  const inn = passes.find(p => p.kind === 'in')?.params,
-    out = passes.find(p => p.kind === 'out')?.params;
+  const inn = texts.find(p => p.kind === 'in')?.params,
+    out = texts.find(p => p.kind === 'out')?.params;
   const poses = letters.map((_, i) => {
     let pose = REST;
     if (inn)
@@ -175,7 +178,7 @@ export function textAt(
     return pose;
   });
   const styles = passes
-    .filter(p => STYLES.has(p.kind))
+    .filter(p => p.engine === 'particle' || STYLES.has(p.kind))
     .map(p => ({
       kind: p.kind,
       values: {

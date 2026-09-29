@@ -1,0 +1,54 @@
+{
+  "id": "rain",
+  "name": "Rain",
+  "group": "screen",
+  "category": "Particles",
+  "length": 5,
+  "fade": {
+    "in": 0.3,
+    "out": 0.5
+  },
+  "passes": [
+    {
+      "engine": "particle",
+      "kind": "emitter",
+      "params": {
+        "palette": "blue",
+        "from": "frame",
+        "rate": 260,
+        "burst": 120,
+        "life": 0.5,
+        "lifeRandom": 0.3,
+        "speed": 70,
+        "speedRandom": 0.25,
+        "direction": 188,
+        "spread": 2,
+        "drag": 0,
+        "shape": "spark",
+        "size": 0.1,
+        "sizeRandom": 0.3,
+        "colorStart": "white",
+        "colorEnd": "hot",
+        "opacity": 0.6,
+        "fadeIn": 0.15,
+        "blend": "over"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 0.6666666666666666,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import { fxOf, type BodyKind } from '@/domain/effects/body';
 import { gradeOf } from '@/domain/effects/color';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { ObjectPass } from '@/domain/effects/passes';
+import { specOf } from '@/domain/effects/particles';
 import { ClonePainter } from './clones';
 import { LookPainter } from './gpu/looks';
 import { unit } from './particles/types';
@@ -236,6 +237,10 @@ export class Renderer implements EffectLayers {
     l.geo.prepareCanvas(l.spec.frames[idx]);
     passes.forEach((p, k) => {
       if ((p.kind === 'glitch') !== glitches) return;
+      if (p.engine === 'particle') {
+        l.system(k).draw(this.ctx, f, specOf(p.params), l.scale(f));
+        return;
+      }
       const s = fxOf(p.kind, p.params, l.spec.settings);
       const particles = () => this.particles(l, k, f, s, mask);
       const draw: Record<BodyKind, () => void> = {

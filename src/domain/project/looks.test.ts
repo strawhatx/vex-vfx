@@ -4,6 +4,7 @@ import {
   looksAt,
   lookRange,
   newLook,
+  particlesAt,
   placeLook,
   previewOf,
   textPreviewOf,
@@ -169,5 +170,50 @@ describe('text on the film', () => {
 
   it('shows on its button with all its letters in', () => {
     expect(textPreviewOf(title).poses.every(p => p.alpha === 1)).toBe(true);
+  });
+});
+
+describe('particles on the film', () => {
+  const snow = parsePreset({
+    id: 'snow',
+    name: 'Snow',
+    group: 'screen',
+    length: 4,
+    fade: { in: 1 },
+    passes: [
+      { engine: 'screen', kind: 'flash', params: { amount: 0.5 } },
+      { engine: 'particle', kind: 'emitter', params: { from: 'frame', amount: 1 } },
+    ],
+  });
+  const sparkle = parsePreset({
+    id: 'sparkle',
+    name: 'Sparkle',
+    group: 'text',
+    length: 2,
+    passes: [
+      { engine: 'text', kind: 'type', params: { words: 'HI' } },
+      { engine: 'text', kind: 'fill' },
+      { engine: 'particle', kind: 'emitter', params: { shape: 'star' } },
+    ],
+  });
+
+  it("are a screen look's emitters, faded with it, from its start", () => {
+    const c = newLook(3, snow, 2, 20);
+    expect(particlesAt([c], 1)).toEqual([]);
+    const [e] = particlesAt([c], 2.5);
+    expect(e).toMatchObject({ key: '3:1', local: 0.5 });
+    expect(e.params.amount).toBeCloseTo(0.5);
+    expect(e.params.from).toBe('frame');
+  });
+
+  it("aren't drawn as the look's passes", () => {
+    expect(looksAt([newLook(3, snow, 0, 20)], 2).map(d => d.engine)).toEqual(['screen']);
+    expect(previewOf(snow).map(d => d.engine)).toEqual(['screen']);
+  });
+
+  it("on a text, are among its styles in order, and aren't the frame's", () => {
+    const c = newLook(1, sparkle, 0, 20);
+    expect(textsAt([c], 1)[0].styles.map(s => s.kind)).toEqual(['fill', 'emitter']);
+    expect(particlesAt([c], 1)).toEqual([]);
   });
 });

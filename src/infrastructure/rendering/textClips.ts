@@ -12,6 +12,7 @@ import type { Pose } from '@/domain/effects/letters';
 import { FireShader } from './fireShader';
 import { fontFor, type Fonts } from './fonts';
 import { applyPose } from './pose';
+import { specOf } from '@/domain/effects/particles';
 import { TextParticles } from './textParticles';
 
 // what the particle effects need beyond a pass's own settings (colors, size, strength)
@@ -158,13 +159,15 @@ export class TextClipPainter {
         g.clearRect(0, 0, W, H);
         const fire = this.drawFire(shape(), t, laid, s.values);
         if (fire) put(fire, 'lighter');
-      } else if (s.kind === 'lightning' || s.kind === 'aura') {
-        // (added onto the frame too, like the particle effects on objects)
+      } else if (s.kind === 'lightning' || s.kind === 'aura' || s.kind === 'emitter') {
+        // (added onto the frame too, like the particle effects on objects; an emitter drawn over
+        // blends its own way)
         put(this.layer);
         g.clearRect(0, 0, W, H);
-        const fx = fxOf(s.kind, s.values, BASE_FX);
+        const fx =
+          s.kind === 'emitter' ? { emitter: specOf(s.values) } : { fx: fxOf(s.kind, s.values, BASE_FX) };
         this.particles.draw(g, shape(), fx, t.t, W, H, `${t.id}:${k}`, t.id * 31 + k);
-        put(this.layer, 'lighter');
+        put(this.layer, s.kind === 'emitter' && s.values.blend === 'over' ? 'source-over' : 'lighter');
         g.clearRect(0, 0, W, H);
       } else
         this.eachLetter(g, t, laid, box, (pose, letter) => style(g, s.kind, s.values, letter, laid.px, pose));
