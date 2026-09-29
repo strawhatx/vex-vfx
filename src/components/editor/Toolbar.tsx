@@ -67,9 +67,10 @@ export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[]
   { id: 'water', label: 'Water', icon: I.water },
 ];
 
-// the other effect categories; Elements (first) and Impact (last) open menus of their own. (Text
-// has a menu of its own, beside Effects.)
+// the other effect categories; Elements (first) and Impact (last) open menus of their own. (Text on
+// the film has a menu of its own, beside Effects: this is text that follows an object.)
 export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
+  { id: 'text', label: 'Tracked text', icon: I.text },
   { id: 'sparks', label: 'Sparks', icon: I.effects },
   { id: 'laser', label: 'Laser', icon: I.laser },
   { id: 'outline', label: 'Outline', icon: I.outline },
@@ -102,6 +103,7 @@ export function toolsFor(
     objects: number;
     laser: boolean;
     looks: boolean; // the selected effect has styles of its own (Outline, Glitch, Text)
+    text: boolean; // the selected look is a text
     words: boolean; // the selected effect is Text: its words can be changed
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
@@ -202,7 +204,7 @@ export function toolsFor(
   if (mode === 'look')
     return [
       sheet('presets', 'Style', I.effects),
-      sheet('controls', 'Adjust', I.adjust),
+      s.text ? sheet('controls', 'Edit', I.text) : sheet('controls', 'Adjust', I.adjust),
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },

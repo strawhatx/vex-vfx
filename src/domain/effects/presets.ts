@@ -1,16 +1,17 @@
 // A preset: a ready-made effect as data. It's a stack of passes (see passes.ts), a few friendly
 // controls that drive their settings (a "Strength" slider, a color), and how it fades in and out.
 // New effects are new presets, not new code: they're made in the Preset Lab and kept as JSON files
-// (see presets/). A clip keeps the preset it was made from and its controls' values.
+// (see library/). A clip keeps the preset it was made from and its controls' values.
 //
 // Groups: where a preset is offered, and which timeline layer its clips go on.
 //   - filter: color looks, on the Filters layer
-//   - screen: effects over the whole picture, on the Effects layer
+//   - screen: effects over the whole picture, on the Video effects layer
+//   - text: styled, animated words, on the Text layer
 import { fitParam, isColor, type ParamValue } from './params';
 import { fitPass, paramsOf, type Pass } from './passes';
 
-export type PresetGroup = 'filter' | 'screen';
-export const PRESET_GROUPS: readonly PresetGroup[] = ['filter', 'screen'];
+export type PresetGroup = 'filter' | 'screen' | 'text';
+export const PRESET_GROUPS: readonly PresetGroup[] = ['filter', 'screen', 'text'];
 
 // A control drives settings of the preset's passes. A slider runs 0..1 and sets each setting it
 // drives from `from` (at 0) to `to` (at 1); a color sets each one to itself.

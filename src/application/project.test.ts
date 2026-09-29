@@ -291,7 +291,7 @@ describe('looks over the film', () => {
       [g, 'filter', 1], // (overlapping the first)
       [s, 'screen', 0],
     ]);
-    expect(state.lookRows).toEqual({ filter: 2, screen: 1 });
+    expect(state.lookRows).toEqual({ filter: 2, screen: 1, text: 0 });
     expect(state.hasEffects).toBe(true);
   });
 

@@ -140,7 +140,6 @@ export const EMPTY_STATE: EditorState = {
   job: null,
   lanes: [],
   rows: 0,
-  textRows: 0,
   cutRows: 0,
   hasEffects: false,
   scenes: [],

@@ -25,6 +25,7 @@ src/
 │   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); gpu/: looks (color and screen passes)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root
+├── components/lab/     # the Preset Lab (/lab/color, /lab/screen): builds presets on a test clip; labPlayer.ts is its root
 └── app/             # Next.js routes
 ```
 
@@ -32,7 +33,7 @@ src/
 1. `domain/` imports only `domain/`. No `window`, `document`, canvas, `Worker`, React, clock or random: pass time and IDs in.
 2. `application/` imports only `domain/`. It reaches the outside only through the interfaces in `application/ports.ts`, named by what they do (`Analysis`, `EffectLayers`), never by technology.
 3. `infrastructure/` may import `domain/` and `application/` (to implement ports), never `components/` or `app/`.
-4. In `components/`, only `player.ts` imports `infrastructure/`: it builds the adapters and plugs them into the `Editor`. React components talk to the `Player` and use domain types for display.
+4. In `components/`, only `player.ts` (the editor) and `lab/labPlayer.ts` (the Preset Lab) import `infrastructure/`: they build the adapters and plug them in. React components talk to them and use domain types for display.
 5. New editing behaviour goes in `Editor` (application) with its rules in `domain/`; `player.ts` only turns taps, playback and export into calls on it.
 6. Rules and use cases get tests (`npm test`, Vitest) with in-memory fakes for the ports, like `application/editor.test.ts`. Don't mock the browser to test a rule.
 7. Don't add a port or layer without a real outside dependency behind it; pure helpers are just functions.

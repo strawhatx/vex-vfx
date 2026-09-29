@@ -337,11 +337,11 @@ export function duplicate(t: Track, id: number, clip: ClipFrame[]): Track {
   return d;
 }
 
-// the timeline layer a clip sits on: cutouts on Overlay, text on Text, and effects and impacts on
-// Effects. Each layer has rows of its own (see assignRows).
-export type LayerKind = 'overlay' | 'text' | 'effects';
-export const layerOf = (c: { kind: TrackKind; fx: FxSettings }): LayerKind =>
-  c.kind === 'cutout' ? 'overlay' : c.kind === 'effect' && c.fx.effect === 'text' ? 'text' : 'effects';
+// the timeline layer a clip sits on: cutouts on Overlay, and effects and impacts (text following
+// an object too) on Effects; the Text layer is the film's text (see looks.ts). Each layer has rows of
+// its own (see assignRows).
+export type LayerKind = 'overlay' | 'effects';
+export const layerOf = (c: { kind: TrackKind }): LayerKind => (c.kind === 'cutout' ? 'overlay' : 'effects');
 
 // assignRows for each layer on its own: each clip's row within its layer, and how many rows each
 // layer has
@@ -349,7 +349,7 @@ export function assignLayerRows(
   clips: readonly { range: { s: number; e: number }; layer: LayerKind; row: number | null }[],
 ) {
   const rows = new Array<number>(clips.length),
-    counts: Record<LayerKind, number> = { overlay: 0, text: 0, effects: 0 };
+    counts: Record<LayerKind, number> = { overlay: 0, effects: 0 };
   for (const layer of Object.keys(counts) as LayerKind[]) {
     const mine = clips.map((c, k) => (c.layer === layer ? k : -1)).filter(k => k >= 0);
     const got = assignRows(

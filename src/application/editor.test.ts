@@ -322,12 +322,12 @@ describe('body parts', () => {
     expect(await answer).toBeNull();
   });
 
-  it('text has a layer of its own on the timeline', () => {
+  it('text following an object sits with the other effects', () => {
     editor.addTrack(14, { x: 50, y: 50 }, { effect: 'fire' });
     editor.addTrack(14, { x: 50, y: 50 }, { effect: 'text', text: 'HI' });
-    // both on the first row of their own layers, though they overlap
-    expect(state.lanes.map(l => l.row)).toEqual([0, 0]);
-    expect([state.rows, state.textRows]).toEqual([1, 1]);
+    // (they overlap, so on rows of their own)
+    expect(state.lanes.map(l => l.row)).toEqual([0, 1]);
+    expect(state.rows).toBe(2);
   });
 
   it('an effect on a body part tracks that part and is named after it', () => {

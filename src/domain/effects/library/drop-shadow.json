@@ -1,0 +1,81 @@
+{
+  "id": "drop-shadow",
+  "name": "Heavy Drop",
+  "group": "text",
+  "category": "Basic",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "DROP",
+        "font": "bebas",
+        "size": 0.18,
+        "spacing": 0.04
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "shadow",
+      "params": {
+        "amount": 1,
+        "color": "#e0312b",
+        "x": 0.35,
+        "y": 0.35,
+        "blur": 0
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#ffffff"
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "drop",
+        "duration": 0.6,
+        "stagger": 0.06
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "fade",
+        "duration": 0.25,
+        "stagger": 0
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "color",
+      "label": "Color",
+      "type": "color",
+      "def": "#ffffff",
+      "drives": [
+        {
+          "pass": 2,
+          "param": "color"
+        }
+      ]
+    },
+    {
+      "id": "shadow",
+      "label": "Shadow color",
+      "type": "color",
+      "def": "#e0312b",
+      "drives": [
+        {
+          "pass": 1,
+          "param": "color"
+        }
+      ]
+    }
+  ]
+}

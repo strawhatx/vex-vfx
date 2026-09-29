@@ -16,7 +16,6 @@ import type { LayerSpec } from './ports';
 export interface Timeline {
   lanes: Lane[];
   rows: number; // timeline rows the effects and impacts are stacked on
-  textRows: number; // timeline rows the text is stacked on
   cutRows: number; // timeline rows the cutouts are stacked on, with the footage
   hasEffects: boolean; // some clip has something to draw: an explosion, or an object found
 }
@@ -49,7 +48,6 @@ export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly 
   return {
     lanes: shown,
     rows: counts.effects,
-    textRows: counts.text,
     cutRows: 0,
     hasEffects: tracks.some(t => isPinned(t) || t.frames.some(f => f.shapes.length)),
   };

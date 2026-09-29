@@ -1,12 +1,16 @@
-// A look (a filter or screen effect) on its layer: a bar for when it's on, with its name. Tap to
+// A look (a filter, screen effect or text) on its layer: a bar for when it's on, with its name (a
+// text's own words). Tap to
 // select, drag to move it (or onto another row); selected, grips on its ends trim it.
 import type { CSSProperties } from 'react';
 import { lookRange } from '@/domain/project/looks';
 import { mmss } from '@/domain/tracking/timeLabels';
 import { Icon, I } from '../icons';
+import type { PresetGroup } from '@/domain/effects/presets';
 import type { LookUi } from '../player';
 import { Grips, useSlide, type ClipActions } from './FxClips';
 import type { Scale } from './layout';
+
+const GROUP_ICONS: Record<PresetGroup, string> = { filter: I.color, screen: I.effects, text: I.text };
 
 export function LookClip({
   look: c,
@@ -40,8 +44,8 @@ export function LookClip({
         {...slide.handlers(() => on.select(c.id))}
       >
         <span className="fx-label">
-          <Icon d={c.preset.group === 'filter' ? I.color : I.effects} size={12} />
-          {c.name}
+          <Icon d={GROUP_ICONS[c.preset.group]} size={12} />
+          {c.text ? c.text.words || c.name : c.name}
         </span>
       </button>
       {selected && !slide.dragging && <Grips lane={placed} scale={scale} duration={duration} on={on} />}

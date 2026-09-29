@@ -26,7 +26,15 @@ export interface ChoiceParam {
   def: string;
 }
 
-export type ParamSpec = NumberParam | ColorParam | ChoiceParam;
+export interface TextParam {
+  key: string;
+  label: string;
+  type: 'text';
+  max: number; // characters
+  def: string;
+}
+
+export type ParamSpec = NumberParam | ColorParam | ChoiceParam | TextParam;
 export type ParamValue = number | string;
 export type Params = Record<string, ParamValue>;
 
@@ -51,6 +59,14 @@ export const choice = (
   def: string,
 ): ChoiceParam => ({ key, label, type: 'choice', options, def });
 
+export const text = (key: string, label: string, max: number, def: string): TextParam => ({
+  key,
+  label,
+  type: 'text',
+  max,
+  def,
+});
+
 export const isColor = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 
 // one setting's value made to fit its spec: a number in its range, a color, one of its choices;
@@ -65,6 +81,8 @@ export function fitParam(spec: ParamSpec, v: unknown): ParamValue {
       return isColor(v) ? v.toLowerCase() : spec.def;
     case 'choice':
       return typeof v === 'string' && spec.options.some(o => o.id === v) ? v : spec.def;
+    case 'text':
+      return typeof v === 'string' ? Array.from(v).slice(0, spec.max).join('') : spec.def;
   }
 }
 

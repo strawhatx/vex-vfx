@@ -2,18 +2,23 @@
 // effect is a stack of passes (see presets.ts), drawn in order. Engines:
 //   - color: grades the picture (see color.ts)
 //   - screen: an effect over the whole picture (see screen.ts)
+//   - text: styled, animated words (see typeset.ts)
 // Each engine lists its kinds of pass and their settings as data, so passes can be checked, filled
 // in and given sliders without knowing what each one is.
 import { GRADE_PARAMS, gradeOf, type Grade } from './color';
 import { MOTIONS, STEADY, motionAt, type Motion, type MotionKind } from './curves';
 import { fitParams, type ParamSpec, type Params } from './params';
 import { SCREEN_KINDS, isScreenKind, screenValues, type ScreenKind } from './screen';
+import { TEXT_KINDS, isTextKind, type TextPass } from './typeset';
 
-export type Engine = 'color' | 'screen';
+export type Engine = 'color' | 'screen' | 'text';
 
-export type Pass =
+// what's drawn over the whole frame (filters and screen effects)
+export type LookPass =
   | { engine: 'color'; kind: 'grade'; params: Params; motion: Motion }
   | { engine: 'screen'; kind: ScreenKind; params: Params; motion: Motion };
+
+export type Pass = LookPass | TextPass;
 
 // a color pass's settings are its grade and `amount`, how strongly it's mixed in
 const COLOR_PARAMS: readonly ParamSpec[] = [
@@ -25,6 +30,7 @@ const COLOR_PARAMS: readonly ParamSpec[] = [
 export const ENGINES: Record<Engine, Record<string, { label: string; params: readonly ParamSpec[] }>> = {
   color: { grade: { label: 'Grade', params: COLOR_PARAMS } },
   screen: SCREEN_KINDS,
+  text: TEXT_KINDS,
 };
 
 export const paramsOf = (engine: Engine, kind: string): readonly ParamSpec[] =>
@@ -55,6 +61,8 @@ export function fitPass(raw: unknown): Pass {
     return { engine, kind, params: fitParams(COLOR_PARAMS, params), motion };
   if (engine === 'screen' && typeof kind === 'string' && isScreenKind(kind))
     return { engine, kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
+  if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
+    return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
   throw new Error(`unknown pass: ${String(engine)}/${String(kind)}`);
 }
 
@@ -64,7 +72,7 @@ export type DrawnPass =
 
 // the pass t seconds into an effect len long; strength: how far on the effect is then (its fades);
 // seed: which wobble (each clip its own)
-export function passAt(p: Pass, t: number, len: number, strength: number, seed: number): DrawnPass {
+export function passAt(p: LookPass, t: number, len: number, strength: number, seed: number): DrawnPass {
   const k = strength * motionAt(p.motion, t, len, seed);
   if (p.engine === 'color')
     return { engine: 'color', grade: gradeOf(p.params), amount: (p.params.amount as number) * k };

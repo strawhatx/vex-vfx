@@ -191,16 +191,6 @@ export default function VfxStudio() {
     else setCatalog('effects');
   }
 
-  // Text: its styles (behind the object, following it, a title); picking one, the next tap adds it
-  function addText() {
-    setScene(null);
-    setCatalog(null);
-    player()?.select(null);
-    if (ui.adding) return player()?.cancelAdding();
-    setCategory('text');
-    setTool('styles');
-  }
-
   // Overlay: an object cut out of the footage, on a layer of its own
   function addOverlay() {
     setScene(null);
@@ -262,6 +252,7 @@ export default function VfxStudio() {
     objects: ui.lanes.filter(l => l.kind === 'effect' && !l.pinned).length,
     laser: lane?.kind === 'effect' && lane.fx.effect === 'laser',
     looks: lane?.kind === 'effect' && hasLooks(lane.fx.effect),
+    text: !!look?.text,
     words: lane?.kind === 'effect' && lane.fx.effect === 'text',
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
@@ -309,7 +300,7 @@ export default function VfxStudio() {
       case 'screenfx':
         return openLooks('screen');
       case 'addtext':
-        return addText();
+        return openLooks('text');
       case 'crop':
         setTool(null);
         return pl?.startCrop();
@@ -498,7 +489,6 @@ export default function VfxStudio() {
             selectLane,
             chooseFile: () => chooseFile(),
             addEffect,
-            addText,
             addOverlay,
             addAudio: () => audioRef.current?.click(),
             addLook: openLooks,
@@ -550,13 +540,14 @@ export default function VfxStudio() {
               setLookMenu(null);
               setTool(null);
             }}
-            onShown={() => void player()?.makeLookThumbs(lookMenu ?? look!.preset.group)}
+            onShown={() => player()?.makeLookThumbs(lookMenu ?? look!.preset.group)}
           />
         )}
         {tool === 'controls' && look && (
           <LookControls
             look={look}
             onChange={(c, v) => player()?.setLookControl(look.id, c, v)}
+            onText={p => player()?.setLookText(look.id, p)}
             onClose={() => setTool(null)}
           />
         )}

@@ -6,9 +6,12 @@ import {
   newLook,
   placeLook,
   previewOf,
+  textPreviewOf,
+  textsAt,
   trimLook,
   withControl,
   withPreset,
+  withText,
 } from './looks';
 
 const filter = parsePreset({
@@ -118,5 +121,43 @@ describe("a preset's button", () => {
     const [z] = previewOf(hit);
     expect(z.engine === 'screen' && z.values.amount).toBeCloseTo(0.4, 2); // (at the end, all built up)
     expect(previewOf(filter).map(d => d.engine)).toEqual(['color']);
+  });
+});
+
+describe('text on the film', () => {
+  const title = parsePreset({
+    id: 'title',
+    name: 'Title',
+    group: 'text',
+    length: 2,
+    passes: [
+      { engine: 'text', kind: 'type', params: { words: 'HELLO' } },
+      { engine: 'text', kind: 'fill' },
+      { engine: 'text', kind: 'in', params: { style: 'fade', duration: 0.4, stagger: 0.1 } },
+    ],
+  });
+
+  it("starts with its type's words, in the middle", () => {
+    expect(newLook(1, title, 0, 20).text).toEqual({ words: 'HELLO', x: 0.5, y: 0.5, scale: 1, rot: 0 });
+    expect(newLook(1, filter, 0, 20).text).toBeNull();
+  });
+
+  it('keeps its words and place, in bounds', () => {
+    const c = withText(newLook(1, title, 0, 20), { words: 'x'.repeat(99), scale: 50, x: 0.2 });
+    expect(c.text).toMatchObject({ x: 0.2, scale: 5 });
+    expect(c.text!.words).toHaveLength(60);
+    expect(withText(newLook(1, filter, 0, 20), { x: 0 }).text).toBeNull();
+  });
+
+  it('is drawn apart from the looks, and keeps its words when its preset changes', () => {
+    const c = withText(newLook(1, title, 0, 20), { words: 'Mine' });
+    expect(looksAt([c], 1)).toEqual([]);
+    expect(textsAt([c], 1).map(d => d.letters.join(''))).toEqual(['Mine']);
+    expect(textsAt([c], 3)).toEqual([]);
+    expect(withPreset(c, title).text!.words).toBe('Mine');
+  });
+
+  it('shows on its button with all its letters in', () => {
+    expect(textPreviewOf(title).poses.every(p => p.alpha === 1)).toBe(true);
   });
 });

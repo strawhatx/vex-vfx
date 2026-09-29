@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PRESET_FILES } from './library/files';
 import { presetById, presets, presetsIn } from './library';
-import { passAt, fitPass } from './passes';
+import { passAt, fitPass, type LookPass } from './passes';
 import { controlDefaults, parsePreset, passesWith } from './presets';
 
 const shake = {
@@ -82,7 +82,7 @@ describe('controls', () => {
 
 describe('passes over time', () => {
   it('scale their strength by the clip fading and by their motion', () => {
-    const pulse = fitPass({
+    const pulse = <LookPass>fitPass({
       engine: 'screen',
       kind: 'flash',
       params: { amount: 1 },
@@ -90,14 +90,16 @@ describe('passes over time', () => {
     });
     const peak = passAt(pulse, 0.5, 2, 0.5, 1);
     expect(peak.engine === 'screen' && peak.values.amount).toBeCloseTo(0.5);
-    const grade = fitPass({ engine: 'color', kind: 'grade', params: { amount: 0.8, saturation: -1 } });
+    const grade = <LookPass>(
+      fitPass({ engine: 'color', kind: 'grade', params: { amount: 0.8, saturation: -1 } })
+    );
     const g = passAt(grade, 0, 1, 0.5, 1);
     expect(g.engine === 'color' && g.amount).toBeCloseTo(0.4);
     expect(g.engine === 'color' && g.grade.saturation).toBe(-1);
   });
 
   it('shake the same way every time the same frame is drawn', () => {
-    const s = fitPass({ engine: 'screen', kind: 'shake', params: { amount: 1 } });
+    const s = <LookPass>fitPass({ engine: 'screen', kind: 'shake', params: { amount: 1 } });
     expect(passAt(s, 1.3, 3, 1, 7)).toEqual(passAt(s, 1.3, 3, 1, 7));
     expect(passAt(s, 1.3, 3, 1, 7)).not.toEqual(passAt(s, 1.3, 3, 1, 8));
   });

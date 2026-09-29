@@ -7,9 +7,17 @@ import { presetsIn } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import type { Preset, PresetGroup } from '@/domain/effects/presets';
 import type { LookClip } from '@/domain/project/looks';
+import { MAX_SCALE, MAX_WORDS, MIN_SCALE, type TextPlace } from '@/domain/effects/typeset';
 import { Icon, I } from './icons';
 
-export const GROUP_NAMES: Record<PresetGroup, string> = { filter: 'Filters', screen: 'Video effects' };
+export const GROUP_NAMES: Record<PresetGroup, string> = {
+  filter: 'Filters',
+  screen: 'Video effects',
+  text: 'Text',
+};
+// whether a group's presets are split up by category (filters and text aren't: there are few enough
+// to list)
+const BY_CATEGORY: Record<PresetGroup, boolean> = { filter: false, screen: true, text: false };
 
 // a preset's picture when there's none of the frame: a filter's colors as it turns them, or a
 // screen effect's glow
@@ -37,7 +45,10 @@ export function PresetSheet({
   onClose(): void;
   onShown(): void; // opened: the presets' pictures are wanted
 }) {
-  const categories = presetsIn(group);
+  const tabbed = BY_CATEGORY[group];
+  const categories = tabbed
+    ? presetsIn(group)
+    : [{ category: GROUP_NAMES[group], presets: presetsIn(group).flatMap(c => c.presets) }];
   const [tab, setTab] = useState(
     () => categories.find(c => c.presets.some(p => p.id === current))?.category ?? categories[0]?.category,
   );
@@ -52,20 +63,23 @@ export function PresetSheet({
           <Icon d={I.check} />
         </button>
       </div>
-      <div className="sheet-tabs" role="tablist" aria-label="Categories">
-        {categories.map(c => (
-          <button
-            key={c.category}
-            type="button"
-            role="tab"
-            aria-selected={c.category === shown?.category}
-            onClick={() => setTab(c.category)}
-          >
-            {c.category}
-          </button>
-        ))}
-      </div>
-      <div className="tiles" role="group" aria-label={shown?.category}>
+      {tabbed && (
+        <div className="sheet-tabs" role="tablist" aria-label="Categories">
+          {categories.map(c => (
+            <button
+              key={c.category}
+              type="button"
+              role="tab"
+              aria-selected={c.category === shown?.category}
+              onClick={() => setTab(c.category)}
+            >
+              {c.category}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* (all of them in one list: a grid rather than one long row) */}
+      <div className={`tiles${tabbed ? '' : ' wrap'}`} role="group" aria-label={shown?.category}>
         {shown?.presets.map(p => (
           <button
             key={p.id}
@@ -91,26 +105,78 @@ export function PresetSheet({
 
 const pct = (v: number) => ({ '--p': `${v * 100}%` }) as CSSProperties;
 
-// the selected look's controls: its preset's sliders and colors
+// the selected look's controls: its preset's sliders and colors; a text's words, size and turn
+// first
 export function LookControls({
   look,
   onChange,
+  onText,
   onClose,
 }: {
   look: LookClip;
   onChange(control: string, v: ParamValue): void;
+  onText(p: Partial<TextPlace>): void;
   onClose(): void;
 }) {
   const { controls } = look.preset;
+  const text = look.text;
+  const title = text ? 'Edit' : 'Adjust';
   return (
-    <div className="sheet" role="dialog" aria-label={`Adjust ${look.name}`}>
+    <div className="sheet" role="dialog" aria-label={`${title} ${look.name}`}>
       <div className="sheet-head">
-        <strong>Adjust · {look.name}</strong>
+        <strong>
+          {title} · {look.name}
+        </strong>
         <button type="button" className="icon-btn" aria-label="Done" onClick={onClose}>
           <Icon d={I.check} />
         </button>
       </div>
+      {text && (
+        <input
+          className="words-input"
+          type="text"
+          value={text.words}
+          maxLength={MAX_WORDS}
+          aria-label="Words"
+          placeholder="Type something"
+          enterKeyHint="done"
+          onChange={e => onText({ words: e.target.value })}
+          onKeyDown={e => e.key === 'Enter' && onClose()}
+        />
+      )}
       <div className="sliders">
+        {text && (
+          <>
+            <label className="slider">
+              <span>Size</span>
+              <input
+                type="range"
+                min={MIN_SCALE}
+                max={MAX_SCALE}
+                step={0.01}
+                value={text.scale}
+                style={
+                  { '--p': `${((text.scale - MIN_SCALE) / (MAX_SCALE - MIN_SCALE)) * 100}%` } as CSSProperties
+                }
+                onChange={e => onText({ scale: +e.target.value })}
+              />
+              <output>{Math.round(text.scale * 100)}</output>
+            </label>
+            <label className="slider">
+              <span>Rotate</span>
+              <input
+                type="range"
+                min={-180}
+                max={180}
+                step={1}
+                value={text.rot}
+                style={{ '--p': `${((text.rot + 180) / 360) * 100}%` } as CSSProperties}
+                onChange={e => onText({ rot: +e.target.value })}
+              />
+              <output>{Math.round(text.rot)}°</output>
+            </label>
+          </>
+        )}
         {controls.map(c => {
           const v = look.values[c.id] ?? c.def;
           return c.type === 'slider' ? (
@@ -140,7 +206,8 @@ export function LookControls({
             </label>
           );
         })}
-        {!controls.length && <p className="sheet-note">{look.name} has nothing to adjust.</p>}
+        {!controls.length && !text && <p className="sheet-note">{look.name} has nothing to adjust.</p>}
+        {text && <p className="sheet-note">Drag the text in the preview to move it.</p>}
       </div>
     </div>
   );

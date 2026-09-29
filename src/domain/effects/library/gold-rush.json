@@ -1,0 +1,64 @@
+{
+  "id": "gold-rush",
+  "name": "Gold Rush",
+  "group": "text",
+  "category": "Bold",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "WINNER",
+        "font": "anton",
+        "size": 0.15,
+        "spacing": 0.02
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "glow",
+      "params": {
+        "amount": 0.5,
+        "color": "#ffc640",
+        "size": 0.35
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "stroke",
+      "params": {
+        "color": "#4a2a00",
+        "width": 0.35
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#fff3b0",
+        "color2": "#c8860a",
+        "gradient": 1
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "drop",
+        "duration": 0.55,
+        "stagger": 0.05
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "fade",
+        "duration": 0.3,
+        "stagger": 0
+      }
+    }
+  ],
+  "controls": []
+}

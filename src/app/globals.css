@@ -119,6 +119,40 @@ button.primary {
   font-style: normal;
   color: var(--brand);
 }
+/* ---------- the start page ---------- */
+.home {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 28px;
+  height: 100%;
+  padding: 16px;
+}
+.home .wordmark {
+  font-size: 2.4rem;
+}
+.home-links {
+  display: grid;
+  gap: 10px;
+  width: min(280px, calc(100vw - 32px));
+}
+.home-link {
+  padding: 13px 18px;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+.home-link.subtle {
+  background: transparent;
+  color: var(--muted);
+}
+.home-link.primary {
+  background: var(--brand);
+  color: #fff;
+}
 .export {
   background: var(--brand);
   color: #fff;
@@ -1017,6 +1051,10 @@ button.primary {
   background: var(--ink);
   color: var(--panel);
 }
+.tiles.wrap {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
 img.tile-art {
   display: block;
   object-fit: cover;
@@ -1404,6 +1442,9 @@ input[type='range']::-moz-range-thumb {
 .screen-clip {
   --c: #ffb347;
 }
+.text-clip {
+  --c: #f4f4f5;
+}
 .music-wave {
   position: absolute;
   inset: 3px 0;
@@ -1439,4 +1480,192 @@ input[type='range']::-moz-range-thumb {
 }
 .part-tile .tile-art.mirror svg {
   transform: scaleX(-1);
+}
+
+/* ---------- the Preset Lab: the preview beside the draft on desktop, above it on phones ---------- */
+.lab {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+.lab-stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  height: 52vh;
+  padding: 8px 16px;
+}
+.lab-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lab-top-tools {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.lab-home {
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 1.2rem;
+}
+.lab-preview {
+  position: relative;
+  min-height: 0;
+}
+/* (fitted inside the space the preview has, however big the clip) */
+.lab-preview canvas {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+}
+.lab-transport {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+.lab-transport input[type='range'] {
+  flex: 1;
+}
+.lab-transport output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lab button,
+.lab select,
+.lab input[type='text'],
+.lab input[type='number'] {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.lab button:disabled {
+  opacity: 0.4;
+}
+.lab button.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+.lab-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
+}
+.lab-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+.lab-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lab-card-tools {
+  display: flex;
+  gap: 4px;
+}
+.lab-card-tools button {
+  padding: 2px 9px;
+}
+.lab-params {
+  display: grid;
+  gap: 10px;
+}
+.lab-motion {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.lab-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.lab-param {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+.lab-param output {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lab-param .lab-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.7rem;
+}
+.lab-expose {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+.lab-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.lab-check input {
+  accent-color: var(--brand);
+}
+.lab-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+}
+.lab-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lab-note {
+  width: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.lab-problem {
+  width: 100%;
+  margin: 0;
+  color: #ff8a80;
+  font-size: 0.82rem;
+}
+.lab-preview .lab-problem {
+  position: absolute;
+  inset: auto 0 8px;
+  text-align: center;
+}
+@media (min-width: 900px) {
+  .lab {
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+  .lab-stage {
+    height: 100%;
+    padding: 16px 24px;
+  }
+  .lab-panel {
+    padding: 16px 16px 24px 0;
+  }
 }

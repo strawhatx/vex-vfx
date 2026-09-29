@@ -41,12 +41,15 @@ import {
   newLook,
   placeLook,
   trimLook,
+  textsAt,
   withControl,
   withPreset,
+  withText,
   type LookClip,
 } from '@/domain/project/looks';
 import type { ParamValue } from '@/domain/effects/params';
 import type { Preset, PresetGroup } from '@/domain/effects/presets';
+import type { TextPlace } from '@/domain/effects/typeset';
 import { assignLayerRows, assignRows, layerOf, type Lane } from '@/domain/project/track';
 import type { Selection, TrackMeta } from '@/domain/tracking/types';
 import type { JobStatus } from './jobs';
@@ -91,9 +94,8 @@ export const playTime = (f: Pick<Film, 's' | 'e' | 'speed'>) => (f.e - f.s) / f.
 export interface ProjectState {
   reels: ReelInfo[];
   films: Film[];
-  lanes: Lane[]; // effects and impacts (on `rows`), text (on `textRows`), then overlays (on `cutRows`)
+  lanes: Lane[]; // effects and impacts (on `rows`), then overlays (on `cutRows`)
   rows: number;
-  textRows: number;
   cutRows: number;
   music: (MusicClip & { row: number })[]; // on the Audio layer, on `audioRows`
   audioRows: number;
@@ -147,12 +149,11 @@ const EMPTY: ProjectState = {
   films: [],
   lanes: [],
   rows: 0,
-  textRows: 0,
   cutRows: 0,
   music: [],
   audioRows: 0,
   looks: [],
-  lookRows: { filter: 0, screen: 0 },
+  lookRows: { filter: 0, screen: 0, text: 0 },
   crop: FULL,
   length: 0,
   scan: null,
@@ -622,6 +623,16 @@ export class Project {
     return looksAt(this.looks, t);
   }
 
+  // the texts on at film time t, as they're drawn
+  textsAt(t: number) {
+    return textsAt(this.looks, t);
+  }
+
+  // a text's words, or where it's placed (live while dragging it)
+  setLookText(id: number, p: Partial<TextPlace>) {
+    this.changeLook(id, c => withText(c, p), `text:${id}:${Object.keys(p).join()}`);
+  }
+
   // moves its start or end (film time); live while dragging
   setLookRange(id: number, r: { s?: number; e?: number }) {
     this.changeLook(id, c => trimLook(c, r), `look:${id}`);
@@ -883,7 +894,7 @@ export class Project {
     const count = (r: number[]) => (r.length ? Math.max(...r) + 1 : 0);
     // each group's looks on rows of their own
     const lookRow = new Map<number, number>(),
-      lookRows: Record<PresetGroup, number> = { filter: 0, screen: 0 };
+      lookRows: Record<PresetGroup, number> = { filter: 0, screen: 0, text: 0 };
     for (const group of Object.keys(lookRows) as PresetGroup[]) {
       const mine = this.looks.filter(c => c.preset.group === group);
       const got = assignRows(
@@ -905,7 +916,6 @@ export class Project {
       films,
       lanes: [...lanes, ...overlayLanes],
       rows: counts.effects,
-      textRows: counts.text,
       cutRows: count(cutRows),
       music: this.music.map((m, k) => ({ ...m, row: audioRows[k] })),
       audioRows: count(audioRows),

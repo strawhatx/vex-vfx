@@ -1,9 +1,20 @@
-// Looks: filters and screen effects on the film, each a clip made from a preset (see
+// Looks: filters, screen effects and text on the film, each a clip made from a preset (see
 // effects/presets.ts). A look lasts from when it's placed for as long as it's set to, over whatever
-// plays then; filters go on the Filters layer and screen effects on the Effects layer. Like music
-// (see music.ts), a look belongs to the film, not to one video.
+// plays then; each group has a timeline layer of its own. Like music (see music.ts), a look belongs
+// to the film, not to one video. A text look also keeps its own words and where it's placed.
 import { envelope } from '../effects/curves';
-import { passAt, drawsAnything, type DrawnPass } from '../effects/passes';
+import { passAt, drawsAnything, type DrawnPass, type LookPass } from '../effects/passes';
+import { arriving, type LetterAnim } from '../effects/letters';
+import {
+  MAX_SCALE,
+  MAX_WORDS,
+  MIN_SCALE,
+  startWords,
+  textAt,
+  type DrawnText,
+  type TextPass,
+  type TextPlace,
+} from '../effects/typeset';
 import {
   controlDefaults,
   fitControl,
@@ -22,7 +33,14 @@ export interface LookClip {
   row: number | null; // the row the user put it on in its layer (null: wherever it fits)
   at: number; // when it starts, in the film's time
   len: number; // how long it lasts
+  text: TextPlace | null; // a text's words and placement
 }
+
+// a text starts in the middle, as big as its type says
+const startPlace = (preset: Preset): TextPlace | null =>
+  preset.group === 'text'
+    ? { words: startWords(preset.passes as TextPass[]), x: 0.5, y: 0.5, scale: 1, rot: 0 }
+    : null;
 
 // the shortest a look can be trimmed to
 export const MIN_LOOK_S = 0.1;
@@ -43,6 +61,7 @@ export function newLook(id: number, preset: Preset, at: number, filmLength: numb
     row: null,
     at: Math.max(0, at),
     len: room > MIN_LOOK_S ? Math.min(preset.length, room) : preset.length,
+    text: startPlace(preset),
   };
 }
 
@@ -65,7 +84,21 @@ export const placeLook = (c: LookClip, at: number): LookClip => ({ ...c, at: Mat
 export function withPreset(c: LookClip, preset: Preset): LookClip {
   const values = controlDefaults(preset);
   for (const k of Object.keys(values)) if (k in c.values) values[k] = c.values[k];
-  return { ...c, preset, name: preset.name, values };
+  return { ...c, preset, name: preset.name, values, text: c.text ?? startPlace(preset) };
+}
+
+// a text's words or placement changed (its size and words kept in bounds)
+export function withText(c: LookClip, p: Partial<TextPlace>): LookClip {
+  if (!c.text) return c;
+  const t = { ...c.text, ...p };
+  return {
+    ...c,
+    text: {
+      ...t,
+      words: Array.from(t.words).slice(0, MAX_WORDS).join(''),
+      scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, t.scale)),
+    },
+  };
 }
 
 export function withControl(c: LookClip, id: string, v: ParamValue): LookClip {
@@ -76,8 +109,8 @@ export function withControl(c: LookClip, id: string, v: ParamValue): LookClip {
 // what the looks on at film time t draw, in order: filters first, then screen effects over them;
 // in each layer, lower rows first (so the top row ends up on top)
 export function looksAt(clips: readonly LookClip[], t: number): DrawnPass[] {
-  const on = clips
-    .filter(c => t >= c.at - 1e-6 && t < c.at + c.len - 1e-6)
+  const on = onAt(clips, t)
+    .filter(c => c.preset.group !== 'text')
     .sort(
       (a, b) =>
         Number(a.preset.group === 'screen') - Number(b.preset.group === 'screen') ||
@@ -86,10 +119,45 @@ export function looksAt(clips: readonly LookClip[], t: number): DrawnPass[] {
   return on.flatMap(c => {
     const local = t - c.at,
       strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
-    return passesWith(c.preset, c.values)
+    return (passesWith(c.preset, c.values) as LookPass[])
       .map(p => passAt(p, local, c.len, strength, c.id))
       .filter(drawsAnything);
   });
+}
+
+const onAt = (clips: readonly LookClip[], t: number) =>
+  clips.filter(c => t >= c.at - 1e-6 && t < c.at + c.len - 1e-6);
+
+// the texts on at film time t, lower rows first (so the top row ends up on top)
+export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
+  return onAt(clips, t)
+    .filter(c => c.text)
+    .sort((a, b) => (b.row ?? 0) - (a.row ?? 0))
+    .map(c => {
+      const local = t - c.at;
+      const strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
+      return textAt(
+        c.id,
+        passesWith(c.preset, c.values) as TextPass[],
+        c.text!,
+        local,
+        c.len,
+        strength,
+        c.id,
+      );
+    });
+}
+
+// a text preset as its button shows it: its words, in the middle, all come in
+export function textPreviewOf(preset: Preset): DrawnText {
+  const passes = passesWith(preset, controlDefaults(preset)) as TextPass[];
+  const inn = passes.find(p => p.kind === 'in')?.params;
+  const n = Array.from(startWords(passes)).length;
+  const settled = inn
+    ? arriving(inn.style as LetterAnim, n, inn.duration as number, inn.stagger as number)
+    : 0;
+  const len = Math.max(preset.length, settled + 1);
+  return textAt(0, passes, startPlace(preset)!, Math.min(settled + 0.05, len / 2), len, 1, 1);
 }
 
 // how strongly a flash is shown on its button: at full strength it's just white
@@ -99,7 +167,7 @@ const PREVIEW_FLASH = 0.5;
 // defaults, at whichever of a dozen moments over its length they're strongest together (a flash
 // softened, so the picture under it still shows)
 export function previewOf(preset: Preset): DrawnPass[] {
-  const passes = passesWith(preset, controlDefaults(preset)),
+  const passes = passesWith(preset, controlDefaults(preset)) as LookPass[],
     len = preset.length;
   let best: DrawnPass[] = [],
     most = -1;

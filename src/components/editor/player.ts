@@ -30,7 +30,8 @@ import type { MusicClip } from '@/domain/project/music';
 import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import type { PresetGroup } from '@/domain/effects/presets';
-import { previewOf, type LookClip } from '@/domain/project/looks';
+import { previewOf, textPreviewOf, type LookClip } from '@/domain/project/looks';
+import type { TextPlace } from '@/domain/effects/typeset';
 import type { PartOp } from '@/domain/project/parts';
 import { nextFlagged, type Flag } from '@/domain/project/review';
 import { canPin } from '@/domain/project/spot';
@@ -44,8 +45,9 @@ import { soundLength } from '@/infrastructure/audio/soundFile';
 import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
 import { OverlayPainter } from '@/infrastructure/rendering/overlays';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
+import { TextClipPainter } from '@/infrastructure/rendering/textClips';
 import { Renderer } from '@/infrastructure/rendering/renderer';
-import type { Fonts } from '@/infrastructure/rendering/fonts';
+import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { loadFonts } from './fonts';
 import { makeFilmstrip } from '@/infrastructure/video/filmstrip';
 import { onEachFrame, seekVideo, settleDuration } from '@/infrastructure/video/playback';
@@ -84,7 +86,6 @@ export interface UiState {
   films: Film[];
   lanes: Lane[];
   rows: number;
-  textRows: number;
   cutRows: number;
   scan: number | null;
   job: ProjectState['job'];
@@ -195,7 +196,6 @@ export const INITIAL_UI: UiState = {
   films: [],
   lanes: [],
   rows: 0,
-  textRows: 0,
   cutRows: 0,
   scan: null,
   job: null,
@@ -216,7 +216,7 @@ export const INITIAL_UI: UiState = {
   music: [],
   audioRows: 0,
   looks: [],
-  lookRows: { filter: 0, screen: 0 },
+  lookRows: { filter: 0, screen: 0, text: 0 },
   lookThumbs: {},
   frame: { w: 0, h: 0 },
   cropping: null,
@@ -281,10 +281,13 @@ export class Player {
   // each music clip's file's waveform
   private waves = new Map<number, ClipWave>();
   private overlays = new OverlayPainter();
-  // the looks, drawn over the whole frame on the GPU
+  // the looks, drawn over the whole frame on the GPU, then the film's text over them
   private looks = new LookPainter();
+  private textClips = new TextClipPainter();
   // drawing the frame without them (for the presets' pictures)
   private plain = false;
+  // a group whose presets' pictures are wanted, made once a frame is drawn
+  private thumbsFor: PresetGroup | null = null;
   // everything is drawn on the stage (the film's whole frame, CW x CH), then shown on the preview
   // cropped (see present)
   private stage = document.createElement('canvas');
@@ -325,6 +328,14 @@ export class Player {
   // the selected cutout being dragged about the preview: where the press started (preview pixels)
   // and its move then
   private grab: { id: number; x: number; y: number; from: Transform; moved: boolean } | null = null;
+  // a text being dragged about the preview: where the press started (stage px) and where it was
+  private textGrab: {
+    id: number;
+    x: number;
+    y: number;
+    from: { x: number; y: number };
+    moved: boolean;
+  } | null = null;
 
   private camVideo: HTMLVideoElement | null = null;
   private camera: Awaited<ReturnType<typeof startCameraCapture>> | null = null;
@@ -891,31 +902,55 @@ export class Player {
     this.project.setLookControl(id, control, v);
   }
 
+  // a text's words, or where it's placed
+  setLookText(id: number, p: Partial<TextPlace>) {
+    this.project.setLookText(id, p);
+  }
+
   // a look starts at time t (the playhead, or where it was dragged on the timeline)
   placeLook(id: number, t = this.time()) {
     this.project.placeLook(id, t);
   }
 
-  // a picture of each of a group's presets on the frame showing, for its menu
-  async makeLookThumbs(group: PresetGroup) {
-    const rv = this.rv();
-    if (!rv || !this.CW || this.camera) return;
-    // the frame without any looks, small
-    this.plain = true;
+  // a picture of each of a group's presets on the frame showing, for its menu (made once there's a
+  // frame to show them on)
+  makeLookThumbs(group: PresetGroup) {
+    this.thumbsFor = group;
     this.redraw();
-    this.plain = false;
+  }
+
+  private async drawThumbs(group: PresetGroup) {
+    if (!this.rv() || !this.CW || this.camera) return;
+    // filters and effects on the frame without any looks, small; text on a dark square
     const w = LOOK_THUMB_W,
-      h = Math.min(Math.round((w * this.CH) / this.CW), 2 * w);
+      h = group === 'text' ? w : Math.min(Math.round((w * this.CH) / this.CW), 2 * w);
     const frame = new OffscreenCanvas(w, h);
-    frame.getContext('2d')!.drawImage(this.stage, 0, 0, w, h);
-    this.redraw();
+    const fg = frame.getContext('2d')!;
+    if (group === 'text') {
+      fg.fillStyle = '#26262a';
+      fg.fillRect(0, 0, w, h);
+    } else {
+      this.plain = true;
+      this.redraw();
+      this.plain = false;
+      fg.drawImage(this.stage, 0, 0, w, h);
+      this.redraw();
+    }
+    const texts = new TextClipPainter(),
+      fonts = this.fonts ?? FALLBACK_FONTS;
     const made: Record<string, string> = {};
     for (const p of presets()) {
       if (p.group !== group) continue;
-      const out = this.looks.render(frame, w, h, previewOf(p));
-      if (!out) break; // (no GPU here: the menus show swatches)
       const pic = new OffscreenCanvas(w, h);
-      pic.getContext('2d')!.drawImage(out, 0, 0);
+      const pg = pic.getContext('2d')!;
+      if (group === 'text') {
+        pg.drawImage(frame, 0, 0);
+        texts.draw(pg, [textPreviewOf(p)], fonts);
+      } else {
+        const out = this.looks.render(frame, w, h, previewOf(p));
+        if (!out) break; // (no GPU here: the menus show swatches)
+        pg.drawImage(out, 0, 0);
+      }
       const blob = await pic.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
       if (this.destroyed) return;
       made[p.id] = URL.createObjectURL(blob);
@@ -1386,7 +1421,6 @@ export class Player {
       films: s.films,
       lanes: s.lanes,
       rows: s.rows,
-      textRows: s.textRows,
       cutRows: s.cutRows,
       scan: s.scan,
       job: s.job,
@@ -1564,8 +1598,13 @@ export class Player {
         isolate: this.recorder ? null : this.ui.isolated,
       });
       // the looks over everything (not over a cutout shown on its own)
-      if (!this.plain && (this.recorder || this.ui.isolated === null))
+      if (!this.plain && (this.recorder || this.ui.isolated === null)) {
         this.looks.apply(ctx, this.project.looksAt(now));
+        this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
+          selected: this.ui.selected,
+          outline: outline && paused,
+        });
+      }
     }
     if (this.plain) return;
     this.mixer.tick(now, !paused);
@@ -1582,6 +1621,11 @@ export class Player {
       selected: ui.selected,
     };
     this.present();
+    if (this.thumbsFor) {
+      const group = this.thumbsFor;
+      this.thumbsFor = null;
+      void this.drawThumbs(group);
+    }
     if (review?.pen.on) this.drawPath(LOOP_COLORS[review.tool]);
     const hint = review
       ? review.pen.on
@@ -1766,6 +1810,16 @@ export class Player {
       this.view.setPointerCapture?.(e.pointerId);
       return;
     }
+    // a text: a drag moves it (a tap selects it: see pointerUp)
+    this.textGrab = null;
+    const onText = this.paused() && !this.ui.adding ? this.textClips.hit(x, y) : null;
+    const place = onText !== null ? this.project.look(onText)?.text : null;
+    if (onText !== null && place) {
+      this.textGrab = { id: onText, x, y, from: { x: place.x, y: place.y }, moved: false };
+      e.stopPropagation();
+      this.view.setPointerCapture?.(e.pointerId);
+      return;
+    }
     // the selected cutout, showing here: a drag moves it (rather than the zoomed preview)
     const sel = this.ui.selected;
     const now = this.time();
@@ -1814,6 +1868,19 @@ export class Player {
         this.redraw();
         this.drawBox(bx);
       }
+      return;
+    }
+    const tg = this.textGrab;
+    if (tg && (tg.moved || (p && Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP))) {
+      tg.moved = true;
+      this.press = null;
+      const [x, y] = this.canvasPt(e);
+      this.project.setLookText(tg.id, {
+        x: tg.from.x + (x - tg.x) / this.CW,
+        y: tg.from.y + (y - tg.y) / this.CH,
+      });
+      if (this.ui.selected !== tg.id) this.select(tg.id);
+      this.redraw();
       return;
     }
     // (once it's moving, the press is over: it keeps following the pointer until let go)
@@ -1874,6 +1941,12 @@ export class Player {
       this.redraw();
       return;
     }
+
+    // a text tapped: selected (a tap anywhere else lets a selected text go)
+    const tg = this.textGrab;
+    this.textGrab = null;
+    if (tg && !this.ui.adding) return this.select(tg.id);
+    if (this.ui.selected !== null && this.project.look(this.ui.selected)?.text) return this.select(null);
 
     // adding a clip (the first tap on a new video adds an effect)
     const add = this.ui.adding;

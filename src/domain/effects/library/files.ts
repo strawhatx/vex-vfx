@@ -38,6 +38,18 @@ import heatHaze from './heat-haze.json';
 import fisheye from './fisheye.json';
 import fourScreens from './four-screens.json';
 import negative from './negative.json';
+import cleanTitle from './clean-title.json';
+import typewriter from './typewriter.json';
+import lowerThird from './lower-third.json';
+import dropShadow from './drop-shadow.json';
+import comicPop from './comic-pop.json';
+import bigImpact from './big-impact.json';
+import goldRush from './gold-rush.json';
+import neonSign from './neon-sign.json';
+import frostbite from './frostbite.json';
+import toxicPulse from './toxic-pulse.json';
+import infernoText from './inferno-text.json';
+import blueFlame from './blue-flame.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -78,4 +90,16 @@ export const PRESET_FILES: readonly unknown[] = [
   fisheye,
   fourScreens,
   negative,
+  cleanTitle,
+  typewriter,
+  lowerThird,
+  dropShadow,
+  comicPop,
+  bigImpact,
+  goldRush,
+  neonSign,
+  frostbite,
+  toxicPulse,
+  infernoText,
+  blueFlame,
 ];

@@ -43,7 +43,6 @@ export function Timeline({
     selectLane(id: number): void;
     chooseFile(): void;
     addEffect(): void;
-    addText(): void;
     addOverlay(): void;
     addAudio(): void;
     addLook(group: PresetGroup): void;
@@ -89,14 +88,35 @@ export function Timeline({
     return Array.from({ length: count }, (_, r) => mine.filter(l => l.row === r));
   };
   // what the next tap adds, on the layer it goes on
-  const addingText = ui.adding?.kind === 'effect' && ui.adding.fx.effect === 'text';
   const adding = (layer: LayerKind) => {
     const a = ui.adding;
     if (!a) return null;
-    const on = a.kind === 'cutout' ? 'overlay' : addingText ? 'text' : 'effects';
-    if (on !== layer) return null;
+    if ((a.kind === 'cutout' ? 'overlay' : 'effects') !== layer) return null;
     return a.kind === 'cutout' ? 'Drag a box round the object' : 'Tap the object in the preview';
   };
+  // a layer of looks: text, video effects or filters
+  const lookLayer = (group: PresetGroup) => (
+    <Layer
+      key={group}
+      layer={group}
+      rows={Array.from({ length: ui.lookRows[group] }, (_, r) =>
+        ui.looks.filter(c => c.preset.group === group && c.row === r),
+      )}
+      add={{ label: ADD_LOOK[group], on: false, run: () => on.addLook(group) }}
+      busy={busy}
+      clip={c => (
+        <LookClip
+          key={c.id}
+          look={c}
+          scale={scale}
+          selected={c.id === ui.selected}
+          duration={dur}
+          on={clipActions}
+          moveTo={t => on.moveLook(c.id, t)}
+        />
+      )}
+    />
+  );
   const clipActions = {
     select: on.selectLane,
     setRange: on.setRange,
@@ -172,29 +192,13 @@ export function Timeline({
                   />
                 )}
               />
-              <Layer
-                layer="text"
-                rows={rowsOf('text', ui.textRows)}
-                add={{ label: adding('text') ?? 'Add text', on: addingText, run: on.addText }}
-                busy={busy}
-                clip={l => (
-                  <EffectClip
-                    key={l.id}
-                    lane={l}
-                    scale={scale}
-                    selected={l.id === ui.selected}
-                    duration={dur}
-                    sound={soundShape(l)}
-                    on={clipActions}
-                  />
-                )}
-              />
+              {lookLayer('text')}
               <Layer
                 layer="effects"
                 rows={rowsOf('effects', ui.rows)}
                 add={{
                   label: adding('effects') ?? 'Add effect',
-                  on: !!ui.adding && ui.adding.kind !== 'cutout' && !addingText,
+                  on: !!ui.adding && ui.adding.kind !== 'cutout',
                   run: on.addEffect,
                 }}
                 busy={busy}
@@ -213,32 +217,8 @@ export function Timeline({
                   );
                 }}
               />
-              {(['screen', 'filter'] as const).map(group => (
-                <Layer
-                  key={group}
-                  layer={group}
-                  rows={Array.from({ length: ui.lookRows[group] }, (_, r) =>
-                    ui.looks.filter(c => c.preset.group === group && c.row === r),
-                  )}
-                  add={{
-                    label: group === 'filter' ? 'Add filter' : 'Add video effect',
-                    on: false,
-                    run: () => on.addLook(group),
-                  }}
-                  busy={busy}
-                  clip={c => (
-                    <LookClip
-                      key={c.id}
-                      look={c}
-                      scale={scale}
-                      selected={c.id === ui.selected}
-                      duration={dur}
-                      on={clipActions}
-                      moveTo={t => on.moveLook(c.id, t)}
-                    />
-                  )}
-                />
-              ))}
+              {lookLayer('screen')}
+              {lookLayer('filter')}
             </>
           )}
 
@@ -251,6 +231,12 @@ export function Timeline({
     </div>
   );
 }
+
+const ADD_LOOK: Record<PresetGroup, string> = {
+  text: 'Add text',
+  screen: 'Add video effect',
+  filter: 'Add filter',
+};
 
 // how each layer is marked on the left
 type LayerName = LayerKind | 'audio' | PresetGroup;

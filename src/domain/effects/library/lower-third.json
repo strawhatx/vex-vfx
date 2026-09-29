@@ -1,0 +1,68 @@
+{
+  "id": "lower-third",
+  "name": "Name Tag",
+  "group": "text",
+  "category": "Basic",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "Your Name",
+        "font": "inter",
+        "size": 0.065,
+        "spacing": 0.04
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "shadow",
+      "params": {
+        "amount": 0.6,
+        "x": 0,
+        "y": 0.2,
+        "blur": 0.4
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#ffffff"
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "wide",
+        "duration": 0.5,
+        "stagger": 0.02
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "fade",
+        "duration": 0.3,
+        "stagger": 0
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "color",
+      "label": "Color",
+      "type": "color",
+      "def": "#ffffff",
+      "drives": [
+        {
+          "pass": 2,
+          "param": "color"
+        }
+      ]
+    }
+  ]
+}
