@@ -2,6 +2,7 @@
 // shown on the frame showing), and the controls of the selected clip's. Picking a look adds it at
 // the playhead; with one selected, picking another swaps it, so presets can be tried one after
 // another. Body effects are picked the same way, then tapped onto the person or object.
+import { MY_OWN } from '@/domain/effects/custom';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { gradeOf, gradeSwatch } from '@/domain/effects/color';
 import { presetsIn } from '@/domain/effects/library';
@@ -20,8 +21,8 @@ export const GROUP_NAMES: Record<MenuGroup, string> = {
   filter: 'Filters',
   screen: 'Video effects',
   text: 'Text',
-  body: 'Body effects',
-  impact: 'Impacts',
+  body: 'Object effects',
+  impact: 'Custom effects',
 };
 // whether a group's presets are split up by category (filters and text aren't: there are few enough
 // to list)
@@ -112,6 +113,13 @@ export function PresetSheet({
       )}
       {/* (all of them in one list: a grid rather than one long row) */}
       <div className={`tiles${tabbed ? '' : ' wrap'}`} role="group" aria-label={shown?.category}>
+        {/* (an effect made from nothing, customized from there) */}
+        <button type="button" className="tile look-tile" onClick={() => onPick(MY_OWN)}>
+          <span className="tile-art own-art">
+            <Icon d={I.plus} />
+          </span>
+          Create your own
+        </button>
         {shown?.presets.map(p => (
           <button
             key={p.id}

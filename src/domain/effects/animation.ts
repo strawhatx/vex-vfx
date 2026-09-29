@@ -3,8 +3,8 @@
 //     `duration` seconds
 //   - out: the pose it goes out to, over its last `duration` seconds
 //   - combo: movement over the whole clip (sway, pulse, shake, float, a slow zoom, spin)
-// "Zoom in", "Slide from the left" and so on are presets of these (see presets.ts), so the Preset
-// Lab can make new ones. A clip keeps one of each kind (its "animation"), with its own duration.
+// "Zoom in", "Slide from the left" and so on are presets of these (see presets.ts), so new ones
+// are just data. A clip keeps one of each kind (its "animation"), with its own duration.
 import { EASES, ease, noise, type Ease } from './curves';
 import { choice, num, type ParamSpec, type Params } from './params';
 

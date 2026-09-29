@@ -1,6 +1,7 @@
-// One layer (pass) in the Preset Lab: its settings (a slider, color or choice each, with a box to give it to
-// users as a slider of its own), how it moves over time, and buttons to move or remove it.
-import type { CSSProperties } from 'react';
+// One layer of an effect being customized: its settings (a slider, color, choice or words each;
+// past the first few, under More), how its strength moves over time, and buttons to move or remove
+// it.
+import { useState, type CSSProperties } from 'react';
 import { MOTIONS, type Motion, type MotionKind } from '@/domain/effects/curves';
 import { ENGINES, paramsOf, type Pass } from '@/domain/effects/passes';
 import type { ParamSpec, ParamValue } from '@/domain/effects/params';
@@ -13,22 +14,20 @@ const pct = (v: number, min: number, max: number) =>
   ({ '--p': `${((v - min) / (max - min || 1)) * 100}%` }) as CSSProperties;
 const show = (v: number) => (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2));
 
-export function PassCard({
+// how many settings show before More
+const FIRST = 5;
+
+export function LayerCard({
   pass,
   index,
   count,
-  exposed,
-  strength,
   on,
 }: {
   pass: Pass;
   index: number;
-  count: number; // how many passes there are
-  exposed(param: string): boolean; // whether users get this setting as a slider
-  strength: boolean; // Strength covers each pass's strength, so it isn't given a slider of its own
+  count: number; // how many layers there are
   on: {
     set(param: string, v: ParamValue): void;
-    expose(param: string, on: boolean): void;
     motion(m: Partial<Motion>): void;
     move(by: -1 | 1): void;
     remove(): void;
@@ -36,13 +35,15 @@ export function PassCard({
 }) {
   const specs = paramsOf(pass.engine, pass.kind);
   const m = pass.motion;
+  const [more, setMore] = useState(false);
+  const shown = more ? specs : specs.slice(0, FIRST);
   return (
-    <section className="lab-card" aria-label={`Layer ${index + 1}`}>
-      <header className="lab-card-head">
+    <section className="custom-card" aria-label={`Layer ${index + 1}`}>
+      <header className="custom-card-head">
         <strong>
           {index + 1}. {ENGINES[pass.engine][pass.kind].label}
         </strong>
-        <span className="lab-card-tools">
+        <span className="custom-card-tools">
           <button type="button" aria-label="Draw earlier" disabled={index === 0} onClick={() => on.move(-1)}>
             ↑
           </button>
@@ -59,23 +60,20 @@ export function PassCard({
           </button>
         </span>
       </header>
-      <div className="lab-params">
-        {specs.map(s => (
-          <Param
-            key={s.key}
-            spec={s}
-            value={pass.params[s.key]}
-            exposable={(s.type === 'number' || s.type === 'color') && !(strength && s.key === 'amount')}
-            exposed={exposed(s.key)}
-            onSet={v => on.set(s.key, v)}
-            onExpose={e => on.expose(s.key, e)}
-          />
+      <div className="custom-params">
+        {shown.map(s => (
+          <Param key={s.key} spec={s} value={pass.params[s.key]} onSet={v => on.set(s.key, v)} />
         ))}
+        {specs.length > FIRST && (
+          <button type="button" className="custom-more" onClick={() => setMore(!more)}>
+            {more ? 'Fewer settings' : `More settings (${specs.length - FIRST})`}
+          </button>
+        )}
       </div>
-      {/* (strength that moves over time: only for passes that have a strength) */}
+      {/* (strength that moves over time: only for layers that have a strength) */}
       {specs.some(s => s.key === 'amount') && (
-        <div className="lab-params lab-motion">
-          <label className="lab-param">
+        <div className="custom-params custom-motion">
+          <label className="custom-param">
             <span>Motion</span>
             <select value={m.kind} onChange={e => on.motion({ kind: e.target.value as MotionKind })}>
               {MOTIONS.map(x => (
@@ -123,7 +121,7 @@ function Slider({
   onSet(v: number): void;
 }) {
   return (
-    <label className="lab-param">
+    <label className="custom-param">
       <span>{label}</span>
       <input
         type="range"
@@ -139,42 +137,17 @@ function Slider({
   );
 }
 
-function Param({
-  spec,
-  value,
-  exposable,
-  exposed,
-  onSet,
-  onExpose,
-}: {
-  spec: ParamSpec;
-  value: ParamValue;
-  exposable: boolean;
-  exposed: boolean;
-  onSet(v: ParamValue): void;
-  onExpose(on: boolean): void;
-}) {
-  const box = exposable && (
-    <input
-      type="checkbox"
-      className="lab-expose"
-      checked={exposed}
-      title="Give users a slider for this"
-      aria-label={`Give users a slider for ${spec.label}`}
-      onChange={e => onExpose(e.target.checked)}
-    />
-  );
+function Param({ spec, value, onSet }: { spec: ParamSpec; value: ParamValue; onSet(v: ParamValue): void }) {
   if (spec.type === 'number')
     return (
-      <div className="lab-row">
+      <div className="custom-row">
         <Slider label={spec.label} min={spec.min} max={spec.max} value={value as number} onSet={onSet} />
-        {box}
       </div>
     );
   if (spec.type === 'color')
     return (
-      <div className="lab-row">
-        <label className="lab-param">
+      <div className="custom-row">
+        <label className="custom-param">
           <span>{spec.label}</span>
           <input
             type="color"
@@ -184,13 +157,12 @@ function Param({
           />
           <output />
         </label>
-        {box}
       </div>
     );
   if (spec.type === 'text')
     return (
-      <div className="lab-row">
-        <label className="lab-param">
+      <div className="custom-row">
+        <label className="custom-param">
           <span>{spec.label}</span>
           <input
             type="text"
@@ -203,8 +175,8 @@ function Param({
       </div>
     );
   return (
-    <div className="lab-row">
-      <label className="lab-param">
+    <div className="custom-row">
+      <label className="custom-param">
         <span>{spec.label}</span>
         <select value={value as string} onChange={e => onSet(e.target.value)}>
           {spec.options.map(o => (

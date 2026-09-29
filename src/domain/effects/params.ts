@@ -1,5 +1,5 @@
 // An engine's settings, described as data: each one's name, range and default. Presets are checked
-// against them (see presets.ts), and the Preset Lab and Pro panels build their sliders from them, so
+// against them (see presets.ts), and the editor's panels build their sliders from them, so
 // a new setting needs no new UI.
 
 export interface NumberParam {

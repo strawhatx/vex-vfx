@@ -12,8 +12,9 @@ export type ToolKey =
   | 'screenfx'
   | 'body'
   | 'packs'
-  | 'impacts'
-  | 'elements'
+  | 'objects'
+  | 'custom'
+  | 'ownimpact'
   | 'cancel'
   | 'edit'
   | 'replace'
@@ -56,12 +57,12 @@ export interface ToolBtn {
   on?: boolean;
   disabled?: boolean;
 }
-// what the toolbar lists: the effect categories, the elements, the impact families, the footage
-// tools (the film selected), a selected effect, impact, cutout, music or look's tools
+// what the toolbar lists: the effect groups, object effects, custom effects, the footage tools (the
+// film selected), a selected effect, impact, cutout, music or look's tools
 export type Mode =
   | 'catalog'
-  | 'elements'
-  | 'impacts'
+  | 'objects'
+  | 'custom'
   | 'clip'
   | 'track'
   | 'impact'
@@ -71,31 +72,30 @@ export type Mode =
   | 'effectclip'
   | null;
 
-// the Elements menu
-export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
+// Effects come in three groups:
+//   - video effects: over the whole picture (templates)
+//   - object effects: on a person or object, following it (templates, and the effects below; text
+//     on the film has a menu of its own, beside Effects: Tracked text follows an object)
+//   - custom effects: going off wherever you point (hits, explosions, shockwaves…), and the user's
+//     own effect clips
+export const OBJECT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'fire', label: 'Fire', icon: I.flame },
   { id: 'lightning', label: 'Lightning', icon: I.bolt },
   { id: 'aura', label: 'Aura', icon: I.aura },
-  { id: 'water', label: 'Water', icon: I.water },
-];
-
-// the other effect categories; Elements (first) and Impact (last) open menus of their own. (Text on
-// the film has a menu of its own, beside Effects: this is text that follows an object.)
-export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
-  { id: 'text', label: 'Tracked text', icon: I.text },
   { id: 'sparks', label: 'Sparks', icon: I.effects },
-  { id: 'laser', label: 'Laser', icon: I.laser },
   { id: 'outline', label: 'Outline', icon: I.outline },
   { id: 'glitch', label: 'Glitch', icon: I.glitch },
+  { id: 'water', label: 'Water', icon: I.water },
+  { id: 'text', label: 'Tracked text', icon: I.text },
+  { id: 'laser', label: 'Laser', icon: I.laser },
 ];
 
-// the Impact menu: one button per family
-export const IMPACT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
+export const CUSTOM_CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'impact', label: 'Hit', icon: I.burst },
   { id: 'explosion', label: 'Explosion', icon: I.explosion },
   { id: 'shockwave', label: 'Shockwave', icon: I.wave },
-  { id: 'word', label: 'Text', icon: I.text },
-  { id: 'splash', label: 'Water', icon: I.water },
+  { id: 'word', label: 'Comic word', icon: I.text },
+  { id: 'splash', label: 'Splash', icon: I.water },
 ];
 
 // which buttons show for what's selected
@@ -145,15 +145,21 @@ export function toolsFor(
   });
   if (mode === 'catalog')
     return [
-      { key: 'body', label: 'Body', icon: I.person, disabled: s.busy || !s.ready },
-      { key: 'packs', label: 'My clips', icon: I.film, disabled: s.busy || !s.ready },
-      { key: 'screenfx', label: 'Video', icon: I.scene, disabled: s.busy || !s.ready },
-      { key: 'elements', label: 'Elements', icon: I.flame, disabled: s.busy },
-      ...CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
-      { key: 'impacts', label: 'Impact', icon: I.burst, disabled: s.busy },
+      { key: 'screenfx', label: 'Video effects', icon: I.scene, disabled: s.busy || !s.ready },
+      { key: 'objects', label: 'Object effects', icon: I.person, disabled: s.busy },
+      { key: 'custom', label: 'Custom effects', icon: I.burst, disabled: s.busy },
     ];
-  if (mode === 'elements') return ELEMENT_CATEGORIES.map(category);
-  if (mode === 'impacts') return IMPACT_CATEGORIES.map(category);
+  if (mode === 'objects')
+    return [
+      { key: 'body', label: 'Templates', icon: I.person, disabled: s.busy || !s.ready },
+      ...OBJECT_CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
+    ];
+  if (mode === 'custom')
+    return [
+      { key: 'ownimpact', label: 'Create your own', icon: I.plus, disabled: s.busy },
+      ...CUSTOM_CATEGORIES.map(category),
+      { key: 'packs', label: 'My clips', icon: I.film, disabled: s.busy || !s.ready },
+    ];
   // the footage: split the film, cut objects out of it, and the clip's own settings
   if (mode === 'clip')
     return [
@@ -195,6 +201,7 @@ export function toolsFor(
     return [
       ...(s.burst ? [sheet('presets', 'Style', I.burst)] : []),
       ...(s.burst && s.tunable ? [sheet('controls', 'Tune', I.adjust)] : []),
+      ...(s.burst ? [sheet('customize', 'Customize', I.edit)] : []),
       ...(s.burst
         ? []
         : [
@@ -239,6 +246,7 @@ export function toolsFor(
     return [
       sheet('presets', 'Style', I.effects),
       s.text ? sheet('controls', 'Edit', I.text) : sheet('controls', 'Adjust', I.adjust),
+      sheet('customize', 'Customize', I.edit),
       ...(s.text ? [sheet('animation', 'Animation', I.wave)] : []),
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
@@ -275,7 +283,11 @@ export function toolsFor(
     return [
       // (a body effect: its preset and its controls, rather than an effect's settings)
       ...(s.body
-        ? [sheet('presets', 'Style', I.effects), sheet('controls', 'Adjust', I.adjust)]
+        ? [
+            sheet('presets', 'Style', I.effects),
+            sheet('controls', 'Adjust', I.adjust),
+            sheet('customize', 'Customize', I.edit),
+          ]
         : [
             sheet('effects', 'Effect', I.effects),
             ...(s.laser ? [sheet('aim', 'Aim', I.target)] : []),

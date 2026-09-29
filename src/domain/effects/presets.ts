@@ -1,7 +1,7 @@
 // A preset: a ready-made effect as data. It's a stack of passes (see passes.ts), a few friendly
 // controls that drive their settings (a "Strength" slider, a color), and how it fades in and out.
-// New effects are new presets, not new code: they're made in the Preset Lab and kept as JSON files
-// (see library/). A clip keeps the preset it was made from and its controls' values.
+// New effects are new presets, not new code: templates kept as JSON files (see library/). A clip
+// keeps the preset it was made from and its controls' values, which users set to customize it.
 //
 // Groups: where a preset is offered, and which timeline layer its clips go on.
 //   - filter: color looks, on the Filters layer
@@ -58,7 +58,7 @@ const ID = /^[a-z0-9][a-z0-9-]*$/;
 const MAX_FADE = 10,
   MAX_LENGTH = 60;
 
-// a preset from data (one of its JSON files, or one saved from the Preset Lab): anything missing is
+// a preset from data (one of its JSON files, or one kept in a saved film): anything missing is
 // filled in, settings are fitted to their ranges; throws, saying what's wrong, if it can't be used
 export function parsePreset(raw: unknown): Preset {
   const r = (raw ?? {}) as Record<string, unknown>;

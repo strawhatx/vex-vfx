@@ -50,7 +50,8 @@ import {
   type LookClip,
 } from '@/domain/project/looks';
 import type { ParamValue } from '@/domain/effects/params';
-import { upToDate, type LookGroup, type Preset } from '@/domain/effects/presets';
+import { controlDefaults, upToDate, type LookGroup, type Preset } from '@/domain/effects/presets';
+import { ownCopy } from '@/domain/effects/custom';
 import type { TextPlace } from '@/domain/effects/typeset';
 import {
   effectRange,
@@ -726,6 +727,18 @@ export class Project {
     if (!c || c.preset.group !== preset.group) return false;
     this.changeLook(id, x => withPreset(x, preset));
     return true;
+  }
+
+  // its effect customized: `edit` made to its own copy of its template (see effects/custom.ts)
+  customizeLook(id: number, edit: (p: Preset) => Preset, merge?: string) {
+    this.changeLook(
+      id,
+      c => {
+        const preset = edit(ownCopy(c.preset, c.values));
+        return { ...c, preset, values: controlDefaults(preset) };
+      },
+      merge && `custom:${id}:${merge}`,
+    );
   }
 
   setLookControl(id: number, control: string, v: ParamValue) {

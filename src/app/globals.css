@@ -1618,64 +1618,11 @@ input[type='range']::-moz-range-thumb {
   transform: scaleX(-1);
 }
 
-/* ---------- the Preset Lab: the preview beside the draft on desktop, above it on phones ---------- */
-.lab {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100%;
-}
-.lab-stage {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: 8px;
-  height: 52vh;
-  padding: 8px 16px;
-}
-.lab-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.lab-top-tools {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
-.lab-home {
-  color: var(--ink);
-  text-decoration: none;
-  font-size: 1.2rem;
-}
-.lab-preview {
-  position: relative;
-  min-height: 0;
-}
-/* (fitted inside the space the preview has, however big the clip) */
-.lab-preview canvas {
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 8px;
-}
-.lab-transport {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.85rem;
-}
-.lab-transport input[type='range'] {
-  flex: 1;
-}
-.lab-transport output {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.lab button,
-.lab select,
-.lab input[type='text'],
-.lab input[type='number'] {
+/* ---------- customizing an effect: its layers' settings, and adding layers ---------- */
+.custom button,
+.custom select,
+.custom input[type='text'],
+.custom input[type='number'] {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1684,97 +1631,84 @@ input[type='range']::-moz-range-thumb {
   font: inherit;
   font-size: 0.85rem;
 }
-.lab button:disabled {
+.custom button:disabled {
   opacity: 0.4;
 }
-.lab button.primary {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
-  font-weight: 600;
-}
-.lab-panel {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  overflow-y: auto;
-  padding: 8px 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
-}
-.lab-card {
+.custom-card {
   display: grid;
   gap: 10px;
   padding: 12px;
   border-radius: 12px;
   background: var(--panel);
 }
-.lab-card-head {
+.custom-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.lab-card-tools {
+.custom-card-tools {
   display: flex;
   gap: 4px;
 }
-.lab-card-tools button {
+.custom-card-tools button {
   padding: 2px 9px;
 }
-.lab-params {
+.custom-params {
   display: grid;
   gap: 10px;
 }
-.lab-motion {
+.custom-motion {
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-.lab-row {
+.custom-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
 }
-.lab-param {
+.custom-param {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 10px;
   font-size: 0.82rem;
 }
-.lab-param output {
+.custom-param output {
   text-align: right;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.lab-param .lab-id {
+.custom-param .custom-id {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.7rem;
 }
-.lab-expose {
+.custom-expose {
   width: 18px;
   height: 18px;
   accent-color: var(--brand);
 }
-.lab-check {
+.custom-check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.85rem;
 }
-.lab-check input {
+.custom-check input {
   accent-color: var(--brand);
 }
-.lab-add-open {
+.custom-add-open {
   padding: 10px;
   border: 1px dashed var(--line);
   border-radius: 12px;
   background: none;
   font-size: 0.9rem;
 }
-.lab-add input {
+.custom-add input {
   width: 100%;
 }
-.lab-add-list {
+.custom-add-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1784,49 +1718,46 @@ input[type='range']::-moz-range-thumb {
   overflow-y: auto;
   list-style: none;
 }
-.lab-add-list button {
+.custom-add-list button {
   display: flex;
   align-items: baseline;
   gap: 6px;
   padding: 6px 10px;
   font-size: 0.85rem;
 }
-.lab-add-list small {
+.custom-add-list small {
   color: var(--muted);
   font-size: 0.7rem;
 }
-.lab-save {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.lab-note {
+.custom-note {
   width: 100%;
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
 }
-.lab-problem {
+.custom-problem {
   width: 100%;
   margin: 0;
   color: #ff8a80;
   font-size: 0.82rem;
 }
-.lab-preview .lab-problem {
-  position: absolute;
-  inset: auto 0 8px;
-  text-align: center;
+.custom-layers {
+  display: grid;
+  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-bottom: 8px;
 }
-@media (min-width: 900px) {
-  .lab {
-    grid-template-rows: none;
-    grid-template-columns: minmax(0, 1fr) 420px;
-  }
-  .lab-stage {
-    height: 100%;
-    padding: 16px 24px;
-  }
-  .lab-panel {
-    padding: 16px 16px 24px 0;
-  }
+.custom-more {
+  justify-self: start;
+  border: none !important;
+  background: none !important;
+  color: var(--brand) !important;
+}
+.own-art {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  background: var(--raised);
+  color: var(--ink);
 }

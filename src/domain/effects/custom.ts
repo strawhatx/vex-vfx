@@ -1,38 +1,37 @@
-// Making a preset in the Preset Lab, for what it's made for (see LAB_TARGETS): passes added, taken out, moved and set,
-// settings picked out as the sliders users get, and a Strength slider over all of it. Each change
-// gives a new preset (nothing is changed in place).
+// Customizing an effect: its template's layers (passes) set, added, taken out and moved, and new
+// effects made from nothing. Each change gives a new preset (nothing is changed in place). A clip
+// customized gets its own copy of its template (see ownCopy), with a Strength slider over it all.
 //
-// A draft always draws as its passes say: its controls' defaults give back exactly the settings
-// being edited, so what the lab shows is what a new clip of it shows. Setting a setting a control
-// drives moves the control's default (or, for Strength and controls driving several settings, where
-// the control takes that setting) to match.
+// An effect always draws as its passes say: its controls' defaults give back exactly the settings
+// being edited. Setting a setting a control drives moves the control's default (or, for Strength
+// and controls driving several settings, where the control takes that setting) to match.
 import type { Motion } from './curves';
 import { BODY_KINDS } from './body';
 import { BURST_KINDS } from './bursts';
 import { ENGINES, fitPass, paramsOf, type Engine, type Pass } from './passes';
 import { fitParam, type ParamValue } from './params';
 import {
-  controlDefaults,
   parsePreset,
   passesWith,
   type Control,
+  type ControlValues,
   type Drive,
   type Preset,
   type PresetGroup,
 } from './presets';
 
-// What a preset is made for (its group): the frame (a filter, or an effect), an object, text, a
-// clip's motion, the join between clips, or an impact. Each says the layers (kinds of pass, from
-// any engine) that can go on it, what a new preset starts with, and how long it lasts. The lab is
-// one page: pick what it's for, then add layers.
-interface LabTarget {
+// What an effect is for (its group): the frame (a filter, or a video effect), an object, text, a
+// clip's motion, the join between clips, or a custom effect (going off wherever it's pointed). Each
+// says the layers (kinds of pass, from any engine) that can go on it, what a new one starts with,
+// and how long it lasts.
+interface Target {
   name: string;
   offers: readonly { engine: Engine; kinds?: readonly string[] }[];
   first: readonly (readonly [Engine, string])[];
   length: number;
 }
 
-export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
+export const EFFECT_TARGETS: Record<PresetGroup, Target> = {
   filter: {
     name: 'The frame: a filter',
     offers: [{ engine: 'frame', kinds: ['grade'] }],
@@ -86,7 +85,7 @@ export const LAB_TARGETS: Record<PresetGroup, LabTarget> = {
   },
 };
 
-export const TARGETS = Object.keys(LAB_TARGETS) as PresetGroup[];
+export const TARGETS = Object.keys(EFFECT_TARGETS) as PresetGroup[];
 
 // the slider over every pass's strength
 export const STRENGTH = 'strength';
@@ -102,7 +101,7 @@ export const slug = (name: string) =>
 
 // the layers (kinds of pass) that can go on a preset for `target`, with the engine each is drawn by
 export const kindsOf = (target: PresetGroup) =>
-  LAB_TARGETS[target].offers.flatMap(({ engine, kinds }) =>
+  EFFECT_TARGETS[target].offers.flatMap(({ engine, kinds }) =>
     Object.entries(ENGINES[engine])
       .filter(([id]) => !kinds || kinds.includes(id))
       .map(([id, k]) => ({ engine, kind: id, label: k.label })),
@@ -110,12 +109,15 @@ export const kindsOf = (target: PresetGroup) =>
 
 export const newPass = (engine: Engine, kind: string): Pass => fitPass({ engine, kind });
 
-// a new preset for `target`: its first passes, and a Strength slider
-export function newDraft(target: PresetGroup): Preset {
-  const spec = LAB_TARGETS[target];
+// the id an effect made from nothing starts with (so "add MY_OWN" means make one)
+export const MY_OWN = 'my-effect';
+
+// a new effect for `target`, made from nothing: its first layers, and a Strength slider
+export function blankEffect(target: PresetGroup): Preset {
+  const spec = EFFECT_TARGETS[target];
   const p = parsePreset({
-    id: 'untitled',
-    name: 'Untitled',
+    id: MY_OWN,
+    name: 'My effect',
     group: target,
     passes: spec.first.map(([engine, kind]) => newPass(engine, kind)),
     length: spec.length,
@@ -123,22 +125,10 @@ export function newDraft(target: PresetGroup): Preset {
   return withStrength(p, true);
 }
 
-// how long the lab plays a preset round for: its length; for a transition, a moment of one
-// picture, the transition, and a moment of the next; for an impact, its burst and a moment after
-export const TRANSITION_HOLD = 0.6;
-export function previewLength(p: Pick<Preset, 'group' | 'length' | 'passes'>) {
-  if (p.group === 'transition') return p.length + 2 * TRANSITION_HOLD;
-  if (p.group === 'impact') {
-    const hit = p.passes.find(x => x.engine === 'object' && x.kind === 'hit');
-    return ((hit?.params.duration as number | undefined) ?? p.length) + TRANSITION_HOLD;
-  }
-  return p.length;
-}
-
-// a preset loaded to start from: its controls' defaults baked into its passes, so what's edited is
-// what it draws
-export function draftOf(p: Preset): Preset {
-  return { ...p, passes: passesWith(p, controlDefaults(p)) };
+// a clip's own copy of its preset, to customize: its controls' values baked into its layers, and a
+// Strength slider over all of them (at full, so it draws just as it did)
+export function ownCopy(p: Preset, values: ControlValues): Preset {
+  return withStrength({ ...p, passes: passesWith(p, values), controls: [] }, true);
 }
 
 const hasAmount = (x: Pass) => paramsOf(x.engine, x.kind).some(s => s.key === 'amount');
@@ -156,49 +146,6 @@ export function withStrength(p: Preset, on: boolean): Preset {
 }
 
 export const hasStrength = (p: Preset) => p.controls.some(c => c.id === STRENGTH);
-
-// the control (other than Strength) that gives users setting `param` of pass k, if any
-export const exposedBy = (p: Preset, k: number, param: string) =>
-  p.controls.find(c => c.id !== STRENGTH && c.drives.some(d => d.pass === k && d.param === param)) ?? null;
-
-// setting `param` of pass k given to users as a control of its own (a slider over its whole range,
-// or a color), or taken back
-export function expose(p: Preset, k: number, param: string, on: boolean): Preset {
-  const was = exposedBy(p, k, param);
-  if (!on) return was ? { ...p, controls: p.controls.filter(c => c !== was) } : p;
-  const spec = paramsOf(p.passes[k].engine, p.passes[k].kind).find(s => s.key === param);
-  if (was || !spec || spec.type === 'choice' || spec.type === 'text') return p;
-  const v = p.passes[k].params[param];
-  const id = uniqueId(p, `${slug(spec.label)}`);
-  const c: Control =
-    spec.type === 'color'
-      ? { id, label: spec.label, type: 'color', def: v as string, drives: [{ pass: k, param }] }
-      : {
-          id,
-          label: spec.label,
-          type: 'slider',
-          def: spec.max > spec.min ? ((v as number) - spec.min) / (spec.max - spec.min) : 0,
-          drives: [{ pass: k, param, from: spec.min, to: spec.max }],
-        };
-  return { ...p, controls: [...p.controls, c] };
-}
-
-function uniqueId(p: Preset, base: string) {
-  let id = base,
-    n = 2;
-  while (p.controls.some(c => c.id === id)) id = `${base}-${n++}`;
-  return id;
-}
-
-// control `id` taken away (its settings stay as they are)
-export const removeControl = (p: Preset, id: string): Preset => ({
-  ...p,
-  controls: p.controls.filter(c => c.id !== id),
-});
-
-export function renameControl(p: Preset, id: string, label: string): Preset {
-  return { ...p, controls: p.controls.map(c => (c.id === id ? { ...c, label } : c)) };
-}
 
 // setting `param` of pass k set to v (fitted to its range), and the controls driving it moved to
 // match
@@ -295,19 +242,5 @@ export function setMeta(
       in: Math.max(0, Math.min(10, m.fadeIn ?? p.fade.in)),
       out: Math.max(0, Math.min(10, m.fadeOut ?? p.fade.out)),
     },
-  };
-}
-
-// the preset as its JSON file holds it
-export function presetFile(p: Preset) {
-  return {
-    id: p.id,
-    name: p.name,
-    group: p.group,
-    category: p.category,
-    length: p.length,
-    fade: p.fade,
-    passes: p.passes.map(x => ({ engine: x.engine, kind: x.kind, params: x.params, motion: x.motion })),
-    controls: p.controls,
   };
 }

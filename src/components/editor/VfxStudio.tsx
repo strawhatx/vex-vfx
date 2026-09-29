@@ -11,6 +11,8 @@ import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
 import { ExportResult } from './ExportResult';
 import { PresetControls, PresetSheet, type MenuGroup } from './LookSheet';
+import { CustomizeSheet } from './custom/CustomizeSheet';
+import { MY_OWN } from '@/domain/effects/custom';
 import { AnimSheet } from './AnimSheet';
 import { TransitionSheet } from './TransitionSheet';
 import { EffectClipControls, PackSheet } from './PackSheet';
@@ -36,10 +38,10 @@ import {
 import { Transport } from './Transport';
 
 // the tools whose panels aren't ToolSheet's
-const SHEETS_OF_THEIR_OWN = new Set<Tool>(['presets', 'controls', 'animation']);
+const SHEETS_OF_THEIR_OWN = new Set<Tool>(['presets', 'controls', 'customize', 'animation']);
 
 // which list of categories the toolbar shows, if any
-type Catalog = 'effects' | 'elements' | 'impacts' | null;
+type Catalog = 'effects' | 'objects' | 'custom' | null;
 
 // id: the project's, which it's saved under on this device
 export default function VfxStudio({ id }: { id: string }) {
@@ -54,6 +56,8 @@ export default function VfxStudio({ id }: { id: string }) {
   const [scene, setScene] = useState<number | null>(null); // the film (scene) selected
   // the toolbar lists the effect categories, or the impact families
   const [catalog, setCatalog] = useState<Catalog>(null);
+  // an effect made from nothing is being placed: once it's there, straight on to making it
+  const [customizeNext, setCustomizeNext] = useState(false);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
   // a group's presets open to add a look from (filters, or video effects)
   const [lookMenu, setLookMenu] = useState<MenuGroup | null>(null);
@@ -125,6 +129,11 @@ export default function VfxStudio({ id }: { id: string }) {
     lookMenu ??
     (tool === 'presets' ? (look ? lookGroup(look) : bodyLane ? 'body' : burstLane ? 'impact' : null) : null);
   const cutout = lane?.kind === 'cutout' ? lane : null;
+  // an effect made from nothing, just placed: its layers, to make it (set while rendering, once)
+  if (customizeNext && presetOf?.preset.id === MY_OWN) {
+    setCustomizeNext(false);
+    setTool('customize');
+  }
 
   // ---------- actions ----------
 
@@ -273,14 +282,29 @@ export default function VfxStudio({ id }: { id: string }) {
   // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
   // selected, swapped in for it, so presets can be tried one after another
   function pickLook(group: MenuGroup, presetId: string) {
-    if (group === 'impact') return burstLane && player()?.setBurst(burstLane.id, presetId);
+    const own = presetId === MY_OWN;
+    if (group === 'impact') {
+      if (burstLane) player()?.setBurst(burstLane.id, presetId);
+      if (own) setTool('customize');
+      return;
+    }
     if (group === 'body') {
-      if (bodyLane) return player()?.setBody(bodyLane.id, presetId);
+      if (bodyLane) {
+        player()?.setBody(bodyLane.id, presetId);
+        if (own) setTool('customize');
+        return;
+      }
       setLookMenu(null);
+      setCustomizeNext(own);
       return player()?.startAdding({ kind: 'effect', fx: {}, body: presetId });
     }
     if (look && lookGroup(look) === group) player()?.setLookPreset(look.id, presetId);
-    else player()?.addLook(presetId);
+    else player()?.addLook(presetId, group);
+    // (one made from nothing: straight on to making it)
+    if (own) {
+      setLookMenu(null);
+      setTool('customize');
+    }
   }
 
   // Back from the Elements or Impact menu: the effect categories again
@@ -400,8 +424,13 @@ export default function VfxStudio({ id }: { id: string }) {
       case 'crop':
         setTool(null);
         return pl?.startCrop();
-      case 'elements':
-      case 'impacts':
+      case 'ownimpact':
+        setTool(null);
+        setCatalog(null);
+        setCustomizeNext(true);
+        return pl?.startAdding({ kind: 'impact', style: 'punch', fx: {}, burst: MY_OWN });
+      case 'objects':
+      case 'custom':
         setTool(null);
         return setCatalog(key);
       case 'cancel':
@@ -433,6 +462,7 @@ export default function VfxStudio({ id }: { id: string }) {
       case 'speed':
       case 'presets':
       case 'controls':
+      case 'customize':
       case 'animation':
         setLookMenu(null);
         return setTool(cur => (cur === key ? null : key));
@@ -631,7 +661,7 @@ export default function VfxStudio({ id }: { id: string }) {
           }
           buttons={buttons}
           onPress={runTool}
-          onBack={mode === 'impacts' || mode === 'elements' ? backToCatalog : mode ? deselect : undefined}
+          onBack={mode === 'objects' || mode === 'custom' ? backToCatalog : mode ? deselect : undefined}
         />
         {ui.choosing && (
           <ToolSheet
@@ -685,6 +715,16 @@ export default function VfxStudio({ id }: { id: string }) {
             text={look.text}
             onChange={(c, v) => player()?.setLookControl(look.id, c, v)}
             onText={p => player()?.setLookText(look.id, p)}
+            onClose={() => setTool(null)}
+          />
+        )}
+        {tool === 'customize' && ui.selected !== null && (look || presetOf) && (
+          <CustomizeSheet
+            key={ui.selected}
+            name={look?.name ?? presetLane?.name ?? ''}
+            preset={look ? look.preset : presetOf!.preset}
+            values={look ? look.values : presetOf!.values}
+            onEdit={(edit, merge) => player()?.customize(ui.selected!, edit, merge)}
             onClose={() => setTool(null)}
           />
         )}
@@ -839,16 +879,16 @@ function startPal(style: ImpactStyle): Partial<FxSettings> | undefined {
 function modeFor(lane: Lane | null, clipSelected: boolean, catalog: Catalog): Mode {
   if (lane) return lane.kind === 'impact' ? 'impact' : lane.kind === 'cutout' ? 'cutout' : 'track';
   if (clipSelected) return 'clip';
-  if (catalog === 'impacts') return 'impacts';
-  if (catalog === 'elements') return 'elements';
+  if (catalog === 'objects') return 'objects';
+  if (catalog === 'custom') return 'custom';
   if (catalog) return 'catalog';
   return null;
 }
 
 function toolbarLabel(mode: Mode, lane: Lane | null) {
   if (mode === 'catalog') return 'Effects';
-  if (mode === 'impacts') return 'Impacts';
-  if (mode === 'elements') return 'Elements';
+  if (mode === 'objects') return 'Object effects';
+  if (mode === 'custom') return 'Custom effects';
   if (mode === 'clip') return 'Edit';
   return lane ? `${lane.name} tools` : 'Tools';
 }

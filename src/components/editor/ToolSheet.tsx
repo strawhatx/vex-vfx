@@ -45,6 +45,8 @@ export type Tool =
   // a look's (a filter or screen effect): its preset, and its controls (see LookSheet.tsx)
   | 'presets'
   | 'controls'
+  // every layer of an effect made from a template, to customize (see custom/CustomizeSheet.tsx)
+  | 'customize'
   // how a film or an overlay moves (see AnimSheet.tsx)
   | 'animation';
 // the effect categories: each continuous effect, and each family of impacts (listed together
@@ -97,6 +99,7 @@ export const TOOL_TITLES: Record<Tool, string> = {
   speed: 'Speed',
   presets: 'Style',
   controls: 'Adjust',
+  customize: 'Customize',
   animation: 'Animation',
 };
 

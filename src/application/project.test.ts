@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ClipFrame, Shape } from '@/domain/tracking/types';
 import { presetById } from '@/domain/effects/library';
+import { MY_OWN, addPass, blankEffect, setParam } from '@/domain/effects/custom';
 import { FakeAnalysis, FakeLayers, FakePictures } from './fakes';
 import { Project, REEL_IDS, type ProjectState } from './project';
 
@@ -331,6 +332,32 @@ describe('looks over the film', () => {
     expect(state.looks[0].values.strength).toBe(1);
     project.undo();
     expect(state.looks[0].at).toBe(1);
+  });
+
+  it('are customized on their own copy of their template, each change a step to undo', () => {
+    addVideo(10);
+    const id = project.addLook(preset('strobe'), 1)!;
+    project.setLookControl(id, 'strength', 0.5);
+    const was = project.looksAt(1.01);
+    // (its own copy draws as it did, its slider baked in)
+    project.customizeLook(id, p => p, 'noop');
+    expect(project.looksAt(1.01)).toEqual(was);
+    expect(state.looks[0].values).toEqual({ strength: 1 });
+    project.customizeLook(id, p => addPass(p, 'frame', 'shake'));
+    expect(state.looks[0].preset.passes.map(x => x.kind)).toEqual(['flash', 'shake']);
+    project.customizeLook(id, p => setParam(p, 0, 'color', '#ff0000'), 'set:0:color');
+    project.customizeLook(id, p => setParam(p, 0, 'color', '#00ff00'), 'set:0:color');
+    expect(state.looks[0].preset.passes[0].params.color).toBe('#00ff00');
+    project.undo(); // (both colors: one drag)
+    expect(state.looks[0].preset.passes[0].params.color).toBe('#ffffff');
+    project.undo();
+    expect(state.looks[0].preset.passes).toHaveLength(1);
+  });
+
+  it('can be made from nothing', () => {
+    addVideo(10);
+    const id = project.addLook(blankEffect('screen'), 0)!;
+    expect(project.look(id)).toMatchObject({ name: 'My effect', preset: { id: MY_OWN, group: 'screen' } });
   });
 
   it('are copied straight after themselves, and deleted', () => {

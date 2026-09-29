@@ -40,8 +40,16 @@ import {
 import type { MusicClip } from '@/domain/project/music';
 import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
-import type { LookGroup } from '@/domain/effects/presets';
-import { newLook, particlesAt, previewOf, textPreviewOf, type LookClip } from '@/domain/project/looks';
+import type { LookGroup, Preset, PresetGroup } from '@/domain/effects/presets';
+import { MY_OWN, blankEffect } from '@/domain/effects/custom';
+import {
+  lookGroup,
+  newLook,
+  particlesAt,
+  previewOf,
+  textPreviewOf,
+  type LookClip,
+} from '@/domain/project/looks';
 import type { TextPlace } from '@/domain/effects/typeset';
 import type { PartOp } from '@/domain/project/parts';
 import { nextFlagged, type Flag } from '@/domain/project/review';
@@ -290,6 +298,9 @@ const PICTURE_W = 160;
 const SAVE_AFTER_MS = 1000,
   SAVE_AT_LEAST_MS = 5000;
 // how wide the presets' pictures are (px)
+// the template with this id, or (MY_OWN) a new effect of the group made from nothing
+const presetFor = (id: string, group: PresetGroup) => (id === MY_OWN ? blankEffect(group) : presetById(id));
+
 const LOOK_THUMB_W = 144;
 // how far into a preset its thumbnail shows its particles (s)
 const THUMB_PARTICLES_AT = 1.5;
@@ -953,9 +964,10 @@ export class Player {
 
   // ---------- looks ----------
 
-  // a filter or screen effect from preset `id`, at the playhead, selected
-  addLook(presetId: string) {
-    const p = presetById(presetId);
+  // a filter, video effect or text from preset `id` (MY_OWN: one made from nothing), at the
+  // playhead, selected
+  addLook(presetId: string, group: LookGroup) {
+    const p = presetFor(presetId, group);
     if (!p) return;
     const id = this.project.addLook(p, this.time());
     this.select(id);
@@ -963,8 +975,15 @@ export class Player {
 
   // look `id` made from another preset (of the same group), keeping its timing
   setLookPreset(id: number, presetId: string) {
-    const p = presetById(presetId);
+    const c = this.project.look(id);
+    const p = c && presetFor(presetId, lookGroup(c));
     if (p) this.project.setLookPreset(id, p);
+  }
+
+  // its effect customized (see effects/custom.ts): a look's, an object effect's or an impact's
+  customize(id: number, edit: (p: Preset) => Preset, merge?: string) {
+    if (this.project.look(id)) this.project.customizeLook(id, edit, merge);
+    else this.clip(id)?.ed.customize(id, edit, merge);
   }
 
   setLookControl(id: number, control: string, v: ParamValue) {
@@ -975,7 +994,7 @@ export class Player {
 
   // the effect made from body preset `presetId` instead, keeping its timing and tracking
   setBody(id: number, presetId: string) {
-    const p = presetById(presetId);
+    const p = presetFor(presetId, 'body');
     if (p) this.clip(id)?.ed.setBody(id, p);
   }
 
@@ -1047,7 +1066,7 @@ export class Player {
 
   // the impact made from burst preset `presetId` instead, going off where it did
   setBurst(id: number, presetId: string) {
-    const p = presetById(presetId);
+    const p = presetFor(presetId, 'impact');
     if (p) this.clip(id)?.ed.setBurst(id, p);
   }
 
@@ -2489,8 +2508,14 @@ export class Player {
     if (!ed || choice.kind === 'cutout') return;
     const id =
       choice.kind === 'impact'
-        ? ed.addImpact(i, at, choice.style, choice.fx, choice.burst ? presetById(choice.burst) : null)
-        : ed.addTrack(i, at, choice.fx, part, choice.body ? presetById(choice.body) : null);
+        ? ed.addImpact(
+            i,
+            at,
+            choice.style,
+            choice.fx,
+            choice.burst ? presetFor(choice.burst, 'impact') : null,
+          )
+        : ed.addTrack(i, at, choice.fx, part, choice.body ? presetFor(choice.body, 'body') : null);
     if (id !== null) this.select(id);
   }
 

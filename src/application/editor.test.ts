@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FAMILY_STYLES, IMPACTS } from '@/domain/effects/impacts';
 import { presetById } from '@/domain/effects/library';
 import { parsePreset } from '@/domain/effects/presets';
+import { addPass, setParam } from '@/domain/effects/custom';
 import { encodeRle, type ClipFrame, type Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
 import { FakeAnalysis, FakeLayers } from './fakes';
@@ -1030,5 +1031,31 @@ describe('undo and redo', () => {
     editor.addTrack(14, { x: 50, y: 50 });
     editor.load(new Blob());
     expect(state.canUndo).toBe(false);
+  });
+});
+
+describe('customizing an effect', () => {
+  it("edits an object effect's own copy of its template, a step to undo", () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, {}, undefined, presetById('magic-dust')!)!;
+    editor.customize(id, p => addPass(p, 'object', 'edge'));
+    expect(layers.specs.find(s => s.id === id)!.passes!.map(p => p.kind)).toEqual([
+      'emitter',
+      'emitter',
+      'edge',
+    ]);
+    editor.undo();
+    expect(layers.specs.find(s => s.id === id)!.passes).toHaveLength(2);
+  });
+
+  it("edits a custom effect's, its timing following", () => {
+    const id = editor.addImpact(20, { x: 50, y: 50 }, 'punch', {}, presetById('spark-shower')!)!;
+    editor.customize(id, p => setParam(p, 0, 'duration', 2));
+    expect(state.lanes.find(l => l.id === id)!.range).toEqual({ s: 2, e: 4 });
+    expect(layers.specs.find(s => s.id === id)!.impacts[0].look.emitters).toHaveLength(2);
+  });
+
+  it("won't customize an effect that isn't made from a template", () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, { effect: 'fire' })!;
+    expect(editor.customize(id, p => p)).toBe(false);
   });
 });

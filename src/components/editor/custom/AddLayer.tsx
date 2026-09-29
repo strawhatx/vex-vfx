@@ -1,6 +1,6 @@
 'use client';
 
-// Adding a layer in the Preset Lab: one list of every layer that can go on the preset, whichever
+// Adding a layer to an effect being customized: one list of every layer that can go on the preset, whichever
 // engine draws it, narrowed by typing.
 import { useState } from 'react';
 import { isBurstKind } from '@/domain/effects/bursts';
@@ -35,13 +35,13 @@ export function AddLayer({ kinds, onAdd }: { kinds: readonly LayerKind[]; onAdd(
 
   if (!open)
     return (
-      <button type="button" className="lab-add-open" onClick={() => setOpen(true)}>
+      <button type="button" className="custom-add-open" onClick={() => setOpen(true)}>
         + Add layer
       </button>
     );
   return (
-    <section className="lab-card lab-add" aria-label="Add layer">
-      <div className="lab-row">
+    <section className="custom-card custom-add" aria-label="Add layer">
+      <div className="custom-row">
         <input
           type="text"
           autoFocus
@@ -58,7 +58,7 @@ export function AddLayer({ kinds, onAdd }: { kinds: readonly LayerKind[]; onAdd(
           ✕
         </button>
       </div>
-      <ul className="lab-add-list">
+      <ul className="custom-add-list">
         {shown.map(k => (
           <li key={`${k.engine}:${k.kind}`}>
             <button type="button" onClick={() => add(k)}>
@@ -69,7 +69,7 @@ export function AddLayer({ kinds, onAdd }: { kinds: readonly LayerKind[]; onAdd(
             </button>
           </li>
         ))}
-        {!shown.length && <li className="lab-note">No layer matches “{q}”.</li>}
+        {!shown.length && <li className="custom-note">No layer matches “{q}”.</li>}
       </ul>
     </section>
   );

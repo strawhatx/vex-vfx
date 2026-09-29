@@ -13,7 +13,6 @@
 // Times: the project keeps the clip's own time (source time). Outside, times are program time: the
 // film as edited, with deleted films left out (see edit.ts). Every time in or out of the editor's
 // methods is program time; frame indices are the clip's.
-import { upToDate } from '@/domain/effects/presets';
 import type { AnimKind, AnimSlot } from '@/domain/effects/animation';
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
@@ -68,7 +67,8 @@ import {
   type Track,
 } from '@/domain/project/track';
 import type { ParamValue } from '@/domain/effects/params';
-import { fitControl, type Preset } from '@/domain/effects/presets';
+import { controlDefaults, fitControl, upToDate, type Preset } from '@/domain/effects/presets';
+import { ownCopy } from '@/domain/effects/custom';
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
@@ -692,6 +692,29 @@ export class Editor {
     Object.assign(t, { burst: next.burst, impact: next.impact, range: next.range });
     refreshFrames(t, this.clip);
     this.timingChanged(id);
+    return true;
+  }
+
+  // an object effect or custom effect customized: `edit` made to its own copy of its template (see
+  // effects/custom.ts); changes of the same kind straight after one another are one step to undo
+  customize(id: number, edit: (p: Preset) => Preset, merge?: string) {
+    const t = this.track(id);
+    const was = t?.kind === 'impact' ? t.burst : t?.body;
+    if (!t || !was) return false;
+    this.record(merge && `custom:${id}:${merge}`);
+    const preset = edit(ownCopy(was.preset, was.values));
+    const own = { preset, values: controlDefaults(preset) };
+    if (t.kind === 'impact') {
+      const next = withBurst(t, preset, this.clip, this.duration);
+      Object.assign(t, { burst: own, impact: next.impact, range: next.range });
+      refreshFrames(t, this.clip);
+      this.timingChanged(id);
+    } else {
+      t.body = own;
+      t.fx = withBody(t, preset).fx;
+      this.syncLayers();
+      this.publish(true);
+    }
     return true;
   }
 

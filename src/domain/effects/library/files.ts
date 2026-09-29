@@ -1,5 +1,5 @@
-// The presets that ship with the app, one JSON file each. A preset saved from the Preset Lab is
-// dropped in this folder and listed here (the tests check every file is).
+// The templates that ship with the app, one JSON file each. A new one is dropped in this folder
+// and listed here (the tests check every file is).
 import goldenHour from './golden-hour.json';
 import honey from './honey.json';
 import desertHeat from './desert-heat.json';
