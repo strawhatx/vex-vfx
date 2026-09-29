@@ -103,6 +103,8 @@ import colorPop from './color-pop.json';
 import glitchBody from './glitch-body.json';
 import ashes from './ashes.json';
 import frostFade from './frost-fade.json';
+import thunderText from './thunder-text.json';
+import hauntedText from './haunted-text.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -208,4 +210,6 @@ export const PRESET_FILES: readonly unknown[] = [
   glitchBody,
   ashes,
   frostFade,
+  thunderText,
+  hauntedText,
 ];

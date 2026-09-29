@@ -1,7 +1,8 @@
 // The text engine: words drawn as styled, animated letters. Its passes are
 //   - type: the words it starts with, its font, size and letter spacing (the first one counts)
-//   - fill, stroke, glow, shadow, fire: style layers, drawn in order, so the first is at the back.
-//     Fire burns off the letters' shape, as it does off a tracked object.
+//   - fill, stroke, glow, shadow, fire, lightning, aura: style layers, drawn in order, so the first
+//     is at the back. Fire, lightning and aura come off the letters' shape, as they do off a
+//     tracked object.
 //   - in, out: how the letters come in and go out (the first of each counts)
 // A text clip keeps its own words and where it's placed; what it draws at a moment is worked out
 // here, letter by letter, so any frame draws the same.
@@ -12,12 +13,20 @@ import { LETTER_ANIMS, REST, combine, letterIn, letterOut, type LetterAnim, type
 import { PALETTES } from './palettes';
 import { choice, color, num, text, type ParamSpec, type Params } from './params';
 
-export type TextKind = 'type' | 'fill' | 'stroke' | 'glow' | 'shadow' | 'fire' | 'in' | 'out';
+export type TextKind =
+  'type' | 'fill' | 'stroke' | 'glow' | 'shadow' | 'fire' | 'lightning' | 'aura' | 'in' | 'out';
 
 // the most letters a text holds
 export const MAX_WORDS = 60;
 
 const amount = (def = 1) => num('amount', 'Strength', 0, 1, def);
+const palette = (def: string) =>
+  choice(
+    'palette',
+    'Colors',
+    PALETTES.map(p => ({ id: p.name.toLowerCase(), label: p.name })),
+    def,
+  );
 const anim = (def: LetterAnim, dur: number, stagger: number) => [
   choice('style', 'Style', LETTER_ANIMS, def),
   num('duration', 'Each letter (s)', 0.05, 3, dur),
@@ -72,23 +81,22 @@ export const TEXT_KINDS: Record<TextKind, { label: string; params: readonly Para
   },
   fire: {
     label: 'Fire',
-    params: [
-      amount(1),
-      num('height', 'Height', 0, 1, 0.5),
-      choice(
-        'palette',
-        'Colors',
-        PALETTES.map(p => ({ id: p.name.toLowerCase(), label: p.name })),
-        'ember',
-      ),
-    ],
+    params: [amount(1), num('height', 'Height', 0, 1, 0.5), palette('ember')],
+  },
+  lightning: {
+    label: 'Lightning',
+    params: [num('amount', 'Strength', 0, 2, 1), num('size', 'Size', 0.3, 3, 1), palette('blue')],
+  },
+  aura: {
+    label: 'Aura',
+    params: [num('amount', 'Strength', 0, 2, 1), num('size', 'Size', 0.3, 3, 1), palette('void')],
   },
   in: { label: 'Comes in', params: anim('pop', 0.35, 0.05) },
   out: { label: 'Goes out', params: anim('fade', 0.25, 0) },
 };
 
 export const isTextKind = (k: string): k is TextKind => Object.hasOwn(TEXT_KINDS, k);
-const STYLES = new Set<TextKind>(['fill', 'stroke', 'glow', 'shadow', 'fire']);
+const STYLES = new Set<TextKind>(['fill', 'stroke', 'glow', 'shadow', 'fire', 'lightning', 'aura']);
 
 // where a text clip is: its middle (fractions of the frame), its size (1 = as its type says) and
 // its turn (degrees)

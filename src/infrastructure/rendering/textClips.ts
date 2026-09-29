@@ -1,9 +1,10 @@
 // Draws the film's text (see domain/effects/typeset.ts): each text laid out letter by letter in its
 // font, every style layer drawn for all its letters in turn (so a glow sits behind all the fills),
 // each letter moved, turned, scaled, faded and blurred as its animation says. Fire burns off the
-// letters' shape on the GPU, as it does off a tracked object. Where each text was drawn is kept,
-// so a tap can find it.
-import { PALETTES } from '@/domain/effects/palettes';
+// letters' shape on the GPU, and lightning and aura run on it (see textParticles.ts), as they do off
+// a tracked object. Where each text was drawn is kept, so a tap can find it.
+import { fxOf } from '@/domain/effects/body';
+import { PALETTES, type FxSettings } from '@/domain/effects/palettes';
 import type { Params } from '@/domain/effects/params';
 import type { FontId } from '@/domain/effects/text';
 import type { DrawnText } from '@/domain/effects/typeset';
@@ -11,6 +12,22 @@ import type { Pose } from '@/domain/effects/letters';
 import { FireShader } from './fireShader';
 import { fontFor, type Fonts } from './fonts';
 import { applyPose } from './pose';
+import { TextParticles } from './textParticles';
+
+// what the particle effects need beyond a pass's own settings (colors, size, strength)
+const BASE_FX: FxSettings = {
+  effect: 'lightning',
+  pal: 0,
+  size: 1,
+  intensity: 1,
+  volume: 0,
+  outline: 'neon',
+  glitch: 'chaos',
+  text: '',
+  textStyle: 'behind',
+  font: 'anton',
+  water: 'rain',
+};
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -38,6 +55,7 @@ export class TextClipPainter {
   private mask = new OffscreenCanvas(1, 1);
   private fire: FireShader | null = null;
   private noFire = false;
+  private particles = new TextParticles();
   private boxes: TextBox[] = [];
 
   // draws the texts over ctx's canvas (W x H), the last on top; outline: a dashed box round the
@@ -50,6 +68,7 @@ export class TextClipPainter {
   ) {
     const { width: W, height: H } = ctx.canvas;
     this.boxes = [];
+    this.particles.keepOnly(new Set(texts.flatMap(t => t.styles.map((_, k) => `${t.id}:${k}`))));
     for (const t of texts) {
       const laid = this.layout(ctx, t, fonts, W);
       if (!laid) continue;
@@ -128,17 +147,28 @@ export class TextClipPainter {
       ctx.drawImage(img, 0, 0, W, H);
       ctx.restore();
     };
-    for (const s of t.styles) {
+    // the letters' shape, for fire, lightning and aura (made once, when one's wanted)
+    let mask: OffscreenCanvas | null = null;
+    const shape = () => (mask ??= this.letterMask(t, laid, fonts, box, W, H));
+    t.styles.forEach((s, k) => {
       // (fire is added onto the frame itself, which has to have what's under it already: its
       // canvas is black where there are no flames)
       if (s.kind === 'fire') {
         put(this.layer);
         g.clearRect(0, 0, W, H);
-        const fire = this.drawFire(t, laid, fonts, box, s.values, W, H);
+        const fire = this.drawFire(shape(), t, laid, s.values);
         if (fire) put(fire, 'lighter');
+      } else if (s.kind === 'lightning' || s.kind === 'aura') {
+        // (added onto the frame too, like the particle effects on objects)
+        put(this.layer);
+        g.clearRect(0, 0, W, H);
+        const fx = fxOf(s.kind, s.values, BASE_FX);
+        this.particles.draw(g, shape(), fx, t.t, W, H, `${t.id}:${k}`, t.id * 31 + k);
+        put(this.layer, 'lighter');
+        g.clearRect(0, 0, W, H);
       } else
         this.eachLetter(g, t, laid, box, (pose, letter) => style(g, s.kind, s.values, letter, laid.px, pose));
-    }
+    });
     put(this.layer);
   }
 
@@ -166,16 +196,10 @@ export class TextClipPainter {
     });
   }
 
-  // flames rising off the letters (W/2 x H/2, to be added onto the frame; null without WebGL2): their
-  // shape is the fire's heat source
-  private drawFire(t: DrawnText, laid: Laid, fonts: Fonts, box: TextBox, v: Params, W: number, H: number) {
+  // the letters' shape, white, at half the frame's size (as they're drawn, before the clip's animation)
+  private letterMask(t: DrawnText, laid: Laid, fonts: Fonts, box: TextBox, W: number, H: number) {
     const fw = Math.max(1, Math.round(W / 2)),
       fh = Math.max(1, Math.round(H / 2));
-    if (!this.fire && !this.noFire) {
-      this.fire = FireShader.create(fw, fh);
-      this.noFire = !this.fire;
-    }
-    if (!this.fire) return null;
     const m = this.surface(this.mask, fw, fh);
     m.setTransform(1, 0, 0, 1, 0, 0);
     m.clearRect(0, 0, fw, fh);
@@ -186,21 +210,25 @@ export class TextClipPainter {
     m.fillStyle = '#fff';
     this.eachLetter(m, t, laid, box, (_, letter) => m.fillText(letter, 0, 0));
     m.setTransform(1, 0, 0, 1, 0, 0);
+    return this.mask;
+  }
+
+  // flames rising off the letters' shape (half the frame's size, to be added onto it; null without
+  // WebGL2)
+  private drawFire(mask: OffscreenCanvas, t: DrawnText, laid: Laid, v: Params) {
+    const { width: fw, height: fh } = mask;
+    if (!this.fire && !this.noFire) {
+      this.fire = FireShader.create(fw, fh);
+      this.noFire = !this.fire;
+    }
+    if (!this.fire) return null;
     if (this.fire.canvas.width !== fw || this.fire.canvas.height !== fh) this.fire.resize(fw, fh);
     const pal = Math.max(
       0,
       PALETTES.findIndex(p => p.name.toLowerCase() === v.palette),
     );
     const unit = (laid.px / 2) * 0.12;
-    const out = this.fire.render(
-      this.mask,
-      t.t,
-      unit,
-      (v.height as number) * laid.px * 1.2,
-      v.amount as number,
-      pal,
-    );
-    return out;
+    return this.fire.render(mask, t.t, unit, (v.height as number) * laid.px * 1.2, v.amount as number, pal);
   }
 
   private surface(c: OffscreenCanvas, w: number, h: number) {
@@ -208,7 +236,8 @@ export class TextClipPainter {
       c.width = w;
       c.height = h;
     }
-    return c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    // (the letters' shape is read back, for lightning and aura)
+    return c.getContext('2d', { willReadFrequently: c === this.mask }) as OffscreenCanvasRenderingContext2D;
   }
 }
 
