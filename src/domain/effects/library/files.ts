@@ -87,6 +87,22 @@ import whipUp from './whip-up.json';
 import glitchCut from './glitch-cut.json';
 import shockCut from './shock-cut.json';
 import burnCut from './burn-cut.json';
+import infernoBody from './inferno-body.json';
+import stormSurge from './storm-surge.json';
+import spiritAura from './spirit-aura.json';
+import toxicAura from './toxic-aura.json';
+import neonStroke from './neon-stroke.json';
+import haloLine from './halo-line.json';
+import prismOutline from './prism-outline.json';
+import echoGlow from './echo-glow.json';
+import shadowSquad from './shadow-squad.json';
+import timeTrail from './time-trail.json';
+import crimsonSoul from './crimson-soul.json';
+import spotlight from './spotlight.json';
+import colorPop from './color-pop.json';
+import glitchBody from './glitch-body.json';
+import ashes from './ashes.json';
+import frostFade from './frost-fade.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -176,4 +192,20 @@ export const PRESET_FILES: readonly unknown[] = [
   glitchCut,
   shockCut,
   burnCut,
+  infernoBody,
+  stormSurge,
+  spiritAura,
+  toxicAura,
+  neonStroke,
+  haloLine,
+  prismOutline,
+  echoGlow,
+  shadowSquad,
+  timeTrail,
+  crimsonSoul,
+  spotlight,
+  colorPop,
+  glitchBody,
+  ashes,
+  frostFade,
 ];

@@ -2,6 +2,7 @@
 // in infrastructure/ implement these; tests use in-memory fakes.
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
+import type { ObjectPass } from '@/domain/effects/passes';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Background } from '@/domain/project/cutout';
 import type { EdgeSettings } from '@/domain/project/edge';
@@ -91,6 +92,9 @@ export interface LayerSpec {
   pinned: boolean; // at a spot in the scene (an impact, or an effect from a spot)
   frames: TrackFrame[];
   settings: FxSettings;
+  // what it draws on its object, back to front (see effects/body.ts); null: drawn its own way
+  // (water, lasers, text, a glitch over the whole frame, impacts, cutouts)
+  passes: ObjectPass[] | null;
   color: string;
   range: { s: number; e: number };
   aim: Aim; // for a laser

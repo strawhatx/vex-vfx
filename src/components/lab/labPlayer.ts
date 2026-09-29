@@ -2,7 +2,8 @@
 // clip round and round (or shows a test scene when none is loaded), with the preset being made
 // drawn over it by the same GPU painter the editor uses, so what's made here looks the same there.
 // The effect's own time loops over the preset's length and can be scrubbed; before/after shows the
-// left half as it was.
+// left half as it was. Body effects are drawn by the editor's own renderer on a clip made up for
+// them (see bodyStage.ts).
 import type { Preset } from '@/domain/effects/presets';
 import { looksAt, newLook, textsAt } from '@/domain/project/looks';
 import { NO_ANIM, isAnimKind, poseAt, type ClipAnim } from '@/domain/effects/animation';
@@ -10,7 +11,10 @@ import { applyPose } from '@/infrastructure/rendering/pose';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
+import { Renderer } from '@/infrastructure/rendering/renderer';
+import { workSize, type TrackFrame } from '@/domain/tracking/types';
 import { loadFonts } from '../editor/fonts';
+import { SCENE_H, SCENE_W, bodyLayer, drawPerson, subject, testFrames } from './bodyStage';
 
 export interface LabState {
   t: number; // the effect's time
@@ -36,6 +40,11 @@ export class LabPlayer {
   private preset: Preset | null = null;
   private state: LabState = { t: 0, playing: true, clip: null, gpu: true };
   private compare = false;
+  // body effects: the renderer, what it's set up for, and the made-up clip's frames and object
+  private stage: Renderer | null = null;
+  private stageFor = '';
+  private stagePreset: Preset | null = null;
+  private stageClip: { frames: TrackFrame[]; shape: ReturnType<typeof subject> } | null = null;
   private last = 0;
   private sent = 0;
   private raf = 0;
@@ -138,6 +147,13 @@ export class LabPlayer {
       ctx.restore();
       return;
     }
+    if (this.preset?.group === 'body') {
+      const r = this.bodyStage(sw, sh, src === this.scene, this.preset);
+      r.render(src, this.state.t, { outline: false, paused: !this.state.playing, selected: null });
+      ctx.drawImage(r.canvas, 0, 0, W, H);
+      this.drawCompare(src, sw, sh, W, H);
+      return;
+    }
     ctx.drawImage(src, 0, 0, W, H);
     if (!this.preset) return;
     // (a clip of it as long as it is, its controls at their defaults; a text with its type's words)
@@ -145,12 +161,36 @@ export class LabPlayer {
     const gpu = this.painter.apply(ctx, looksAt([clip], this.state.t));
     if (gpu !== this.state.gpu) this.set({ gpu });
     this.texts.draw(ctx, textsAt([clip], this.state.t), this.fonts);
-    if (this.compare) {
-      // the left half as it was, and a line between
-      ctx.drawImage(src, 0, 0, sw / 2, sh, 0, 0, W / 2, H);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(W / 2 - 1, 0, 2, H);
+    this.drawCompare(src, sw, sh, W, H);
+  }
+
+  // before/after: the left half as it was, and a line between
+  private drawCompare(src: CanvasImageSource, sw: number, sh: number, W: number, H: number) {
+    if (!this.compare) return;
+    const ctx = this.ctx;
+    ctx.drawImage(src, 0, 0, sw / 2, sh, 0, 0, W / 2, H);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(W / 2 - 1, 0, 2, H);
+  }
+
+  // the renderer, set up for the picture (sw x sh) and a clip of the preset on its object
+  private bodyStage(sw: number, sh: number, scene: boolean, preset: Preset) {
+    const r = (this.stage ??= new Renderer(new OffscreenCanvas(1, 1)));
+    const key = `${sw}x${sh}:${scene}:${preset.length}`;
+    if (key !== this.stageFor) {
+      this.stageFor = key;
+      const { W, H } = workSize(sw, sh);
+      r.setup(sw, sh, W, H, MAX_W);
+      const frames = testFrames(preset.length);
+      r.setClip(frames, new Int32Array(frames.length));
+      this.stageClip = { frames, shape: subject(W, H, scene) };
+      this.stagePreset = null;
     }
+    if (preset !== this.stagePreset && this.stageClip) {
+      this.stagePreset = preset;
+      r.setLayers([bodyLayer(preset, this.stageClip.frames, this.stageClip.shape)]);
+    }
+    return r;
   }
 
   private set(p: Partial<LabState>) {
@@ -177,8 +217,8 @@ function animOf(p: Preset): ClipAnim {
 
 // a scene with what effects are judged on: sky, sun, skin, grass, deep shadow and white
 function testScene() {
-  const W = 540,
-    H = 960;
+  const W = SCENE_W,
+    H = SCENE_H;
   const c = document.createElement('canvas');
   c.width = W;
   c.height = H;
@@ -197,15 +237,7 @@ function testScene() {
   grass.addColorStop(1, '#2f5a22');
   g.fillStyle = grass;
   g.fillRect(0, H * 0.62, W, H * 0.38);
-  // a person: head and shoulders
-  g.fillStyle = '#1d2230';
-  g.beginPath();
-  g.ellipse(W * 0.42, H * 0.78, 150, 190, 0, Math.PI, 0);
-  g.fill();
-  g.fillStyle = '#e0ac8a';
-  g.beginPath();
-  g.ellipse(W * 0.42, H * 0.46, 78, 96, 0, 0, Math.PI * 2);
-  g.fill();
+  drawPerson(g, '#1d2230', '#e0ac8a');
   g.fillStyle = '#fff';
   g.font = 'bold 72px sans-serif';
   g.fillText('FX', W * 0.66, H * 0.9);

@@ -10,6 +10,7 @@ export type ToolKey =
   | 'catalog'
   | 'filters'
   | 'screenfx'
+  | 'body'
   | 'impacts'
   | 'elements'
   | 'cancel'
@@ -104,6 +105,7 @@ export function toolsFor(
     laser: boolean;
     looks: boolean; // the selected effect has styles of its own (Outline, Glitch, Text)
     text: boolean; // the selected look is a text
+    body: boolean; // the selected effect is made from a body preset
     words: boolean; // the selected effect is Text: its words can be changed
     colors: boolean; // the selected effect takes a palette (a glitch uses the video's own colors)
     impact: ImpactFamily | null; // the selected impact's family
@@ -130,6 +132,7 @@ export function toolsFor(
   });
   if (mode === 'catalog')
     return [
+      { key: 'body', label: 'Body', icon: I.person, disabled: s.busy || !s.ready },
       { key: 'screenfx', label: 'Video', icon: I.scene, disabled: s.busy || !s.ready },
       { key: 'elements', label: 'Elements', icon: I.flame, disabled: s.busy },
       ...CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
@@ -240,12 +243,17 @@ export function toolsFor(
     ];
   if (mode === 'track')
     return [
-      sheet('effects', 'Effect', I.effects),
-      ...(s.laser ? [sheet('aim', 'Aim', I.target)] : []),
-      ...(s.looks ? [sheet('look', 'Style', I.effects)] : []),
-      ...(s.words ? [sheet('words', 'Text', I.text)] : []),
-      ...(s.colors ? [sheet('color', 'Color', I.color)] : []),
-      sheet('adjust', 'Adjust', I.adjust),
+      // (a body effect: its preset and its controls, rather than an effect's settings)
+      ...(s.body
+        ? [sheet('presets', 'Style', I.effects), sheet('controls', 'Adjust', I.adjust)]
+        : [
+            sheet('effects', 'Effect', I.effects),
+            ...(s.laser ? [sheet('aim', 'Aim', I.target)] : []),
+            ...(s.looks ? [sheet('look', 'Style', I.effects)] : []),
+            ...(s.words ? [sheet('words', 'Text', I.text)] : []),
+            ...(s.colors ? [sheet('color', 'Color', I.color)] : []),
+            sheet('adjust', 'Adjust', I.adjust),
+          ]),
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       ...(s.pinned

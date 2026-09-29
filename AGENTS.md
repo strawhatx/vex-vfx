@@ -22,10 +22,10 @@ src/
 ├── application/     # use cases: editor.ts (actions + job queue), ports.ts (interfaces it needs)
 ├── infrastructure/  # browser adapters that implement the ports
 │   ├── analysis/    #   worker, MediaPipe models (segmenter, pose, hands, face), object and body-part trackers (implements Analysis)
-│   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); gpu/: looks (color and screen passes)
+│   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); body effects as passes; gpu/: color, screen, tint and dissolve passes
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root
-├── components/lab/     # the Preset Lab (/lab/color, /lab/screen): builds presets on a test clip; labPlayer.ts is its root
+├── components/lab/     # the Preset Lab (/lab/<engine>): builds presets on a test clip; labPlayer.ts is its root
 └── app/             # Next.js routes
 ```
 

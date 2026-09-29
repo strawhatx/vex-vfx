@@ -1,27 +1,49 @@
 // One clip being drawn: its spec from the editor, its geometry (outline and mask per frame), and
-// its particle simulation. The simulation is rebuilt from track data, so any frame comes out the
-// same in any order; playing forward just steps it along.
+// a particle simulation for each of its particle passes (fire, lightning, aura, sparks). The
+// simulations are rebuilt from track data, so any frame comes out the same in any order; playing
+// forward just steps them along.
 import type { LayerSpec } from '@/application/ports';
+import { PARTICLE_KINDS, bodyAt, fxOf } from '@/domain/effects/body';
+import type { ObjectPass } from '@/domain/effects/passes';
 import { FrameGeometry } from './geometry';
 import { EffectSim, MAX_LIFE, type FxFrame } from './sim';
 
 export class Layer {
-  sim: EffectSim;
-  private simIdx = -1; // the frame the simulation is at
-  private dirty = true; // it has to be rebuilt
+  private sims = new Map<number, EffectSim>(); // by pass
+  private simIdx = -1; // the frame the simulations are at
+  private dirty = true; // they have to be rebuilt
+  private passKey: string;
 
   constructor(
     public spec: LayerSpec,
     public geo: FrameGeometry,
   ) {
-    this.sim = new EffectSim(spec.id);
+    this.passKey = JSON.stringify(spec.passes);
   }
 
-  // takes a new spec; unchanged track data keeps its simulation
+  // takes a new spec; unchanged track data and passes keep their simulations
   update(spec: LayerSpec) {
     if (spec.frames !== this.spec.frames) this.invalidate();
-    if (spec.settings !== this.spec.settings) this.dirty = true;
+    const key = JSON.stringify(spec.passes);
+    if (key !== this.passKey || spec.range.s !== this.spec.range.s || spec.range.e !== this.spec.range.e) {
+      this.dirty = true;
+      this.passKey = key;
+    }
     this.spec = spec;
+  }
+
+  // the simulation of pass k (the first pass's is seeded as effects always were)
+  sim(k: number) {
+    let s = this.sims.get(k);
+    if (!s) this.sims.set(k, (s = new EffectSim(k ? this.spec.id * 977 + k : this.spec.id)));
+    return s;
+  }
+
+  // its passes at frame i, their strength moved over time
+  passesAt(i: number): ObjectPass[] {
+    const { passes, range, frames, id } = this.spec;
+    if (!passes) return [];
+    return bodyAt(passes, (frames[i]?.t ?? 0) - range.s, range.e - range.s, id);
   }
 
   // the track data changed in place
@@ -50,11 +72,16 @@ export class Layer {
     if (!canContinue) {
       // no particle outlives MAX_LIFE, so simulating from that far back (or the shot's start)
       // rebuilds the state exactly
-      this.sim.reset();
+      for (const s of this.sims.values()) s.reset();
       j = idx;
       while (j > shotStart && frames[j - 1].t >= frames[idx].t - MAX_LIFE) j--;
     }
-    for (; j <= idx; j++) this.sim.step(this.fxFrame(j, shot), this.spec.settings);
+    for (; j <= idx; j++) {
+      const f = this.fxFrame(j, shot);
+      this.passesAt(j).forEach((p, k) => {
+        if (PARTICLE_KINDS.includes(p.kind)) this.sim(k).step(f, fxOf(p.kind, p.params, this.spec.settings));
+      });
+    }
     this.simIdx = idx;
     this.dirty = false;
   }

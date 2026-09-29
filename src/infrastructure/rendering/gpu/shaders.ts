@@ -27,13 +27,41 @@ vec3 blurred(vec2 uv, float r) {
 
 const shader = (uniforms: string, body: string) => `${HEAD}${uniforms}\nvoid main() {\n${body}\n}`;
 
-// the color engine: the grade looked up in its LUT, mixed in by amount
+// the color engine: the grade looked up in its LUT, mixed in by amount; with a mask (uWhere 1: on
+// just what it covers, 2: on all but that), its edge softened by reading a blurrier mip of it
 export const GRADE = shader(
   `uniform highp sampler3D uLut;
-uniform float uLutSize, u_amount;`,
+uniform sampler2D uMask;
+uniform float uLutSize, u_amount, uWhere, uFeather;`,
   `  vec3 c = src(vUv);
   vec3 g = texture(uLut, c * ((uLutSize - 1.0) / uLutSize) + 0.5 / uLutSize).rgb;
-  outColor = vec4(mix(c, g, u_amount), 1.0);`,
+  float w = 1.0;
+  if (uWhere > 0.5) {
+    float m = textureLod(uMask, vUv, uFeather).a;
+    w = uWhere < 1.5 ? m : 1.0 - m;
+  }
+  outColor = vec4(mix(c, g, u_amount * w), 1.0);`,
+);
+
+// the object engine's dissolve: what the mask covers burns away where noise is under u_progress,
+// leaving a dim blur of what's round it, with a glowing band at the edge of what's left
+export const DISSOLVE = shader(
+  `uniform sampler2D uMask;
+uniform float u_amount, u_progress, u_grain;
+uniform vec3 u_color;
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+}`,
+  `  vec3 c = src(vUv);
+  float m = texture(uMask, vUv).a;
+  vec2 p = vUv * vec2(uRes.x / uRes.y, 1.0) * mix(6.0, 48.0, u_grain);
+  float n = 0.6 * vnoise(p) + 0.3 * vnoise(p * 2.1) + 0.1 * vnoise(p * 4.3);
+  float gone = 1.0 - smoothstep(u_progress, u_progress + 0.015, n);
+  float band = u_progress > 0.001 ? (1.0 - smoothstep(0.0, 0.06, n - u_progress)) * (1.0 - gone) : 0.0;
+  vec3 behind = textureLod(uSrc, vUv, 5.0).rgb * 0.55;
+  vec3 o = mix(c, behind, gone * m) + u_color * band * m * 1.8;
+  outColor = vec4(mix(c, o, clamp(u_amount, 0.0, 1.0)), 1.0);`,
 );
 
 // the screen engine. mips: it reads blurred mip levels of the picture

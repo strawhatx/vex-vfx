@@ -1,33 +1,53 @@
-// The panels for looks (filters and screen effects): a menu of a group's presets by category, each
-// shown on the frame showing, and the selected look's controls. Picking a preset adds a look at the
-// playhead; with one selected, picking another swaps it, so presets can be tried one after another.
+// The panels for presets: a menu of a group's presets by category (filters, video effects and text
+// shown on the frame showing), and the controls of the selected clip's. Picking a look adds it at
+// the playhead; with one selected, picking another swaps it, so presets can be tried one after
+// another. Body effects are picked the same way, then tapped onto the person or object.
 import { useEffect, useState, type CSSProperties } from 'react';
 import { gradeOf, gradeSwatch } from '@/domain/effects/color';
 import { presetsIn } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
-import type { Preset, LookGroup } from '@/domain/effects/presets';
-import type { LookClip } from '@/domain/project/looks';
+import { PALETTES } from '@/domain/effects/palettes';
+import type { ControlValues, LookGroup, Preset } from '@/domain/effects/presets';
 import { MAX_SCALE, MAX_WORDS, MIN_SCALE, type TextPlace } from '@/domain/effects/typeset';
 import { Icon, I } from './icons';
 
-export const GROUP_NAMES: Record<LookGroup, string> = {
+// the groups with a menu of presets
+export type MenuGroup = LookGroup | 'body';
+
+export const GROUP_NAMES: Record<MenuGroup, string> = {
   filter: 'Filters',
   screen: 'Video effects',
   text: 'Text',
+  body: 'Body effects',
 };
 // whether a group's presets are split up by category (filters and text aren't: there are few enough
 // to list)
-const BY_CATEGORY: Record<LookGroup, boolean> = { filter: false, screen: true, text: false };
+const BY_CATEGORY: Record<MenuGroup, boolean> = { filter: false, screen: true, text: false, body: true };
 
-// a preset's picture when there's none of the frame: a filter's colors as it turns them, or a
-// screen effect's glow
+// a preset's picture when there's none of the frame: a filter's colors as it turns them, a body
+// effect's colors round a figure, or a screen effect's glow
 function fallbackArt(p: Preset) {
   const grade = p.passes.find(x => x.engine === 'color');
   if (grade) {
     const c = gradeSwatch(gradeOf(grade.params));
     return `linear-gradient(160deg, ${c[4]}, ${c[0]} 35%, ${c[2]} 60%, ${c[1]} 80%, ${c[3]})`;
   }
+  if (p.group === 'body') {
+    const [a, b] = bodyColors(p);
+    return `radial-gradient(ellipse 16% 30% at 50% 58%, #1d2230 0 90%, transparent 100%), radial-gradient(ellipse 26% 42% at 50% 58%, ${a} 0 40%, ${b}88 70%, transparent 100%), #26262a`;
+  }
   return 'radial-gradient(circle at 50% 45%, #fff 0 6%, #e0312b88 30%, transparent 62%), #26262a';
+}
+
+// the colors a body effect shows most: its first palette's, or its first colors
+function bodyColors(p: Preset): [string, string] {
+  for (const x of p.passes) {
+    const pal = PALETTES.find(q => q.name.toLowerCase() === x.params.palette);
+    if (pal) return [pal.c[1], pal.c[2]];
+    const c = (x.params.glowColor ?? x.params.color) as string | undefined;
+    if (c) return [c, c];
+  }
+  return ['#ffffff', '#e0312b'];
 }
 
 export function PresetSheet({
@@ -38,8 +58,8 @@ export function PresetSheet({
   onClose,
   onShown,
 }: {
-  group: LookGroup;
-  current: string | null; // the selected look's preset
+  group: MenuGroup;
+  current: string | null; // the selected clip's preset
   thumbs: Record<string, string>;
   onPick(presetId: string): void;
   onClose(): void;
@@ -105,27 +125,32 @@ export function PresetSheet({
 
 const pct = (v: number) => ({ '--p': `${v * 100}%` }) as CSSProperties;
 
-// the selected look's controls: its preset's sliders and colors; a text's words, size and turn
+// the selected clip's controls: its preset's sliders and colors; a text's words, size and turn
 // first
-export function LookControls({
-  look,
+export function PresetControls({
+  name,
+  preset,
+  values,
+  text = null,
   onChange,
   onText,
   onClose,
 }: {
-  look: LookClip;
+  name: string;
+  preset: Preset;
+  values: ControlValues;
+  text?: TextPlace | null;
   onChange(control: string, v: ParamValue): void;
-  onText(p: Partial<TextPlace>): void;
+  onText?(p: Partial<TextPlace>): void;
   onClose(): void;
 }) {
-  const { controls } = look.preset;
-  const text = look.text;
+  const { controls } = preset;
   const title = text ? 'Edit' : 'Adjust';
   return (
-    <div className="sheet" role="dialog" aria-label={`${title} ${look.name}`}>
+    <div className="sheet" role="dialog" aria-label={`${title} ${name}`}>
       <div className="sheet-head">
         <strong>
-          {title} · {look.name}
+          {title} · {name}
         </strong>
         <button type="button" className="icon-btn" aria-label="Done" onClick={onClose}>
           <Icon d={I.check} />
@@ -140,7 +165,7 @@ export function LookControls({
           aria-label="Words"
           placeholder="Type something"
           enterKeyHint="done"
-          onChange={e => onText({ words: e.target.value })}
+          onChange={e => onText?.({ words: e.target.value })}
           onKeyDown={e => e.key === 'Enter' && onClose()}
         />
       )}
@@ -158,7 +183,7 @@ export function LookControls({
                 style={
                   { '--p': `${((text.scale - MIN_SCALE) / (MAX_SCALE - MIN_SCALE)) * 100}%` } as CSSProperties
                 }
-                onChange={e => onText({ scale: +e.target.value })}
+                onChange={e => onText?.({ scale: +e.target.value })}
               />
               <output>{Math.round(text.scale * 100)}</output>
             </label>
@@ -171,14 +196,14 @@ export function LookControls({
                 step={1}
                 value={text.rot}
                 style={{ '--p': `${((text.rot + 180) / 360) * 100}%` } as CSSProperties}
-                onChange={e => onText({ rot: +e.target.value })}
+                onChange={e => onText?.({ rot: +e.target.value })}
               />
               <output>{Math.round(text.rot)}°</output>
             </label>
           </>
         )}
         {controls.map(c => {
-          const v = look.values[c.id] ?? c.def;
+          const v = values[c.id] ?? c.def;
           return c.type === 'slider' ? (
             <label key={c.id} className="slider">
               <span>{c.label}</span>
@@ -206,7 +231,7 @@ export function LookControls({
             </label>
           );
         })}
-        {!controls.length && !text && <p className="sheet-note">{look.name} has nothing to adjust.</p>}
+        {!controls.length && !text && <p className="sheet-note">{name} has nothing to adjust.</p>}
         {text && <p className="sheet-note">Drag the text in the preview to move it.</p>}
       </div>
     </div>

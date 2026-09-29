@@ -14,6 +14,11 @@
 import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
 import type { ClipAnim } from '../effects/animation';
 import type { Aim } from '../effects/laser';
+import { passOfFx, soundOf } from '../effects/body';
+import { STEADY } from '../effects/curves';
+import type { ParamValue } from '../effects/params';
+import type { ObjectPass } from '../effects/passes';
+import { controlDefaults, fitControl, passesWith, type ControlValues, type Preset } from '../effects/presets';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
 import { type ClipFrame, type Shape, type TrackFrame } from '../tracking/types';
@@ -26,6 +31,12 @@ import { reviewFlags } from './review';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
+// a body preset on an effect, and its controls' values
+export interface BodyLook {
+  preset: Preset;
+  values: ControlValues;
+}
+
 export interface Track {
   id: number;
   name: string;
@@ -34,6 +45,9 @@ export interface Track {
   part: BodyPart | null; // a body part of the person tapped, or null for the object under the tap
   spot: boolean; // an effect pinned to the tapped spot in the scene, not following anything
   fx: FxSettings; // look: effect type, colors, size, intensity (impacts use the colors and size)
+  // an effect made from a body preset (see effects/body.ts): drawn as its passes rather than as fx
+  // (fx.effect is then just the sound it makes)
+  body: BodyLook | null;
   aim: Aim; // where a laser points
   impact: ImpactStyle | null; // for impacts
   // for cutouts: what's left in the footage where it was, whether its outlines have been checked
@@ -101,6 +115,7 @@ function make(
     part,
     spot: false,
     fx: { ...fx },
+    body: null,
     aim: { h: 90, v: 0, target: null },
     impact,
     cutout: null,
@@ -168,6 +183,32 @@ const impactRange = (clip: ClipFrame[], i: number, style: ImpactStyle, duration:
   s: clip[i].t,
   e: Math.min(duration, clip[i].t + IMPACTS[style].duration),
 });
+
+// the effect made from a body preset (the controls both have keep their values); it sounds like
+// its first particle effect
+export function withBody(t: Track, preset: Preset): Track {
+  const values = controlDefaults(preset);
+  for (const k of Object.keys(values)) if (t.body && k in t.body.values) values[k] = t.body.values[k];
+  return { ...t, body: { preset, values }, fx: { ...t.fx, effect: soundOf(preset.passes.map(p => p.kind)) } };
+}
+
+// one of its body preset's controls set
+export function withBodyControl(t: Track, id: string, v: ParamValue): Track {
+  const c = t.body?.preset.controls.find(x => x.id === id);
+  return c && t.body
+    ? { ...t, body: { ...t.body, values: { ...t.body.values, [id]: fitControl(c, v) } } }
+    : t;
+}
+
+// what an effect draws on its object: its body preset's passes, or its old-style settings as one
+// pass; null for the effects drawn their own way (see body.ts)
+export function objectPasses(t: Pick<Track, 'body' | 'fx' | 'kind' | 'spot'>): ObjectPass[] | null {
+  if (t.kind !== 'effect') return null;
+  if (t.body)
+    return passesWith(t.body.preset, t.body.values).filter((p): p is ObjectPass => p.engine === 'object');
+  const one = passOfFx(t.fx, isPinned(t));
+  return one ? [{ engine: 'object', ...one, motion: STEADY }] : null;
+}
 
 // the frames that start inside the clip's range
 export function rangeFrames(t: Track, clip: ClipFrame[]): FrameSpan {
@@ -306,6 +347,7 @@ export interface Lane {
   kind: TrackKind;
   pinned: boolean; // at a spot in the scene: moved by tapping, nothing to fix
   fx: FxSettings;
+  body: BodyLook | null;
   impact: ImpactStyle | null;
   aim: Aim;
   speed: number; // impacts: how fast the burst plays (1 = its style's own timing)
@@ -412,6 +454,7 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     kind: t.kind,
     pinned: isPinned(t),
     fx: t.fx,
+    body: t.body,
     impact: t.impact,
     aim: t.aim,
     speed: impactSpeed(t),

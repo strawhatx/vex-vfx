@@ -1,10 +1,13 @@
 // Draws one output frame: the video frame, then each clip for that frame, (in the editor) their
 // outlines, and any impacts playing out. Everything is rebuilt from track data, so any frame can
-// be rendered in any order and comes out the same. The drawing itself lives in the layer modules:
-//   layer.ts        particle effects (fire, lightning, aura, sparks) and their simulation
+// be rendered in any order and comes out the same. An effect on an object is drawn as its passes
+// (see domain/effects/body.ts), back to front. The drawing itself lives in the layer modules:
+//   layer.ts        particle effects (fire, lightning, aura, sparks) and their simulations
 //   laserLayer.ts   lasers
 //   outlineFx.ts    the Outline effect
 //   glitch.ts       the Glitch effect (after the others, so they glitch too)
+//   clones.ts       clones of the object
+//   gpu/looks.ts    tints on (or off) the object, and dissolving it, on the GPU
 //   text.ts         the Text effect (words behind the object first, labels and titles last)
 //   water.ts        the Water effect: rain or underwater, over the other effects
 //   impactLayer.ts  impacts and the camera jolt
@@ -13,6 +16,14 @@
 //   outline.ts      outlines and targets while editing
 import type { CutFrame, EffectLayers, LayerSpec } from '@/application/ports';
 import type { Cam } from '@/domain/effects/laser';
+import { fxOf, type BodyKind } from '@/domain/effects/body';
+import { gradeOf } from '@/domain/effects/color';
+import type { FxSettings } from '@/domain/effects/palettes';
+import type { ObjectPass } from '@/domain/effects/passes';
+import { ClonePainter } from './clones';
+import { LookPainter } from './gpu/looks';
+import { unit } from './particles/types';
+import type { FxFrame } from './sim';
 import { frameIndexAt, type TrackFrame } from '@/domain/tracking/types';
 import { GpuFire } from './fire';
 import { FrameGeometry } from './geometry';
@@ -58,6 +69,9 @@ export class Renderer implements EffectLayers {
   private glitch = new GlitchPainter(1, 1);
   private text = new TextPainter(1, 1);
   private water = new WaterPainter(1, 1);
+  private clones = new ClonePainter(1, 1);
+  // tints and dissolves (its WebGL context is only made when one is drawn)
+  private gpu = new LookPainter();
   private fonts: Fonts = FALLBACK_FONTS;
   // a copy of the frame, redrawn shaken and zoomed while an impact jolts the camera
   private jolt = new OffscreenCanvas(1, 1);
@@ -79,6 +93,7 @@ export class Renderer implements EffectLayers {
     this.glitch = new GlitchPainter(this.CW, this.CH);
     this.text = new TextPainter(this.CW, this.CH);
     this.water = new WaterPainter(this.CW, this.CH);
+    this.clones = new ClonePainter(this.CW, this.CH);
     this.fire.resize(this.CW, this.CH);
     this.jolt = new OffscreenCanvas(this.CW, this.CH);
     for (const l of this.layers.values()) l.geo = this.newGeo();
@@ -163,18 +178,18 @@ export class Renderer implements EffectLayers {
 
     for (const l of showing) {
       if (l.spec.kind === 'impact') continue; // just its burst, drawn below
-      if (isText(l) || l.spec.settings.effect === 'water') continue;
-      if (l.spec.settings.effect === 'glitch') continue; // below, over everything else
-      if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
-      else if (l.spec.settings.effect === 'outline') this.drawOutlineFx(l, idx);
-      else this.drawParticles(l, idx);
+      if (l.spec.passes) this.drawBody(l, idx, source, false);
+      else if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
     }
 
+    // glitches over everything else, so it glitches too
     for (const l of showing) {
-      if (l.spec.kind === 'effect' && l.spec.settings.effect === 'glitch') this.drawGlitch(l, idx);
+      if (l.spec.passes) this.drawBody(l, idx, source, true);
+      else if (l.spec.kind === 'effect' && l.spec.settings.effect === 'glitch') this.drawGlitch(l, idx);
     }
     for (const l of showing) {
-      if (l.spec.kind === 'effect' && l.spec.settings.effect === 'water') this.drawWater(l, idx);
+      if (l.spec.kind === 'effect' && !l.spec.passes && l.spec.settings.effect === 'water')
+        this.drawWater(l, idx);
     }
     // labels and titles on top
     for (const l of showing)
@@ -211,21 +226,104 @@ export class Renderer implements EffectLayers {
     this.masks.glow(l.geo.maskCanvas, this.ctx, '#fff', 2, feather ? 0.45 : 0.9);
   }
 
-  private drawParticles(l: Layer, idx: number) {
-    l.advanceTo(idx, this.shot);
+  // an effect's passes on its object, back to front: all but its glitches, or (glitches) just them
+  private drawBody(l: Layer, idx: number, source: CanvasImageSource, glitches: boolean) {
+    const passes = l.passesAt(idx);
+    if (!passes.some(p => (p.kind === 'glitch') === glitches)) return;
+    if (!glitches) l.advanceTo(idx, this.shot);
     const f = l.fxFrame(idx, this.shot);
     const mask = l.geo.maskCanvas;
     l.geo.prepareCanvas(l.spec.frames[idx]);
-    l.sim.draw(this.ctx, f, l.spec.settings, {
-      maskGlow: (c, col, blur, alpha) => this.masks.glow(mask, c, col, blur, alpha),
-      fire: (c, fr, u, intensity) => this.fire.draw(c, mask, fr, u, intensity, l.spec.settings.pal),
+    passes.forEach((p, k) => {
+      if ((p.kind === 'glitch') !== glitches) return;
+      const s = fxOf(p.kind, p.params, l.spec.settings);
+      const particles = () => this.particles(l, k, f, s, mask);
+      const draw: Record<BodyKind, () => void> = {
+        fire: particles,
+        lightning: particles,
+        aura: particles,
+        sparks: particles,
+        outline: () => drawOutlineFx(this.ctx, this.masks, mask, f, s, l.spec.id),
+        glitch: () => {
+          if (!f.tgt.active) return;
+          const area = { mask: f.hasShape ? mask : null, box: f.tgt };
+          this.glitch.draw(this.ctx, this.canvas, area, s, f.t, l.spec.id);
+        },
+        edge: () => this.edge(p, f, mask),
+        clones: () => this.clones.draw(this.ctx, source, mask, f, p.params, l.spec),
+        tint: () => this.tint(p, f, mask),
+        dissolve: () => this.dissolve(l, p, f, mask),
+      };
+      draw[p.kind]();
     });
   }
 
-  private drawOutlineFx(l: Layer, idx: number) {
-    const f = l.fxFrame(idx, this.shot);
-    l.geo.prepareCanvas(l.spec.frames[idx]);
-    drawOutlineFx(this.ctx, this.masks, l.geo.maskCanvas, f, l.spec.settings, l.spec.id);
+  private particles(l: Layer, k: number, f: FxFrame, s: FxSettings, mask: OffscreenCanvas) {
+    l.sim(k).draw(this.ctx, f, s, {
+      maskGlow: (c, col, blur, alpha) => this.masks.glow(mask, c, col, blur, alpha),
+      fire: (c, fr, u, intensity) => this.fire.draw(c, mask, fr, u, intensity, s.pal),
+    });
+  }
+
+  // a glowing stroke round the silhouette: the glow, then the line over it
+  private edge(p: ObjectPass, f: FxFrame, mask: OffscreenCanvas) {
+    if (!f.tgt.active || !f.hasShape) return;
+    const v = p.params,
+      u = unit(f.tgt, 1),
+      w = 1 + (v.width as number) * u * 0.8,
+      gap = (v.gap as number) * u * 1.5,
+      a = v.amount as number;
+    if ((v.glow as number) > 0)
+      this.masks.edge(mask, this.ctx, {
+        col: v.glowColor as string,
+        width: w * 1.6,
+        gap,
+        blur: (v.glow as number) * u * 2.5,
+        alpha: a * 0.9,
+      });
+    this.masks.edge(mask, this.ctx, { col: v.color as string, width: w, gap, alpha: a, solid: true });
+  }
+
+  // a grade on just the object, or on everything but it
+  private tint(p: ObjectPass, f: FxFrame, mask: OffscreenCanvas) {
+    const v = p.params;
+    if (!f.tgt.active || !f.hasShape || (v.amount as number) <= 0) return;
+    const out = this.gpu.renderMasked(
+      this.canvas,
+      this.CW,
+      this.CH,
+      { engine: 'color', grade: gradeOf(v), amount: v.amount as number },
+      { image: mask, where: v.where as 'subject' | 'background', feather: v.feather as number },
+    );
+    if (out) this.putBack(out);
+  }
+
+  // the object burning away: from `start` of the way through the clip to its end
+  private dissolve(l: Layer, p: ObjectPass, f: FxFrame, mask: OffscreenCanvas) {
+    const v = p.params;
+    if (!f.tgt.active || !f.hasShape) return;
+    const { s, e } = l.spec.range,
+      start = v.start as number;
+    const along = e > s ? (f.t - s) / (e - s) : 1;
+    const progress = Math.max(0, Math.min(1, (along - start) / Math.max(0.05, 1 - start)));
+    if (progress <= 0) return;
+    const out = this.gpu.dissolve(this.canvas, this.CW, this.CH, mask, {
+      amount: v.amount as number,
+      progress,
+      grain: v.grain as number,
+      color: v.color as string,
+    });
+    if (out) this.putBack(out);
+  }
+
+  // a picture made from this frame, over it
+  private putBack(img: CanvasImageSource) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(img, 0, 0, this.CW, this.CH);
+    ctx.restore();
   }
 
   // rain or underwater, over the whole frame (from a spot) or round the object

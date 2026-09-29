@@ -9,9 +9,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_FX } from '@/application/editor';
 import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
-import type { LookGroup } from '@/domain/effects/presets';
 import { ExportResult } from './ExportResult';
-import { LookControls, PresetSheet } from './LookSheet';
+import { PresetControls, PresetSheet, type MenuGroup } from './LookSheet';
 import { AnimSheet } from './AnimSheet';
 import { TransitionSheet } from './TransitionSheet';
 import { playTime } from '@/application/project';
@@ -55,7 +54,7 @@ export default function VfxStudio() {
   const [catalog, setCatalog] = useState<Catalog>(null);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
   // a group's presets open to add a look from (filters, or video effects)
-  const [lookMenu, setLookMenu] = useState<LookGroup | null>(null);
+  const [lookMenu, setLookMenu] = useState<MenuGroup | null>(null);
   // the join (into this film) whose transition is being picked
   const [join, setJoin] = useState<number | null>(null);
 
@@ -105,7 +104,10 @@ export default function VfxStudio() {
   const fx = fxLane?.fx ?? draftFx;
   const mode = music ? 'music' : look ? 'look' : modeFor(lane, scene !== null, catalog);
   // the presets menu showing: one to add a look from, or the selected look's to swap it for
-  const menuGroup = lookMenu ?? (tool === 'presets' && look ? lookGroup(look) : null);
+  // (a body effect selected: its body presets)
+  const bodyLane = lane?.kind === 'effect' && lane.body ? lane : null;
+  const menuGroup: MenuGroup | null =
+    lookMenu ?? (tool === 'presets' ? (look ? lookGroup(look) : bodyLane ? 'body' : null) : null);
   const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
@@ -225,8 +227,9 @@ export default function VfxStudio() {
     player()?.startAdding({ kind: 'cutout' });
   }
 
-  // Filters, or Video effects: the group's presets; picking one adds it at the playhead
-  function openLooks(group: LookGroup) {
+  // Filters, Video effects, Text or Body effects: the group's presets; picking one adds it at the
+  // playhead (a body effect, where the person or object is tapped next)
+  function openLooks(group: MenuGroup) {
     setJoin(null);
     setScene(null);
     setCatalog(null);
@@ -238,7 +241,12 @@ export default function VfxStudio() {
 
   // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
   // selected, swapped in for it, so presets can be tried one after another
-  function pickLook(group: LookGroup, presetId: string) {
+  function pickLook(group: MenuGroup, presetId: string) {
+    if (group === 'body') {
+      if (bodyLane) return player()?.setBody(bodyLane.id, presetId);
+      setLookMenu(null);
+      return player()?.startAdding({ kind: 'effect', fx: {}, body: presetId });
+    }
     if (look && lookGroup(look) === group) player()?.setLookPreset(look.id, presetId);
     else player()?.addLook(presetId);
   }
@@ -302,6 +310,7 @@ export default function VfxStudio() {
     laser: lane?.kind === 'effect' && lane.fx.effect === 'laser',
     looks: lane?.kind === 'effect' && hasLooks(lane.fx.effect),
     text: !!look?.text,
+    body: !!bodyLane,
     words: lane?.kind === 'effect' && lane.fx.effect === 'text',
     colors: lane?.kind === 'impact' || (lane?.fx.effect !== 'glitch' && lane?.fx.effect !== 'water'),
     impact: lane?.kind === 'impact' && lane.impact ? familyOf(lane.impact) : null,
@@ -348,6 +357,8 @@ export default function VfxStudio() {
         return openLooks('filter');
       case 'screenfx':
         return openLooks('screen');
+      case 'body':
+        return openLooks('body');
       case 'addtext':
         return openLooks('text');
       case 'crop':
@@ -585,21 +596,39 @@ export default function VfxStudio() {
           <PresetSheet
             key={menuGroup}
             group={menuGroup}
-            current={look && lookGroup(look) === menuGroup ? look.preset.id : null}
+            current={
+              menuGroup === 'body'
+                ? (bodyLane?.body?.preset.id ?? null)
+                : look && lookGroup(look) === menuGroup
+                  ? look.preset.id
+                  : null
+            }
             thumbs={ui.lookThumbs}
             onPick={id => pickLook(menuGroup, id)}
             onClose={() => {
               setLookMenu(null);
               setTool(null);
             }}
-            onShown={() => player()?.makeLookThumbs(menuGroup)}
+            onShown={() => menuGroup !== 'body' && player()?.makeLookThumbs(menuGroup)}
           />
         )}
         {tool === 'controls' && look && (
-          <LookControls
-            look={look}
+          <PresetControls
+            name={look.name}
+            preset={look.preset}
+            values={look.values}
+            text={look.text}
             onChange={(c, v) => player()?.setLookControl(look.id, c, v)}
             onText={p => player()?.setLookText(look.id, p)}
+            onClose={() => setTool(null)}
+          />
+        )}
+        {tool === 'controls' && bodyLane?.body && (
+          <PresetControls
+            name={bodyLane.name}
+            preset={bodyLane.body.preset}
+            values={bodyLane.body.values}
+            onChange={(c, v) => player()?.setBodyControl(bodyLane.id, c, v)}
             onClose={() => setTool(null)}
           />
         )}

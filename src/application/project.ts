@@ -1034,6 +1034,7 @@ export class Project {
       kind: 'cutout',
       pinned: false,
       fx: DEFAULT_FX,
+      body: null,
       impact: null,
       aim: { h: 90, v: 0, target: null },
       speed: 1,

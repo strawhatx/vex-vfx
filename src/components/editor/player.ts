@@ -187,9 +187,10 @@ export type Source = BodyPart | 'object' | 'spot';
 // a clip that can be animated: a film of the film (by its index), an overlay, or a text
 export type AnimTarget = { film: number } | { overlay: number } | { look: number };
 
-// what to add on the next tap: an effect with these settings, or an impact of this style
+// what to add on the next tap: an effect with these settings (or made from body preset `body`), or
+// an impact of this style
 export type AddChoice =
-  | { kind: 'effect'; fx: Partial<FxSettings> }
+  | { kind: 'effect'; fx: Partial<FxSettings>; body?: string }
   | { kind: 'impact'; style: ImpactStyle; fx?: Partial<FxSettings> }
   | { kind: 'cutout' };
 
@@ -918,6 +919,18 @@ export class Player {
 
   setLookControl(id: number, control: string, v: ParamValue) {
     this.project.setLookControl(id, control, v);
+  }
+
+  // ---------- body effects ----------
+
+  // the effect made from body preset `presetId` instead, keeping its timing and tracking
+  setBody(id: number, presetId: string) {
+    const p = presetById(presetId);
+    if (p) this.clip(id)?.ed.setBody(id, p);
+  }
+
+  setBodyControl(id: number, control: string, v: ParamValue) {
+    this.clip(id)?.ed.setBodyControl(id, control, v);
   }
 
   // ---------- transitions ----------
@@ -2229,7 +2242,8 @@ export class Player {
     const ed = this.editor(reel);
     if (!ed) return;
     const effect = choice.fx.effect ?? ed.fx(null).effect;
-    const spot = canPin(effect);
+    // (a body effect is on the person or object: it can't come from a spot)
+    const spot = !choice.body && canPin(effect);
     const adding = this.ui.adding;
     void ed.probe(i, at).then(part => {
       if (this.destroyed || this.ui.adding !== adding) return;
@@ -2248,7 +2262,7 @@ export class Player {
     const id =
       choice.kind === 'impact'
         ? ed.addImpact(i, at, choice.style, choice.fx)
-        : ed.addTrack(i, at, choice.fx, part);
+        : ed.addTrack(i, at, choice.fx, part, choice.body ? presetById(choice.body) : null);
     if (id !== null) this.select(id);
   }
 

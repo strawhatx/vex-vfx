@@ -10,13 +10,21 @@
 //   - motion: animations for clips (in, out, combo), picked for a video's scene, an overlay or text
 //   - transition: how one film gives way to the next at the join (see project/transitions.ts); its
 //     length is how long a new one lasts
+//   - body: effects on a tracked person or object (see body.ts), picked from Effects
 import { fitParam, isColor, type ParamValue } from './params';
 import { fitPass, paramsOf, type Pass } from './passes';
 
 // the groups whose presets make clips on the timeline (looks: see project/looks.ts)
 export type LookGroup = 'filter' | 'screen' | 'text';
-export type PresetGroup = LookGroup | 'motion' | 'transition';
-export const PRESET_GROUPS: readonly PresetGroup[] = ['filter', 'screen', 'text', 'motion', 'transition'];
+export type PresetGroup = LookGroup | 'motion' | 'transition' | 'body';
+export const PRESET_GROUPS: readonly PresetGroup[] = [
+  'filter',
+  'screen',
+  'text',
+  'motion',
+  'transition',
+  'body',
+];
 
 // A control drives settings of the preset's passes. A slider runs 0..1 and sets each setting it
 // drives from `from` (at 0) to `to` (at 1); a color sets each one to itself.

@@ -2,12 +2,22 @@
 // frame on the GPU. The frame is uploaded once, each pass runs as one shader into the next of two
 // textures in turn, and the last draws straight to the canvas, which is copied back over the frame.
 // One WebGL context does it all (browsers allow only a few), and it's resized for thumbnails.
+// The object engine uses it too, with the object's mask: a grade on just the object (or all but
+// it), and the object dissolving.
+
+// a mask for a grade: what it covers (a canvas, white where the object is), whether the grade goes
+// on that or on all but it, and how soft its edge is (0..1)
+export interface GradeMask {
+  image: TexImageSource;
+  where: 'subject' | 'background';
+  feather: number;
+}
 import { buildLut, type Grade } from '@/domain/effects/color';
 import type { DrawnPass } from '@/domain/effects/passes';
 import { isColor, rgbOf } from '@/domain/effects/params';
 import { SCREEN_KINDS, type ScreenKind } from '@/domain/effects/screen';
 import { FULL_FRAME_VERT, compile, dropTarget, fullFrame, newTarget, newTexture, type Target } from './gl';
-import { GRADE, SCREEN } from './shaders';
+import { DISSOLVE, GRADE, SCREEN } from './shaders';
 
 const LUT_SIZE = 33;
 // LUTs kept for the grades drawn lately (a slider on a grade setting makes a new one each step)
@@ -24,6 +34,8 @@ export class LookPainter {
   private failed = false;
   private programs = new Map<string, Program>();
   private src: WebGLTexture | null = null;
+  private maskTex: WebGLTexture | null = null;
+  private masked: GradeMask | null = null; // for the grade being drawn
   private targets: Target[] = [];
   private luts = new Map<string, WebGLTexture>();
   private W = 0;
@@ -45,16 +57,80 @@ export class LookPainter {
     return true;
   }
 
+  // the picture with a grade on just what the mask covers, or on all but it (see GradeMask); null
+  // if it can't be drawn here. The canvas returned is reused by the next call.
+  renderMasked(picture: CanvasImageSource, w: number, h: number, pass: DrawnPass, mask: GradeMask) {
+    const gl = this.context();
+    if (!gl) return null;
+    this.upload(gl, mask.image);
+    this.masked = mask;
+    try {
+      return this.render(picture, w, h, [pass]);
+    } finally {
+      this.masked = null;
+    }
+  }
+
+  // the picture with what the mask covers dissolving (see DISSOLVE): progress 0..1, how far it's
+  // gone; null if it can't be drawn here
+  dissolve(
+    picture: CanvasImageSource,
+    w: number,
+    h: number,
+    mask: TexImageSource,
+    v: { amount: number; progress: number; grain: number; color: string },
+  ) {
+    const gl = this.context();
+    if (!gl || w < 1 || h < 1) return null;
+    this.size(gl, w, h);
+    this.upload(gl, mask);
+    this.uploadPicture(gl, picture);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.src);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    const p = this.program(gl, 'dissolve', DISSOLVE);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+    gl.uniform1i(this.uniform(gl, p, 'uMask'), 2);
+    gl.uniform1i(this.uniform(gl, p, 'uSrc'), 0);
+    gl.uniform2f(this.uniform(gl, p, 'uRes'), w, h);
+    gl.uniform1f(this.uniform(gl, p, 'u_amount'), v.amount);
+    gl.uniform1f(this.uniform(gl, p, 'u_progress'), v.progress);
+    gl.uniform1f(this.uniform(gl, p, 'u_grain'), v.grain);
+    gl.uniform3fv(this.uniform(gl, p, 'u_color'), rgbOf(v.color));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    return this.canvas;
+  }
+
+  // a mask onto its texture (flipped like pictures), with its mips for soft edges
+  private upload(gl: WebGL2RenderingContext, image: TexImageSource) {
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  }
+
+  private uploadPicture(gl: WebGL2RenderingContext, picture: CanvasImageSource) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.src);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, picture as TexImageSource);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  }
+
   // the picture with the passes drawn over it, w x h; null if they can't be drawn here. The canvas
   // returned is reused by the next call.
   render(picture: CanvasImageSource, w: number, h: number, passes: readonly DrawnPass[]) {
     const gl = this.context();
     if (!gl || w < 1 || h < 1) return null;
     this.size(gl, w, h);
-    gl.bindTexture(gl.TEXTURE_2D, this.src);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, picture as TexImageSource);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    this.uploadPicture(gl, picture);
     let input = this.src!;
     // (nothing to draw: the picture as it is)
     const list: readonly (DrawnPass | null)[] = passes.length ? passes : [null];
@@ -81,6 +157,8 @@ export class LookPainter {
       if (!gl) throw new Error('no WebGL2');
       fullFrame(gl);
       this.src = newTexture(gl);
+      this.maskTex = newTexture(gl);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
       this.gl = gl;
     } catch {
       this.failed = true;
@@ -129,6 +207,13 @@ export class LookPainter {
       gl.uniform1i(this.uniform(gl, p, 'uLut'), 1);
       gl.uniform1f(this.uniform(gl, p, 'uLutSize'), LUT_SIZE);
       gl.uniform1f(this.uniform(gl, p, 'u_amount'), pass ? pass.amount : 0);
+      // (only the grade a mask was given for keeps to it)
+      const m = this.masked;
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+      gl.uniform1i(this.uniform(gl, p, 'uMask'), 2);
+      gl.uniform1f(this.uniform(gl, p, 'uWhere'), !m ? 0 : m.where === 'subject' ? 1 : 2);
+      gl.uniform1f(this.uniform(gl, p, 'uFeather'), m ? m.feather * 4 : 0);
     } else {
       p = this.program(gl, pass.kind, SCREEN[pass.kind].frag);
       this.setValues(gl, p, pass.kind, pass.values);

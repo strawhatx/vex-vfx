@@ -61,8 +61,12 @@ import {
   swapFrom,
   trackAt,
   trackSpan,
+  withBody,
+  withBodyControl,
   type Track,
 } from '@/domain/project/track';
+import type { ParamValue } from '@/domain/effects/params';
+import type { Preset } from '@/domain/effects/presets';
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
@@ -563,13 +567,44 @@ export class Editor {
 
   // a new effect on what was tapped at frame i (the object there, or a body part of the person
   // there), lasting DEFAULT_EFFECT_S from there
-  addTrack(i: number, sel: Selection, fx: Partial<FxSettings> = {}, part: BodyPart | null = null) {
+  // body: a body preset it's made from (see effects/body.ts)
+  addTrack(
+    i: number,
+    sel: Selection,
+    fx: Partial<FxSettings> = {},
+    part: BodyPart | null = null,
+    body: Preset | null = null,
+  ) {
     const f = this.clip[i];
     if (!f) return null;
     this.record();
     this.lastFx = { ...this.lastFx, ...fx };
     const range = { s: f.t, e: this.defaultEnd(f.t) };
-    return this.start(newTrack(this.nextId++, this.clip, this.lastFx, range, part), i, sel);
+    const t = newTrack(this.nextId++, this.clip, this.lastFx, range, part);
+    return this.start(body ? withBody(t, body) : t, i, sel);
+  }
+
+  // an effect made from a body preset instead (another, or the first); its timing and tracking stay
+  setBody(id: number, preset: Preset) {
+    const t = this.track(id);
+    if (!t || t.kind !== 'effect' || preset.group !== 'body') return false;
+    this.record();
+    const next = withBody(t, preset);
+    t.body = next.body;
+    t.fx = next.fx;
+    this.syncLayers();
+    this.publish(true);
+    return true;
+  }
+
+  // one of its body preset's controls set; changes straight after one another are one step to undo
+  setBodyControl(id: number, control: string, v: ParamValue) {
+    const t = this.track(id);
+    if (!t?.body) return;
+    this.record(`body:${id}:${control}`);
+    t.body = withBodyControl(t, control, v).body;
+    this.syncLayers();
+    this.publish(true);
   }
 
   // a new effect coming from the spot tapped at frame i (only for effects that can: see canPin),

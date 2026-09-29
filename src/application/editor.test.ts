@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FAMILY_STYLES } from '@/domain/effects/impacts';
+import { parsePreset } from '@/domain/effects/presets';
 import { encodeRle, type ClipFrame, type Shape } from '@/domain/tracking/types';
 import { Editor, type EditorState } from './editor';
 import { FakeAnalysis, FakeLayers } from './fakes';
@@ -766,6 +767,59 @@ describe('the speed of a film', () => {
     editor.undo();
     editor.undo();
     expect(state.length).toBe(6);
+  });
+});
+
+describe('body effects', () => {
+  const storm = parsePreset({
+    id: 'storm',
+    name: 'Storm',
+    group: 'body',
+    passes: [
+      { engine: 'object', kind: 'edge', params: { color: '#ffffff' } },
+      { engine: 'object', kind: 'lightning', params: { palette: 'blue' } },
+    ],
+    controls: [
+      { id: 'color', label: 'Color', type: 'color', def: '#62d8ff', drives: [{ pass: 0, param: 'color' }] },
+    ],
+  });
+  const halo = parsePreset({
+    id: 'halo',
+    name: 'Halo',
+    group: 'body',
+    passes: [{ engine: 'object', kind: 'edge' }],
+    controls: [
+      { id: 'color', label: 'Color', type: 'color', def: '#ffffff', drives: [{ pass: 0, param: 'color' }] },
+    ],
+  });
+
+  it('are drawn as their passes, and sound like their first particle effect', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, {}, null, storm)!;
+    expect(state.lanes[0].body?.preset.id).toBe('storm');
+    expect(state.lanes[0].fx.effect).toBe('lightning');
+    const spec = layers.specs.find(s => s.id === id)!;
+    expect(spec.passes?.map(p => p.kind)).toEqual(['edge', 'lightning']);
+    expect(spec.passes?.[0].params.color).toBe('#62d8ff'); // (its control's default)
+  });
+
+  it('are tuned by their controls, and swapped keeping what both have, each a step to undo', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 }, {}, null, storm)!;
+    editor.setBodyControl(id, 'color', '#ff0000');
+    expect(layers.specs[0].passes?.[0].params.color).toBe('#ff0000');
+    expect(editor.setBody(id, halo)).toBe(true);
+    expect(state.lanes[0].body).toMatchObject({ preset: { id: 'halo' }, values: { color: '#ff0000' } });
+    expect(state.lanes[0].fx.effect).toBe('outline');
+    editor.undo();
+    expect(state.lanes[0].body?.preset.id).toBe('storm');
+  });
+
+  it('old-style effects are drawn as one pass; ones drawn their own way have none', () => {
+    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'fire', pal: 2 });
+    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'water' });
+    expect(layers.specs.map(s => s.passes?.map(p => [p.kind, p.params.palette]) ?? null)).toEqual([
+      [['fire', 'toxic']],
+      null,
+    ]);
   });
 });
 

@@ -25,12 +25,14 @@ export const ENGINE_GROUP: Record<Engine, PresetGroup> = {
   screen: 'screen',
   text: 'text',
   motion: 'motion',
+  object: 'body',
 };
 export const ENGINE_NAMES: Record<Engine, string> = {
   color: 'Color engine',
   screen: 'Screen engine',
   text: 'Text engine',
   motion: 'Motion engine',
+  object: 'Object engine',
 };
 // what a new preset for each engine starts with
 const FIRST_PASSES: Record<Engine, string[]> = {
@@ -38,6 +40,7 @@ const FIRST_PASSES: Record<Engine, string[]> = {
   screen: ['flash'],
   text: ['type', 'fill', 'in', 'out'],
   motion: ['in'],
+  object: ['edge'],
 };
 export const isEngine = (e: string): e is Engine => Object.hasOwn(ENGINE_GROUP, e);
 
