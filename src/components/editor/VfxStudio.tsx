@@ -25,7 +25,7 @@ import { Preview } from './Preview';
 import { RotoDock, RotoHeader, type RotoActions } from './roto/RotoScreen';
 import { CropDock, CropHeader, type CropActions } from './CropScreen';
 import { Timeline } from './timeline/Timeline';
-import { Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
+import { OBJECT_CATEGORIES, Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
 import {
   TOOL_TITLES,
   ToolSheet,
@@ -41,7 +41,7 @@ import { Transport } from './Transport';
 const SHEETS_OF_THEIR_OWN = new Set<Tool>(['presets', 'controls', 'customize', 'animation']);
 
 // which list of categories the toolbar shows, if any
-type Catalog = 'effects' | 'objects' | 'custom' | null;
+type Catalog = 'effects' | 'custom' | null;
 
 // id: the project's, which it's saved under on this device
 export default function VfxStudio({ id }: { id: string }) {
@@ -430,6 +430,7 @@ export default function VfxStudio({ id }: { id: string }) {
         setCustomizeNext(true);
         return pl?.startAdding({ kind: 'impact', style: 'punch', fx: {}, burst: MY_OWN });
       case 'objects':
+        return openLooks('body');
       case 'custom':
         setTool(null);
         return setCatalog(key);
@@ -661,7 +662,7 @@ export default function VfxStudio({ id }: { id: string }) {
           }
           buttons={buttons}
           onPress={runTool}
-          onBack={mode === 'objects' || mode === 'custom' ? backToCatalog : mode ? deselect : undefined}
+          onBack={mode === 'custom' ? backToCatalog : mode ? deselect : undefined}
         />
         {ui.choosing && (
           <ToolSheet
@@ -697,6 +698,12 @@ export default function VfxStudio({ id }: { id: string }) {
                   : null
             }
             thumbs={ui.lookThumbs}
+            // (adding an object effect: the ones with styles of their own too)
+            extras={menuGroup === 'body' && !bodyLane ? OBJECT_CATEGORIES : []}
+            onExtra={id => {
+              setLookMenu(null);
+              runTool(`cat-${id as Category}`);
+            }}
             onPick={id => pickLook(menuGroup, id)}
             onClose={() => {
               setLookMenu(null);
@@ -879,7 +886,6 @@ function startPal(style: ImpactStyle): Partial<FxSettings> | undefined {
 function modeFor(lane: Lane | null, clipSelected: boolean, catalog: Catalog): Mode {
   if (lane) return lane.kind === 'impact' ? 'impact' : lane.kind === 'cutout' ? 'cutout' : 'track';
   if (clipSelected) return 'clip';
-  if (catalog === 'objects') return 'objects';
   if (catalog === 'custom') return 'custom';
   if (catalog) return 'catalog';
   return null;
@@ -887,7 +893,6 @@ function modeFor(lane: Lane | null, clipSelected: boolean, catalog: Catalog): Mo
 
 function toolbarLabel(mode: Mode, lane: Lane | null) {
   if (mode === 'catalog') return 'Effects';
-  if (mode === 'objects') return 'Object effects';
   if (mode === 'custom') return 'Custom effects';
   if (mode === 'clip') return 'Edit';
   return lane ? `${lane.name} tools` : 'Tools';

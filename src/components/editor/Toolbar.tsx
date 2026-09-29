@@ -60,35 +60,22 @@ export interface ToolBtn {
 // what the toolbar lists: the effect groups, object effects, custom effects, the footage tools (the
 // film selected), a selected effect, impact, cutout, music or look's tools
 export type Mode =
-  | 'catalog'
-  | 'objects'
-  | 'custom'
-  | 'clip'
-  | 'track'
-  | 'impact'
-  | 'cutout'
-  | 'music'
-  | 'look'
-  | 'effectclip'
-  | null;
+  'catalog' | 'custom' | 'clip' | 'track' | 'impact' | 'cutout' | 'music' | 'look' | 'effectclip' | null;
 
 // Effects come in three groups:
 //   - video effects: over the whole picture (templates)
-//   - object effects: on a person or object, following it (templates, and the effects below; text
-//     on the film has a menu of its own, beside Effects: Tracked text follows an object)
+//   - object effects: on a person or object, following it: templates, all in one list, then the
+//     effects below, which have styles of their own (text on the film has a menu of its own, beside
+//     Effects: Tracked text follows an object)
 //   - custom effects: going off wherever you point (hits, explosions, shockwaves…), and the user's
 //     own effect clips
 export const OBJECT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
-  { id: 'fire', label: 'Fire', icon: I.flame },
-  { id: 'lightning', label: 'Lightning', icon: I.bolt },
-  { id: 'aura', label: 'Aura', icon: I.aura },
-  { id: 'sparks', label: 'Sparks', icon: I.effects },
   { id: 'outline', label: 'Outline', icon: I.outline },
   { id: 'glitch', label: 'Glitch', icon: I.glitch },
   { id: 'water', label: 'Water', icon: I.water },
   { id: 'text', label: 'Tracked text', icon: I.text },
   { id: 'laser', label: 'Laser', icon: I.laser },
-];
+].filter(c => SHOW_LASERS || c.id !== 'laser') as { id: Category; label: string; icon: string }[];
 
 export const CUSTOM_CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'impact', label: 'Hit', icon: I.burst },
@@ -146,13 +133,8 @@ export function toolsFor(
   if (mode === 'catalog')
     return [
       { key: 'screenfx', label: 'Video effects', icon: I.scene, disabled: s.busy || !s.ready },
-      { key: 'objects', label: 'Object effects', icon: I.person, disabled: s.busy },
+      { key: 'objects', label: 'Object effects', icon: I.person, disabled: s.busy || !s.ready },
       { key: 'custom', label: 'Custom effects', icon: I.burst, disabled: s.busy },
-    ];
-  if (mode === 'objects')
-    return [
-      { key: 'body', label: 'Templates', icon: I.person, disabled: s.busy || !s.ready },
-      ...OBJECT_CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
     ];
   if (mode === 'custom')
     return [

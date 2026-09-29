@@ -133,8 +133,16 @@ import energyOrbs from './energy-orbs.json';
 import risingAsh from './rising-ash.json';
 import sparkleTitle from './sparkle-title.json';
 import sparkShower from './spark-shower.json';
+import fire from './fire.json';
+import lightning from './lightning.json';
+import aura from './aura.json';
+import sparks from './sparks.json';
 
 export const PRESET_FILES: readonly unknown[] = [
+  fire,
+  lightning,
+  aura,
+  sparks,
   goldenHour,
   honey,
   desertHeat,

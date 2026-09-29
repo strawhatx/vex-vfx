@@ -24,13 +24,13 @@ export const GROUP_NAMES: Record<MenuGroup, string> = {
   body: 'Object effects',
   impact: 'Custom effects',
 };
-// whether a group's presets are split up by category (filters, video effects and text aren't: all
-// of them in one list)
+// whether a group's presets are split up by category (filters, video effects, object effects and
+// text aren't: all of them in one list)
 const BY_CATEGORY: Record<MenuGroup, boolean> = {
   filter: false,
   screen: false,
   text: false,
-  body: true,
+  body: false,
   impact: true,
 };
 
@@ -65,14 +65,19 @@ export function PresetSheet({
   group,
   current,
   thumbs,
+  extras = [],
   onPick,
+  onExtra,
   onClose,
   onShown,
 }: {
   group: MenuGroup;
   current: string | null; // the selected clip's preset
   thumbs: Record<string, string>;
+  // effects listed after the presets that aren't presets (they open styles of their own)
+  extras?: readonly { id: string; label: string; icon: string }[];
   onPick(presetId: string): void;
+  onExtra?(id: string): void;
   onClose(): void;
   onShown(): void; // opened: the presets' pictures are wanted
 }) {
@@ -136,6 +141,14 @@ export function PresetSheet({
               <span className="tile-art" style={{ background: fallbackArt(p) }} />
             )}
             {p.name}
+          </button>
+        ))}
+        {extras.map(x => (
+          <button key={x.id} type="button" className="tile look-tile" onClick={() => onExtra?.(x.id)}>
+            <span className="tile-art own-art">
+              <Icon d={x.icon} />
+            </span>
+            {x.label}
           </button>
         ))}
       </div>
