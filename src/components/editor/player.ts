@@ -271,6 +271,8 @@ const LASSO_STEP = 3;
 const TAP_SLOP = 10;
 // the preview is the film's first video scaled to at most this wide
 const MAX_W = 960;
+// how wide a project's picture in the list of them is (px)
+const PICTURE_W = 160;
 // changes are saved this long after they stop, and at least this often while they don't (ms)
 const SAVE_AFTER_MS = 1000,
   SAVE_AT_LEAST_MS = 5000;
@@ -1303,12 +1305,29 @@ export class Player {
 
   private saveNow() {
     clearTimeout(this.saveTimer);
-    if (!this.filmId || !this.unsaved) return;
+    const id = this.filmId;
+    if (!id || !this.unsaved) return;
     this.unsaved = false;
     this.savedAt = Date.now();
-    this.store
-      .save(this.filmId, this.project.saved())
+    const film = this.project.saved();
+    // (a project with no video in it yet isn't worth keeping)
+    if (!film.reels.length) return;
+    // named after its first video; a small picture of what's showing, for the list of projects
+    const first = this.project.files.reels[0]?.file;
+    const name = first instanceof File ? first.name.replace(/\.[^.]+$/, '') : 'Untitled';
+    void this.picture()
+      .then(picture => this.store.save(id, film, { name, savedAt: this.savedAt, picture }))
       .catch(() => this.say('This project couldn’t be saved on this device (it may be out of space).'));
+  }
+
+  // the preview, small, as a JPEG (null with nothing on it)
+  private async picture() {
+    const { width, height } = this.view;
+    if (!width || !height || !this.ui.ready) return null;
+    const k = Math.min(1, PICTURE_W / width),
+      pic = new OffscreenCanvas(Math.round(width * k), Math.round(height * k));
+    pic.getContext('2d')!.drawImage(this.view, 0, 0, pic.width, pic.height);
+    return pic.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
   }
 
   private set(p: Partial<UiState>) {

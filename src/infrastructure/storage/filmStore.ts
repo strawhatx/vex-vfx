@@ -1,14 +1,16 @@
 // Films kept in this browser's IndexedDB, so a project's page opens it again: its edits in one
 // record, and its videos and music as files of their own, each written once (a film saves every
 // few seconds while it's worked on; its files don't change). Files a film no longer uses are
-// dropped when it's saved. Nothing leaves the device.
-import type { FilmStore } from '@/application/ports';
+// dropped when it's saved. Each film also has a small record of its name, when it was saved and
+// a picture of it, for listing films without reading them all. Nothing leaves the device.
+import type { FilmInfo, FilmStore } from '@/application/ports';
 import type { SavedFilm } from '@/application/project';
 
 const DB = 'flarecut',
-  VERSION = 1,
+  VERSION = 2,
   FILMS = 'films',
-  FILES = 'files';
+  FILES = 'files',
+  INFO = 'info';
 
 // a film as it's kept: its files by key rather than the files themselves
 type Kept = Omit<SavedFilm, 'reels' | 'music'> & {
@@ -41,7 +43,7 @@ export class IndexedDbFilmStore implements FilmStore {
     }
   }
 
-  async save(id: string, film: SavedFilm) {
+  async save(id: string, film: SavedFilm, info: Omit<FilmInfo, 'id'>) {
     const db = await this.open();
     const keyOf = (blob: Blob) => {
       let key = this.keys.get(blob);
@@ -54,15 +56,37 @@ export class IndexedDbFilmStore implements FilmStore {
       music: film.music.map(m => ({ ...m, file: keyOf(m.file) })),
     };
     const used = new Map([...film.reels, ...film.music].map(x => [keyOf(x.file), x.file]));
-    const tx = db.transaction([FILMS, FILES], 'readwrite');
+    const tx = db.transaction([FILMS, FILES, INFO], 'readwrite');
     const files = tx.objectStore(FILES);
     // this film's files there already: new ones are added, ones it no longer uses dropped
     const had = new Set(
-      (await request<IDBValidKey[]>(files.getAllKeys(IDBKeyRange.bound(`${id}/`, `${id}/￿`)))).map(String),
+      (await request<IDBValidKey[]>(files.getAllKeys(IDBKeyRange.bound(`${id}/`, `${id}/\uffff`)))).map(
+        String,
+      ),
     );
     for (const [key, blob] of used) if (!had.has(key)) files.put(blob, key);
     for (const key of had) if (!used.has(key)) files.delete(key);
     tx.objectStore(FILMS).put(kept, id);
+    tx.objectStore(INFO).put({ ...info, id }, id);
+    await done(tx);
+  }
+
+  async list(): Promise<FilmInfo[]> {
+    try {
+      const db = await this.open();
+      const all = await request<FilmInfo[]>(db.transaction(INFO).objectStore(INFO).getAll());
+      return all.sort((a, b) => b.savedAt - a.savedAt);
+    } catch {
+      return [];
+    }
+  }
+
+  async remove(id: string) {
+    const db = await this.open();
+    const tx = db.transaction([FILMS, FILES, INFO], 'readwrite');
+    tx.objectStore(FILMS).delete(id);
+    tx.objectStore(INFO).delete(id);
+    tx.objectStore(FILES).delete(IDBKeyRange.bound(`${id}/`, `${id}/\uffff`));
     await done(tx);
   }
 
@@ -76,6 +100,7 @@ export class IndexedDbFilmStore implements FilmStore {
         const db = req.result;
         if (!db.objectStoreNames.contains(FILMS)) db.createObjectStore(FILMS);
         if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES);
+        if (!db.objectStoreNames.contains(INFO)) db.createObjectStore(INFO);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);

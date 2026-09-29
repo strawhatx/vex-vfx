@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { RecentProjects } from '@/components/home/RecentProjects';
 
 // the start page: a new project, or the lab to build effects in
 export default function Home() {
@@ -15,6 +16,7 @@ export default function Home() {
           Lab
         </Link>
       </nav>
+      <RecentProjects />
     </main>
   );
 }

@@ -142,9 +142,21 @@ export interface OverlayPictures {
   copy(from: number, to: number): void;
 }
 
+// what's shown of a saved film in a list of them: its name, when it was saved, and a small picture
+// of it (null if there wasn't one to take)
+export interface FilmInfo {
+  id: string;
+  name: string;
+  savedAt: number; // ms since 1970
+  picture: Blob | null;
+}
+
 // Keeps films on this device, to open again later (the clips never leave it).
 export interface FilmStore {
   // the film saved under this id, or null if there's none (or it can't be read)
   load(id: string): Promise<SavedFilm | null>;
-  save(id: string, film: SavedFilm): Promise<void>;
+  save(id: string, film: SavedFilm, info: Omit<FilmInfo, 'id'>): Promise<void>;
+  // every film kept, the last saved first
+  list(): Promise<FilmInfo[]>;
+  remove(id: string): Promise<void>;
 }
