@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { RecentProjects } from '@/components/home/RecentProjects';
+import { labOn } from './lab/enabled';
 
 // the start page: a new project, or the lab to build effects in
 export default function Home() {
@@ -12,9 +13,11 @@ export default function Home() {
         <Link className="home-link primary" href="/editor/new">
           New project
         </Link>
-        <Link className="home-link" href="/lab">
-          Lab
-        </Link>
+        {labOn() && (
+          <Link className="home-link" href="/lab">
+            Lab
+          </Link>
+        )}
       </nav>
       <RecentProjects />
     </main>

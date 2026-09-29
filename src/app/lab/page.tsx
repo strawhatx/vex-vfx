@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { labOn } from './enabled';
 import { LAB_PAGES, type LabPage } from '@/domain/effects/draft';
 
 // the lab: an engine (or transitions) to build effects with
 export default function Lab() {
+  if (!labOn()) notFound();
   return (
     <main className="home">
       <strong className="wordmark" aria-label="FlareCut lab">
