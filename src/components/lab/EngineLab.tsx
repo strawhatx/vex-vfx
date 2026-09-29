@@ -1,13 +1,15 @@
 'use client';
 
-// The Preset Lab for one engine: build an effect from the engine's passes on a test clip, pick the
+// The Preset Lab, one page at a time (an engine, or transitions): build an effect from the page's
+// passes on a test clip, pick the
 // sliders users get, and download it as a preset file for domain/effects/library/. The preview uses
 // the editor's own GPU painter (see labPlayer.ts), so what's made here looks the same there.
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ENGINE_GROUP,
-  ENGINE_NAMES,
+  LAB_PAGES,
+  previewLength,
+  type LabPage,
   addPass,
   draftOf,
   expose,
@@ -26,7 +28,6 @@ import {
   withStrength,
 } from '@/domain/effects/draft';
 import { presets } from '@/domain/effects/library';
-import type { Engine } from '@/domain/effects/passes';
 import { parsePreset, type Preset } from '@/domain/effects/presets';
 import { LabPlayer, type LabState } from './labPlayer';
 import { PassCard } from './PassCard';
@@ -49,7 +50,7 @@ const undone = (h: History): History =>
 const redone = (h: History): History =>
   h.future.length ? { past: [...h.past, h.now], now: h.future[0], future: h.future.slice(1), last: null } : h;
 
-export default function EngineLab({ engine }: { engine: Engine }) {
+export default function EngineLab({ page }: { page: LabPage }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const clipRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -57,9 +58,11 @@ export default function EngineLab({ engine }: { engine: Engine }) {
   const [lab, setLab] = useState<LabState>({ t: 0, playing: true, clip: null, gpu: true });
   const [compare, setCompare] = useState(false);
   const [problem, setProblem] = useState('');
-  const [h, setH] = useState<History>(() => ({ past: [], now: newDraft(engine), future: [], last: null }));
+  const [h, setH] = useState<History>(() => ({ past: [], now: newDraft(page), future: [], last: null }));
   const p = h.now;
-  const group = ENGINE_GROUP[engine];
+  const group = LAB_PAGES[page].group;
+  // how long a round of the preview is (a transition's has a moment either side of it)
+  const loop = previewLength(p);
   const shipped = presets().filter(x => x.group === group);
 
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function EngineLab({ engine }: { engine: Engine }) {
 
   function startFrom(id: string) {
     const from = shipped.find(x => x.id === id);
-    change(from ? draftOf(from) : newDraft(engine));
+    change(from ? draftOf(from) : newDraft(page));
   }
 
   // a preset file picked to carry on with
@@ -143,7 +146,7 @@ export default function EngineLab({ engine }: { engine: Engine }) {
           <Link href="/lab" className="lab-home" aria-label="Back to the lab">
             ←
           </Link>
-          <strong>{ENGINE_NAMES[engine]}</strong>
+          <strong>{LAB_PAGES[page].name}</strong>
           <span className="lab-top-tools">
             <button type="button" disabled={!h.past.length} onClick={undo}>
               Undo
@@ -167,13 +170,13 @@ export default function EngineLab({ engine }: { engine: Engine }) {
             type="range"
             aria-label="Effect time"
             min={0}
-            max={p.length}
+            max={loop}
             step={0.01}
-            value={Math.min(lab.t, p.length)}
+            value={Math.min(lab.t, loop)}
             onChange={e => playerRef.current?.seek(+e.target.value)}
           />
           <output>
-            {lab.t.toFixed(2)} / {p.length.toFixed(1)}s
+            {lab.t.toFixed(2)} / {loop.toFixed(1)}s
           </output>
         </div>
         <div className="lab-transport">
@@ -275,13 +278,19 @@ export default function EngineLab({ engine }: { engine: Engine }) {
         ))}
         <label className="lab-add">
           <span>Add a pass</span>
-          <select value="" onChange={e => e.target.value && change(addPass(p, e.target.value))}>
+          <select
+            value=""
+            onChange={e => {
+              const k = kindsOf(page)[+e.target.value];
+              if (k) change(addPass(p, k.engine, k.kind));
+            }}
+          >
             <option value="" disabled>
               Pick one…
             </option>
-            {kindsOf(engine).map(k => (
-              <option key={k.id} value={k.id}>
-                {k.label}
+            {kindsOf(page).map((k, n) => (
+              <option key={`${k.engine}:${k.kind}`} value={n}>
+                {LAB_PAGES[page].offers.length > 1 ? `${k.label} (${k.engine})` : k.label}
               </option>
             ))}
           </select>

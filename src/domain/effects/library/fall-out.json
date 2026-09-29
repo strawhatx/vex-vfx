@@ -10,7 +10,7 @@
       "kind": "out",
       "params": {
         "duration": 0.6,
-        "ease": "out",
+        "ease": "in",
         "y": 1.2,
         "turn": 12
       }

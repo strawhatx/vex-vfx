@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  TRANSITION_HOLD,
   addPass,
+  isLabPage,
+  kindsOf,
+  pageOf,
+  previewLength,
   draftOf,
   expose,
   exposedBy,
@@ -65,7 +70,7 @@ describe('editing passes', () => {
   });
 
   it('adds, moves and removes passes, with the controls following them', () => {
-    let p = addPass(newDraft('screen'), 'shake');
+    let p = addPass(newDraft('screen'), 'screen', 'shake');
     p = expose(p, 1, 'speed', true);
     expect(p.controls.map(c => c.id)).toEqual(['strength', 'speed']);
     // Strength covers the new pass too
@@ -111,7 +116,7 @@ describe('the sliders users get', () => {
     expect(exposedBy(p, 0, 'color')).toMatchObject({ type: 'color', def: '#ffffff' });
     p = setParam(p, 0, 'color', '#FF0000');
     expect(exposedBy(p, 0, 'color')!.def).toBe('#ff0000');
-    const m = addPass(p, 'mirror');
+    const m = addPass(p, 'screen', 'mirror');
     expect(expose(m, 1, 'mode', true)).toBe(m);
   });
 
@@ -124,7 +129,7 @@ describe('the sliders users get', () => {
 
 describe('loading and saving', () => {
   it('saves a file that loads back as the same preset', () => {
-    let p = setMeta(addPass(newDraft('screen'), 'glow'), {
+    let p = setMeta(addPass(newDraft('screen'), 'screen', 'glow'), {
       name: 'Hot Flash',
       category: 'Light',
       fadeIn: 0.2,
@@ -144,5 +149,26 @@ describe('loading and saving', () => {
   it('keeps a loaded preset drawing as edited when a setting its Strength drives changes', () => {
     const quake = draftOf(presets().find(p => p.id === 'earthquake')!);
     drawsAsEdited(setParam(quake, 1, 'amount', 0.3));
+  });
+});
+
+describe('lab pages', () => {
+  it('make transitions from motion and screen passes', () => {
+    const t = newDraft('transition');
+    expect(t).toMatchObject({ group: 'transition', length: 0.6 });
+    expect(t.passes.map(p => `${p.engine}:${p.kind}`)).toEqual(['motion:out', 'motion:in', 'screen:blur']);
+    const offered = kindsOf('transition').map(k => `${k.engine}:${k.kind}`);
+    expect(offered).toContain('motion:in');
+    expect(offered).toContain('screen:flash');
+    expect(offered).not.toContain('motion:combo');
+    expect(previewLength(t)).toBeCloseTo(0.6 + 2 * TRANSITION_HOLD);
+    expect(previewLength(newDraft('color'))).toBe(5);
+  });
+
+  it('know the page a preset is made on', () => {
+    expect(pageOf({ group: 'body' })).toBe('object');
+    expect(pageOf({ group: 'transition' })).toBe('transition');
+    expect(isLabPage('transition')).toBe(true);
+    expect(isLabPage('sticker')).toBe(false);
   });
 });

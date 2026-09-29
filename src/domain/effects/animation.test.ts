@@ -75,3 +75,12 @@ describe('the animations that ship', () => {
     expect(hasAnim(anim({ combo: slot('combo', {}) }))).toBe(true);
   });
 });
+
+describe('easing going out', () => {
+  it('runs forward in time: speeding up leaves slowly, then faster and faster', () => {
+    const out = anim({ out: slot('out', { duration: 1, ease: 'in', x: 1 }) });
+    expect(poseAt(out, 4, 5).x).toBeCloseTo(0);
+    expect(poseAt(out, 4.5, 5).x).toBeCloseTo(0.125); // (half the time, an eighth of the way)
+    expect(poseAt(out, 5, 5).x).toBeCloseTo(1);
+  });
+});

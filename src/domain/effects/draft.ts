@@ -1,4 +1,4 @@
-// Making a preset in the Preset Lab, one engine at a time: passes added, taken out, moved and set,
+// Making a preset in the Preset Lab, a page at a time (see LAB_PAGES): passes added, taken out, moved and set,
 // settings picked out as the sliders users get, and a Strength slider over all of it. Each change
 // gives a new preset (nothing is changed in place).
 //
@@ -19,30 +19,78 @@ import {
   type PresetGroup,
 } from './presets';
 
-// the engines the lab makes presets for, and the group each one's presets go in
-export const ENGINE_GROUP: Record<Engine, PresetGroup> = {
-  color: 'filter',
-  screen: 'screen',
-  text: 'text',
-  motion: 'motion',
-  object: 'body',
+// The lab's pages: one for each engine, and one for transitions, which mix engines (a motion out
+// and in, and screen passes). Each says which group its presets go in, the kinds of pass it offers
+// (all an engine's, or some), what a new preset starts with, and how long it lasts.
+export type LabPage = Engine | 'transition';
+
+interface LabSpec {
+  name: string;
+  group: PresetGroup;
+  offers: readonly { engine: Engine; kinds?: readonly string[] }[];
+  first: readonly (readonly [Engine, string])[];
+  length: number;
+}
+
+export const LAB_PAGES: Record<LabPage, LabSpec> = {
+  color: {
+    name: 'Color engine',
+    group: 'filter',
+    offers: [{ engine: 'color' }],
+    first: [['color', 'grade']],
+    length: 5,
+  },
+  screen: {
+    name: 'Screen engine',
+    group: 'screen',
+    offers: [{ engine: 'screen' }],
+    first: [['screen', 'flash']],
+    length: 3,
+  },
+  text: {
+    name: 'Text engine',
+    group: 'text',
+    offers: [{ engine: 'text' }],
+    first: [
+      ['text', 'type'],
+      ['text', 'fill'],
+      ['text', 'in'],
+      ['text', 'out'],
+    ],
+    length: 3,
+  },
+  motion: {
+    name: 'Motion engine',
+    group: 'motion',
+    offers: [{ engine: 'motion' }],
+    first: [['motion', 'in']],
+    length: 2,
+  },
+  object: {
+    name: 'Object engine',
+    group: 'body',
+    offers: [{ engine: 'object' }],
+    first: [['object', 'edge']],
+    length: 3,
+  },
+  transition: {
+    name: 'Transitions',
+    group: 'transition',
+    offers: [{ engine: 'motion', kinds: ['out', 'in'] }, { engine: 'screen' }],
+    first: [
+      ['motion', 'out'],
+      ['motion', 'in'],
+      ['screen', 'blur'],
+    ],
+    length: 0.6,
+  },
 };
-export const ENGINE_NAMES: Record<Engine, string> = {
-  color: 'Color engine',
-  screen: 'Screen engine',
-  text: 'Text engine',
-  motion: 'Motion engine',
-  object: 'Object engine',
-};
-// what a new preset for each engine starts with
-const FIRST_PASSES: Record<Engine, string[]> = {
-  color: ['grade'],
-  screen: ['flash'],
-  text: ['type', 'fill', 'in', 'out'],
-  motion: ['in'],
-  object: ['edge'],
-};
-export const isEngine = (e: string): e is Engine => Object.hasOwn(ENGINE_GROUP, e);
+
+export const isLabPage = (p: string): p is LabPage => Object.hasOwn(LAB_PAGES, p);
+
+// the lab page a preset is made on
+export const pageOf = (p: Pick<Preset, 'group'>) =>
+  (Object.keys(LAB_PAGES) as LabPage[]).find(k => LAB_PAGES[k].group === p.group)!;
 
 // the slider over every pass's strength
 export const STRENGTH = 'strength';
@@ -56,23 +104,34 @@ export const slug = (name: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'preset';
 
-// the kinds of pass an engine draws
-export const kindsOf = (engine: Engine) =>
-  Object.entries(ENGINES[engine]).map(([id, k]) => ({ id, label: k.label }));
+// the kinds of pass a lab page offers, with the engine each is drawn by
+export const kindsOf = (page: LabPage) =>
+  LAB_PAGES[page].offers.flatMap(({ engine, kinds }) =>
+    Object.entries(ENGINES[engine])
+      .filter(([id]) => !kinds || kinds.includes(id))
+      .map(([id, k]) => ({ engine, kind: id, label: k.label })),
+  );
 
 export const newPass = (engine: Engine, kind: string): Pass => fitPass({ engine, kind });
 
-// a new preset for the engine: its first passes, and a Strength slider
-export function newDraft(engine: Engine): Preset {
+// a new preset for a lab page: its first passes, and a Strength slider
+export function newDraft(page: LabPage): Preset {
+  const spec = LAB_PAGES[page];
   const p = parsePreset({
     id: 'untitled',
     name: 'Untitled',
-    group: ENGINE_GROUP[engine],
-    passes: FIRST_PASSES[engine].map(kind => newPass(engine, kind)),
-    length: engine === 'color' ? 5 : 3,
+    group: spec.group,
+    passes: spec.first.map(([engine, kind]) => newPass(engine, kind)),
+    length: spec.length,
   });
   return withStrength(p, true);
 }
+
+// how long the lab plays a preset round for: its length, or for a transition, a moment of one
+// picture, the transition, and a moment of the next
+export const TRANSITION_HOLD = 0.6;
+export const previewLength = (p: Pick<Preset, 'group' | 'length'>) =>
+  p.group === 'transition' ? p.length + 2 * TRANSITION_HOLD : p.length;
 
 // a preset loaded to start from: its controls' defaults baked into its passes, so what's edited is
 // what it draws
@@ -194,10 +253,8 @@ function renumber(p: Preset, passes: Pass[], to: (k: number) => number | null): 
   return withStrength({ ...p, passes, controls }, hasStrength(p));
 }
 
-// a new pass of `kind` on top of the others
-export function addPass(p: Preset, kind: string): Preset {
-  const engine =
-    p.passes[0]?.engine ?? (Object.keys(ENGINE_GROUP) as Engine[]).find(e => ENGINE_GROUP[e] === p.group)!;
+// a new pass of `kind` (drawn by `engine`) on top of the others
+export function addPass(p: Preset, engine: Engine, kind: string): Preset {
   return renumber(p, [...p.passes, newPass(engine, kind)], k => k);
 }
 

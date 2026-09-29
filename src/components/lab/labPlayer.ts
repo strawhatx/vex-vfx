@@ -5,6 +5,8 @@
 // left half as it was. Body effects are drawn by the editor's own renderer on a clip made up for
 // them (see bodyStage.ts).
 import type { Preset } from '@/domain/effects/presets';
+import { TRANSITION_HOLD, previewLength } from '@/domain/effects/draft';
+import { transitionAt } from '@/domain/project/transitions';
 import { looksAt, newLook, textsAt } from '@/domain/project/looks';
 import { NO_ANIM, isAnimKind, poseAt, type ClipAnim } from '@/domain/effects/animation';
 import { applyPose } from '@/infrastructure/rendering/pose';
@@ -34,7 +36,9 @@ export class LabPlayer {
   private painter = new LookPainter();
   private texts = new TextClipPainter();
   private fonts: Fonts = FALLBACK_FONTS;
-  private scene = testScene();
+  private scene = testScene(DAY);
+  // what a transition cuts to
+  private next = testScene(DUSK);
   private video: HTMLVideoElement | null = null;
   private url: string | null = null;
   private preset: Preset | null = null;
@@ -63,7 +67,7 @@ export class LabPlayer {
 
   setPreset(p: Preset) {
     this.preset = p;
-    this.state.t = Math.min(this.state.t, p.length);
+    this.state.t = Math.min(this.state.t, previewLength(p));
     if (!this.state.playing) this.draw();
   }
 
@@ -94,7 +98,7 @@ export class LabPlayer {
   }
 
   seek(t: number) {
-    this.set({ t: Math.max(0, Math.min(this.preset?.length ?? 0, t)) });
+    this.set({ t: Math.max(0, Math.min(this.preset ? previewLength(this.preset) : 0, t)) });
     this.draw();
   }
 
@@ -112,7 +116,7 @@ export class LabPlayer {
     const dt = this.last ? Math.min(0.1, (now - this.last) / 1000) : 0;
     this.last = now;
     if (this.state.playing && this.preset) {
-      this.state.t = (this.state.t + dt) % this.preset.length;
+      this.state.t = (this.state.t + dt) % previewLength(this.preset);
       this.draw();
       if (now - this.sent > STATE_EVERY) {
         this.sent = now;
@@ -147,6 +151,10 @@ export class LabPlayer {
       ctx.restore();
       return;
     }
+    if (this.preset?.group === 'transition') {
+      this.drawCut(src, this.preset, W, H);
+      return;
+    }
     if (this.preset?.group === 'body') {
       const r = this.bodyStage(sw, sh, src === this.scene, this.preset);
       r.render(src, this.state.t, { outline: false, paused: !this.state.playing, selected: null });
@@ -162,6 +170,28 @@ export class LabPlayer {
     if (gpu !== this.state.gpu) this.set({ gpu });
     this.texts.draw(ctx, textsAt([clip], this.state.t), this.fonts);
     this.drawCompare(src, sw, sh, W, H);
+  }
+
+  // a transition: the picture (for a moment), the transition, then the next picture (for a moment)
+  private drawCut(src: CanvasImageSource, preset: Preset, W: number, H: number) {
+    const ctx = this.ctx,
+      t = this.state.t,
+      join = TRANSITION_HOLD + preset.length / 2;
+    const films = [
+      { reel: 1, s: 0, at: 0, length: join },
+      { reel: 2, s: 0, at: join, length: join },
+    ];
+    const cut = transitionAt(films, [{ reel: 2, s: 0, preset, duration: preset.length }], t);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    if (cut) applyPose(ctx, cut.pose, W / 2, H / 2, W, H);
+    ctx.drawImage(t < join ? src : this.next, 0, 0, W, H);
+    ctx.restore();
+    if (cut?.passes.length) {
+      const gpu = this.painter.apply(ctx, cut.passes);
+      if (gpu !== this.state.gpu) this.set({ gpu });
+    }
   }
 
   // before/after: the left half as it was, and a line between
@@ -215,8 +245,12 @@ function animOf(p: Preset): ClipAnim {
   return anim;
 }
 
+// the test scene's colors: by day, and at dusk (what a transition cuts to)
+const DAY = { sky: ['#2f6fd0', '#c4def5'], sun: '#ffe599', grass: ['#6aa84f', '#2f5a22'] };
+const DUSK = { sky: ['#1b1f4a', '#e0784a'], sun: '#fff3c4', grass: ['#3d5a3a', '#16241a'] };
+
 // a scene with what effects are judged on: sky, sun, skin, grass, deep shadow and white
-function testScene() {
+function testScene(colors: typeof DAY) {
   const W = SCENE_W,
     H = SCENE_H;
   const c = document.createElement('canvas');
@@ -224,17 +258,17 @@ function testScene() {
   c.height = H;
   const g = c.getContext('2d')!;
   const sky = g.createLinearGradient(0, 0, 0, H * 0.62);
-  sky.addColorStop(0, '#2f6fd0');
-  sky.addColorStop(1, '#c4def5');
+  sky.addColorStop(0, colors.sky[0]);
+  sky.addColorStop(1, colors.sky[1]);
   g.fillStyle = sky;
   g.fillRect(0, 0, W, H);
-  g.fillStyle = '#ffe599';
+  g.fillStyle = colors.sun;
   g.beginPath();
   g.arc(W * 0.8, H * 0.12, 46, 0, Math.PI * 2);
   g.fill();
   const grass = g.createLinearGradient(0, H * 0.62, 0, H);
-  grass.addColorStop(0, '#6aa84f');
-  grass.addColorStop(1, '#2f5a22');
+  grass.addColorStop(0, colors.grass[0]);
+  grass.addColorStop(1, colors.grass[1]);
   g.fillStyle = grass;
   g.fillRect(0, H * 0.62, W, H * 0.38);
   drawPerson(g, '#1d2230', '#e0ac8a');

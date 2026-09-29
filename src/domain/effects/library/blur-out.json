@@ -10,7 +10,7 @@
       "kind": "out",
       "params": {
         "duration": 0.6,
-        "ease": "out",
+        "ease": "in",
         "blur": 1,
         "scale": 1.1,
         "opacity": 0

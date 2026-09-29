@@ -110,8 +110,9 @@ export function poseAt(a: ClipAnim, t: number, len: number): ClipPose {
     p = combinePoses(p, mix(poseOf(a.in.params), REST_POSE, u));
   }
   if (a.out && len - t < dout) {
-    const u = ease(a.out.params.ease as Ease, (len - t) / dout);
-    p = combinePoses(p, mix(poseOf(a.out.params), REST_POSE, u));
+    // (eased forward in time, like coming in: speeding up is leaving faster and faster)
+    const u = ease(a.out.params.ease as Ease, 1 - (len - t) / dout);
+    p = combinePoses(p, mix(REST_POSE, poseOf(a.out.params), u));
   }
   if (a.combo) p = combinePoses(p, comboAt(a.combo.params, t, len));
   return p;
