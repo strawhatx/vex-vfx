@@ -3,6 +3,7 @@
 // over any video, and it stays when the video it was cut from is taken out (it keeps what was cut).
 // It plays the stretch of its video it was cut from, from where it's placed, at the same speed;
 // its placement (moved, scaled, turned, faded) is keyframed in seconds from its start.
+import { poseAt, type ClipAnim } from '../effects/animation';
 import { transformAt, type Placement, type Transform } from './cutout';
 
 // the object in one frame it was cut from: when (seconds, its video's own time), and its box
@@ -25,6 +26,7 @@ export interface Overlay extends Placement {
   at: number; // when it starts, in the film's time
   src: { s: number; e: number }; // the stretch of its video it plays (the video's own time)
   frames: OverlayFrame[]; // the object in each frame cut, in time order
+  anim: ClipAnim; // how it moves as it plays (in, out, combo), on top of its placement
 }
 
 export const overlayLength = (o: Pick<Overlay, 'src'>) => o.src.e - o.src.s;
@@ -62,6 +64,9 @@ export function frameAt(o: Overlay, t: number): OverlayFrame | null {
 
 // its transform at film time t
 export const overlayTransform = (o: Overlay, t: number): Transform => transformAt(o, t - o.at);
+
+// how its animation moves it at film time t
+export const overlayPose = (o: Overlay, t: number) => poseAt(o.anim, t - o.at, overlayLength(o));
 
 // where a frame of this aspect sits in a W x H picture: as big as fits, centred (bars either side
 // or above and below when the shapes differ)

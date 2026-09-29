@@ -1,0 +1,19 @@
+{
+  "id": "slide-out-right",
+  "name": "To Right",
+  "group": "motion",
+  "category": "Out",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "duration": 0.5,
+        "ease": "out",
+        "x": 1
+      }
+    }
+  ],
+  "controls": []
+}

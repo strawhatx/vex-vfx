@@ -521,6 +521,45 @@ button.primary {
   background: #fff;
   color: #111;
 }
+/* a join between films: tap to pick its transition */
+.join {
+  position: absolute;
+  top: 17px;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  transform: translateX(-50%);
+  border-radius: 6px;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.join.set {
+  background: var(--brand);
+  color: #fff;
+}
+.join[aria-pressed='true'] {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+/* a transition's tile: the old clip leaving and the new one arriving */
+.cut-card {
+  position: absolute;
+  inset: 21% 28%;
+  border-radius: 4px;
+}
+.cut-card.a {
+  background: linear-gradient(160deg, #ffc640, #e0312b);
+}
+.cut-card.b {
+  background: linear-gradient(160deg, #62d8ff, #2f7bff);
+}
+.cut-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
 .add-clip,
 .add-hint {
   position: absolute;
@@ -1059,6 +1098,21 @@ img.tile-art {
   display: block;
   object-fit: cover;
   background: #26262a;
+}
+/* an animation's tile: a card doing the animation, in a frame of its own */
+.anim-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #26262a;
+  color: var(--muted);
+}
+.anim-card {
+  width: 44%;
+  height: 58%;
+  border-radius: 4px;
+  background: linear-gradient(160deg, #ffc640, #e0312b);
 }
 .color-input {
   width: 100%;

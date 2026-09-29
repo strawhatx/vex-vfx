@@ -3,6 +3,7 @@
 //   - color: grades the picture (see color.ts)
 //   - screen: an effect over the whole picture (see screen.ts)
 //   - text: styled, animated words (see typeset.ts)
+//   - motion: how a clip moves as a whole (see animation.ts)
 // Each engine lists its kinds of pass and their settings as data, so passes can be checked, filled
 // in and given sliders without knowing what each one is.
 import { GRADE_PARAMS, gradeOf, type Grade } from './color';
@@ -10,15 +11,18 @@ import { MOTIONS, STEADY, motionAt, type Motion, type MotionKind } from './curve
 import { fitParams, type ParamSpec, type Params } from './params';
 import { SCREEN_KINDS, isScreenKind, screenValues, type ScreenKind } from './screen';
 import { TEXT_KINDS, isTextKind, type TextPass } from './typeset';
+import { ANIMATION_KINDS, isAnimKind, type AnimKind } from './animation';
 
-export type Engine = 'color' | 'screen' | 'text';
+export type Engine = 'color' | 'screen' | 'text' | 'motion';
 
 // what's drawn over the whole frame (filters and screen effects)
 export type LookPass =
   | { engine: 'color'; kind: 'grade'; params: Params; motion: Motion }
   | { engine: 'screen'; kind: ScreenKind; params: Params; motion: Motion };
 
-export type Pass = LookPass | TextPass;
+export type MotionPass = { engine: 'motion'; kind: AnimKind; params: Params; motion: Motion };
+
+export type Pass = LookPass | TextPass | MotionPass;
 
 // a color pass's settings are its grade and `amount`, how strongly it's mixed in
 const COLOR_PARAMS: readonly ParamSpec[] = [
@@ -31,6 +35,7 @@ export const ENGINES: Record<Engine, Record<string, { label: string; params: rea
   color: { grade: { label: 'Grade', params: COLOR_PARAMS } },
   screen: SCREEN_KINDS,
   text: TEXT_KINDS,
+  motion: ANIMATION_KINDS,
 };
 
 export const paramsOf = (engine: Engine, kind: string): readonly ParamSpec[] =>
@@ -63,6 +68,8 @@ export function fitPass(raw: unknown): Pass {
     return { engine, kind, params: fitParams(SCREEN_KINDS[kind].params, params), motion };
   if (engine === 'text' && typeof kind === 'string' && isTextKind(kind))
     return { engine, kind, params: fitParams(TEXT_KINDS[kind].params, params), motion };
+  if (engine === 'motion' && typeof kind === 'string' && isAnimKind(kind))
+    return { engine, kind, params: fitParams(ANIMATION_KINDS[kind].params, params), motion };
   throw new Error(`unknown pass: ${String(engine)}/${String(kind)}`);
 }
 

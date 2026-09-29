@@ -20,17 +20,24 @@ import {
 } from './presets';
 
 // the engines the lab makes presets for, and the group each one's presets go in
-export const ENGINE_GROUP: Record<Engine, PresetGroup> = { color: 'filter', screen: 'screen', text: 'text' };
+export const ENGINE_GROUP: Record<Engine, PresetGroup> = {
+  color: 'filter',
+  screen: 'screen',
+  text: 'text',
+  motion: 'motion',
+};
 export const ENGINE_NAMES: Record<Engine, string> = {
   color: 'Color engine',
   screen: 'Screen engine',
   text: 'Text engine',
+  motion: 'Motion engine',
 };
 // what a new preset for each engine starts with
 const FIRST_PASSES: Record<Engine, string[]> = {
   color: ['grade'],
   screen: ['flash'],
   text: ['type', 'fill', 'in', 'out'],
+  motion: ['in'],
 };
 export const isEngine = (e: string): e is Engine => Object.hasOwn(ENGINE_GROUP, e);
 

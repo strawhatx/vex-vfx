@@ -2,9 +2,11 @@
 // kept here as they're cut so they can be drawn without the video they came from, and drawn over
 // the film's picture where each is placed — moved, scaled and turned about the object's middle,
 // and faded. In the editor, the selected one gets a dashed frame, as do ones still being cut; one
-// can also be shown on its own, on a checkerboard.
+// can also be shown on its own, on a checkerboard. Its animation (in, out, combo) moves it on top of
+// where it's placed.
 import type { OverlayPictures, OverlaySprite } from '@/application/ports';
-import { frameAt, placedBox, type Overlay } from '@/domain/project/overlay';
+import { frameAt, overlayPose, placedBox, type Overlay } from '@/domain/project/overlay';
+import { applyPose } from './pose';
 import type { Ctx2D } from './sprites';
 
 // pictures are kept by their time in the video, to the millisecond
@@ -53,12 +55,13 @@ export class OverlayPainter implements OverlayPictures {
       const pic = this.byId.get(o.id)?.get(key(f.t));
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      applyPose(ctx, overlayPose(o, t), b.at.x, b.at.y, W, H);
       ctx.translate(b.at.x, b.at.y);
       ctx.rotate((b.tf.rot * Math.PI) / 180);
       ctx.scale(b.tf.scale, b.tf.scale);
       ctx.translate(-b.pivot.x, -b.pivot.y);
       if (pic && b.tf.opacity > 0) {
-        ctx.globalAlpha = b.tf.opacity;
+        ctx.globalAlpha *= b.tf.opacity;
         const r = b.rect;
         ctx.drawImage(pic.image, r.x + pic.x * r.w, r.y + pic.y * r.h, pic.w * r.w, pic.h * r.h);
         ctx.globalAlpha = 1;

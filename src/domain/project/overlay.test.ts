@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NO_ANIM } from '../effects/animation';
 import { STILL } from './cutout';
 import { fitRect, frameAt, overlayAt, placedBox, shownRange, trimmed, type Overlay } from './overlay';
 
@@ -14,6 +15,7 @@ const o: Overlay = {
   at: 10,
   src: { s: 2, e: 4 },
   frames: [2, 2.5, 3, 3.5].map(t => ({ t, cx: 0.5, cy: 0.5, w: 0.2, h: 0.4 })),
+  anim: NO_ANIM,
 };
 
 describe('an overlay', () => {

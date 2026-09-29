@@ -13,6 +13,7 @@
 // Times: the project keeps the clip's own time (source time). Outside, times are program time: the
 // film as edited, with deleted films left out (see edit.ts). Every time in or out of the editor's
 // methods is program time; frame indices are the clip's.
+import type { AnimKind, AnimSlot } from '@/domain/effects/animation';
 import type { ImpactStyle } from '@/domain/effects/impacts';
 import { defaultAim, normalAim, type Aim, type Cam } from '@/domain/effects/laser';
 import { DEFAULT_PAL, type Effect, type FxSettings } from '@/domain/effects/palettes';
@@ -24,7 +25,9 @@ import {
   pieceAt,
   piecesOf,
   withSpeed,
+  type SceneAnim,
   type SceneSpeed,
+  withAnim,
   toProgram,
   toSource,
   type Piece,
@@ -95,6 +98,7 @@ interface Snapshot {
   cuts: number[];
   gone: number[];
   speeds: SceneSpeed[];
+  anims: SceneAnim[];
   tracked: [number, FrameSpan][];
   jobs: TrackJob[];
   lastFx: FxSettings;
@@ -190,6 +194,8 @@ export class Editor {
   private gone: number[] = [];
   // how fast each film plays, by where it starts (see edit.ts)
   private speeds: SceneSpeed[] = [];
+  // how each film moves as it plays (see effects/animation.ts), by where it starts
+  private anims: SceneAnim[] = [];
 
   // the effects and impacts on it
   private tracks: Track[] = [];
@@ -309,6 +315,7 @@ export class Editor {
     this.cuts = [];
     this.gone = [];
     this.speeds = [];
+    this.anims = [];
     this.undos = [];
     this.redos = [];
     this.merge = null;
@@ -364,7 +371,14 @@ export class Editor {
     const t = this.clip[i]?.t ?? 0,
       was = this.pieces().find(p => t >= p.s && t < p.e),
       at = cuts.find(c => !this.cuts.includes(c));
-    if (was && at !== undefined) this.speeds = withSpeed(this.speeds, at, was.speed, was.pitch);
+    if (was && at !== undefined) {
+      this.speeds = withSpeed(this.speeds, at, was.speed, was.pitch);
+      // (it comes in on the first half and goes out on the second; both keep moving as it did)
+      this.anims = withAnim(withAnim(this.anims, was.s, { ...was.anim, out: null }), at, {
+        ...was.anim,
+        in: null,
+      });
+    }
     this.cuts = cuts;
     this.sendScenes();
     this.update(this.filmState(), true);
@@ -378,6 +392,18 @@ export class Editor {
     if (!p) return false;
     this.record(`speed:${p.s}`);
     this.speeds = withSpeed(this.speeds, p.s, speed, pitch);
+    this.publish(true);
+    this.update(this.filmState(), true);
+    return true;
+  }
+
+  // film k's (of those kept) animation of this kind set, or taken off (null). Changes straight
+  // after one another (dragging its duration) are one step to undo.
+  setAnim(k: number, kind: AnimKind, slot: AnimSlot | null) {
+    const p = this.pieces()[k];
+    if (!p) return false;
+    this.record(`anim:${p.s}:${kind}`);
+    this.anims = withAnim(this.anims, p.s, { ...p.anim, [kind]: slot });
     this.publish(true);
     this.update(this.filmState(), true);
     return true;
@@ -895,6 +921,7 @@ export class Editor {
       cuts: this.cuts,
       gone: this.gone,
       speeds: this.speeds,
+      anims: this.anims,
       tracked: [...this.tracked],
       jobs: this.jobs.pending(),
       lastFx: this.lastFx,
@@ -911,6 +938,7 @@ export class Editor {
     this.cuts = snap.cuts;
     this.gone = snap.gone;
     this.speeds = snap.speeds;
+    this.anims = snap.anims;
     this.tracked = new Map(snap.tracked);
     this.lastFx = snap.lastFx;
     this.lastImpact = snap.lastImpact;
@@ -946,7 +974,7 @@ export class Editor {
 
   // the kept films, back to back
   private pieces() {
-    return piecesOf(this.cuts, this.gone, this.duration, this.speeds);
+    return piecesOf(this.cuts, this.gone, this.duration, this.speeds, this.anims);
   }
 
   // program time t in the clip's own time (end: t ends a stretch)

@@ -5,6 +5,7 @@
 //   - in, out: how the letters come in and go out (the first of each counts)
 // A text clip keeps its own words and where it's placed; what it draws at a moment is worked out
 // here, letter by letter, so any frame draws the same.
+import { REST_POSE, type ClipPose } from './animation';
 import { motionAt, type Motion } from './curves';
 import { FONTS } from './text';
 import { LETTER_ANIMS, REST, combine, letterIn, letterOut, type LetterAnim, type Pose } from './letters';
@@ -120,6 +121,7 @@ export interface DrawnText {
   place: Omit<TextPlace, 'words'>;
   styles: { kind: TextKind; values: Params }[]; // back to front, `amount` scaled
   t: number; // seconds into it (fire moves with it)
+  pose: ClipPose; // how the clip's animation moves the whole of it (see animation.ts)
 }
 
 // the words a text starts with: its type's
@@ -184,5 +186,6 @@ export function textAt(
     place: { x: place.x, y: place.y, scale: place.scale, rot: place.rot },
     styles,
     t,
+    pose: REST_POSE,
   };
 }

@@ -50,6 +50,43 @@ import frostbite from './frostbite.json';
 import toxicPulse from './toxic-pulse.json';
 import infernoText from './inferno-text.json';
 import blueFlame from './blue-flame.json';
+import fadeIn from './fade-in.json';
+import growIn from './grow-in.json';
+import shrinkIn from './shrink-in.json';
+import slideInLeft from './slide-in-left.json';
+import slideInRight from './slide-in-right.json';
+import riseIn from './rise-in.json';
+import dropIn from './drop-in.json';
+import spinIn from './spin-in.json';
+import popIn from './pop-in.json';
+import blurIn from './blur-in.json';
+import fadeOut from './fade-out.json';
+import shrinkOut from './shrink-out.json';
+import blowUpOut from './blow-up-out.json';
+import slideOutLeft from './slide-out-left.json';
+import slideOutRight from './slide-out-right.json';
+import fallOut from './fall-out.json';
+import spinOut from './spin-out.json';
+import blurOut from './blur-out.json';
+import sway from './sway.json';
+import heartbeat from './heartbeat.json';
+import jitter from './jitter.json';
+import float from './float.json';
+import driftZoom from './drift-zoom.json';
+import turntable from './turntable.json';
+import flashCut from './flash-cut.json';
+import dipBlack from './dip-black.json';
+import dipWhite from './dip-white.json';
+import blurCut from './blur-cut.json';
+import zoomThrough from './zoom-through.json';
+import zoomAway from './zoom-away.json';
+import spinCut from './spin-cut.json';
+import whipLeft from './whip-left.json';
+import whipRight from './whip-right.json';
+import whipUp from './whip-up.json';
+import glitchCut from './glitch-cut.json';
+import shockCut from './shock-cut.json';
+import burnCut from './burn-cut.json';
 
 export const PRESET_FILES: readonly unknown[] = [
   goldenHour,
@@ -102,4 +139,41 @@ export const PRESET_FILES: readonly unknown[] = [
   toxicPulse,
   infernoText,
   blueFlame,
+  fadeIn,
+  growIn,
+  shrinkIn,
+  slideInLeft,
+  slideInRight,
+  riseIn,
+  dropIn,
+  spinIn,
+  popIn,
+  blurIn,
+  fadeOut,
+  shrinkOut,
+  blowUpOut,
+  slideOutLeft,
+  slideOutRight,
+  fallOut,
+  spinOut,
+  blurOut,
+  sway,
+  heartbeat,
+  jitter,
+  float,
+  driftZoom,
+  turntable,
+  flashCut,
+  dipBlack,
+  dipWhite,
+  blurCut,
+  zoomThrough,
+  zoomAway,
+  spinCut,
+  whipLeft,
+  whipRight,
+  whipUp,
+  glitchCut,
+  shockCut,
+  burnCut,
 ];

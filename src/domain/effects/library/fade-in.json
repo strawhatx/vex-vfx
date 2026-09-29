@@ -1,0 +1,19 @@
+{
+  "id": "fade-in",
+  "name": "Fade In",
+  "group": "motion",
+  "category": "In",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "in",
+      "params": {
+        "duration": 0.5,
+        "ease": "inOut",
+        "opacity": 0
+      }
+    }
+  ],
+  "controls": []
+}

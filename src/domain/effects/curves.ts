@@ -4,6 +4,16 @@
 
 export type Ease = 'linear' | 'in' | 'out' | 'inOut' | 'back' | 'bounce' | 'elastic';
 
+export const EASES: readonly { id: Ease; label: string }[] = [
+  { id: 'linear', label: 'Even' },
+  { id: 'in', label: 'Speed up' },
+  { id: 'out', label: 'Slow down' },
+  { id: 'inOut', label: 'Smooth' },
+  { id: 'back', label: 'Overshoot' },
+  { id: 'bounce', label: 'Bounce' },
+  { id: 'elastic', label: 'Spring' },
+];
+
 const clamp01 = (u: number) => Math.max(0, Math.min(1, u));
 
 // u (0..1) eased; back and elastic overshoot past 1 before settling

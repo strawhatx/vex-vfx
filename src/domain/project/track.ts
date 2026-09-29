@@ -12,6 +12,7 @@
 // keyframes it was tracked from; a cutout also keeps pieces added to or taken out of its outline
 // (see parts.ts), and what's drawn is its outline with them.
 import { IMPACTS, familyOf, type ImpactStyle } from '../effects/impacts';
+import type { ClipAnim } from '../effects/animation';
 import type { Aim } from '../effects/laser';
 import type { FxSettings } from '../effects/palettes';
 import { partLabel, type BodyPart } from '../tracking/bodyParts';
@@ -315,7 +316,7 @@ export interface Lane {
   keys: number[]; // keyframe times inside the range
   // a cutout's: where it's cut from (seconds, the film's time; null once that video is gone), what's
   // left there, and its transform keyframes' times
-  cutout: { from: number | null; bg: Background; moves: number[] } | null;
+  cutout: { from: number | null; bg: Background; moves: number[]; anim: ClipAnim } | null;
 }
 
 // a copy of the clip, numbered id: the same look, timing and tracking, on the row below

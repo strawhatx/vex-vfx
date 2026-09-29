@@ -1,5 +1,6 @@
 // The videos' rows: their filmstrips (a film per kept scene, each with its own stretch of its
-// video), one video after another, and their own sound under them. A + at the end adds a video.
+// video), one video after another, and their own sound under them. A + at the end adds a video;
+// a button at each join between films picks its transition.
 import type { MouseEvent } from 'react';
 import { Icon, I } from '../icons';
 import type { MakeThumbs, ReelUi, UiState } from '../player';
@@ -37,6 +38,8 @@ export function VideoRow({
   selected,
   onSelect,
   onChooseFile,
+  onJoin,
+  joined,
   makeThumbs,
 }: {
   ui: UiState;
@@ -44,6 +47,9 @@ export function VideoRow({
   selected: number | null; // the film selected
   onSelect(film: number): void;
   onChooseFile(): void;
+  // the join into film k tapped (joined: the one whose transition is open)
+  onJoin(film: number): void;
+  joined: number | null;
   makeThumbs: MakeThumbs;
 }) {
   if (!hasFilm(ui)) {
@@ -71,6 +77,23 @@ export function VideoRow({
           makeThumbs={makeThumbs}
         />
       ))}
+      {ui.films.map((f, k) => {
+        if (k === 0) return null;
+        const set = ui.transitions.some(tr => tr.reel === f.reel && Math.abs(tr.s - f.s) < 1e-6);
+        return (
+          <button
+            key={`join:${f.reel}:${f.s}`}
+            type="button"
+            className={`join${set ? ' set' : ''}`}
+            style={{ left: scale.x(f.at) }}
+            aria-pressed={joined === k}
+            aria-label={`Transition into film ${k + 1}${set ? ' (set)' : ''}`}
+            onClick={stop(() => onJoin(k))}
+          >
+            <Icon d={I.join} size={12} />
+          </button>
+        );
+      })}
       <button
         type="button"
         className="add-end"

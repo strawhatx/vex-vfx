@@ -8,7 +8,17 @@
 // its own); the one playing is drawn into the preview, fitted, with the film's overlays (objects
 // cut out) on top. Playing on past a video's end goes on to the next.
 import { DEFAULT_FX, type Editor } from '@/application/editor';
-import { Project, type Film, type ProjectState } from '@/application/project';
+import { Project, playTime, type Film, type ProjectState } from '@/application/project';
+import {
+  REST_POSE,
+  combinePoses,
+  hasAnim,
+  poseAt,
+  type AnimKind,
+  type ClipAnim,
+} from '@/domain/effects/animation';
+import { overlayLength } from '@/domain/project/overlay';
+import type { Transition } from '@/domain/project/transitions';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
 import { fitRect } from '@/domain/project/overlay';
@@ -29,7 +39,7 @@ import {
 import type { MusicClip } from '@/domain/project/music';
 import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
-import type { PresetGroup } from '@/domain/effects/presets';
+import type { LookGroup } from '@/domain/effects/presets';
 import { previewOf, textPreviewOf, type LookClip } from '@/domain/project/looks';
 import type { TextPlace } from '@/domain/effects/typeset';
 import type { PartOp } from '@/domain/project/parts';
@@ -44,6 +54,7 @@ import { Mixer } from '@/infrastructure/audio/mixer';
 import { soundLength } from '@/infrastructure/audio/soundFile';
 import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
 import { OverlayPainter } from '@/infrastructure/rendering/overlays';
+import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
 import { Renderer } from '@/infrastructure/rendering/renderer';
@@ -116,8 +127,9 @@ export interface UiState {
   // filters and screen effects on the film, each group on a layer of its own, and a picture of each
   // preset on the frame showing (by preset id; missing until made, or where the GPU can't)
   looks: LookUi[];
-  lookRows: Record<PresetGroup, number>;
+  lookRows: Record<LookGroup, number>;
   lookThumbs: Record<string, string>;
+  transitions: Transition[]; // at the joins between films
   // the preview's size (px): the film's frame, cropped
   frame: { w: number; h: number };
   // the frame being cropped (see startCrop): the box and turn so far, and the ratio it's held to
@@ -172,6 +184,9 @@ export type MakeThumbs = (
 // where a new effect comes from: a body part, the object tapped, or the spot tapped
 export type Source = BodyPart | 'object' | 'spot';
 
+// a clip that can be animated: a film of the film (by its index), an overlay, or a text
+export type AnimTarget = { film: number } | { overlay: number } | { look: number };
+
 // what to add on the next tap: an effect with these settings, or an impact of this style
 export type AddChoice =
   | { kind: 'effect'; fx: Partial<FxSettings> }
@@ -218,6 +233,7 @@ export const INITIAL_UI: UiState = {
   looks: [],
   lookRows: { filter: 0, screen: 0, text: 0 },
   lookThumbs: {},
+  transitions: [],
   frame: { w: 0, h: 0 },
   cropping: null,
   review: null,
@@ -287,7 +303,9 @@ export class Player {
   // drawing the frame without them (for the presets' pictures)
   private plain = false;
   // a group whose presets' pictures are wanted, made once a frame is drawn
-  private thumbsFor: PresetGroup | null = null;
+  private thumbsFor: LookGroup | null = null;
+  // stops an animation's preview (see previewAnim)
+  private previewTimer = 0;
   // everything is drawn on the stage (the film's whole frame, CW x CH), then shown on the preview
   // cropped (see present)
   private stage = document.createElement('canvas');
@@ -902,6 +920,113 @@ export class Player {
     this.project.setLookControl(id, control, v);
   }
 
+  // ---------- transitions ----------
+
+  // the transition into film k made from preset `presetId` (null: taken off), then played through
+  setTransition(k: number, presetId: string | null) {
+    const p = presetId === null ? null : presetById(presetId);
+    if (presetId !== null && !p) return;
+    const now = this.state?.transitions.find(tr => this.intoFilm(tr, k));
+    // (another preset keeps the duration it had)
+    if (this.project.setTransition(k, p, p && now ? now.duration : undefined) && p) this.previewCut(k);
+  }
+
+  setTransitionDuration(k: number, seconds: number) {
+    this.project.setTransitionDuration(k, seconds);
+  }
+
+  // the same transition at every join (null: none anywhere)
+  setTransitionEverywhere(presetId: string | null) {
+    const p = presetId === null ? null : presetById(presetId);
+    const at = this.state?.transitions[0];
+    this.project.setTransitionEverywhere(p, p && at ? at.duration : undefined);
+  }
+
+  private intoFilm(tr: { reel: number; s: number }, k: number) {
+    const f = this.state?.films[k];
+    return !!f && tr.reel === f.reel && Math.abs(tr.s - f.s) < 1e-6;
+  }
+
+  // plays through the join into film k, from a little before it to a little after
+  previewCut(k: number) {
+    const f = this.state?.films[k],
+      tr = this.state?.transitions.find(x => this.intoFilm(x, k));
+    if (!f || !tr) return;
+    const half = tr.duration / 2;
+    this.playStretch(Math.max(0, f.at - half - 0.4), f.at + half + 0.4);
+  }
+
+  // ---------- animation ----------
+
+  // the clip's animation of this kind made from preset `presetId` (null: taken off), then played
+  setClipAnim(target: AnimTarget, kind: AnimKind, presetId: string | null) {
+    const p = presetId === null ? null : presetById(presetId);
+    const pass = p && (p.passes.find(x => x.kind === kind) ?? p.passes[0]);
+    const slot = p && pass ? { preset: p.id, params: { ...pass.params } } : null;
+    if (presetId !== null && !slot) return;
+    this.putAnim(target, kind, slot);
+    if (slot) this.previewAnim(target, kind);
+  }
+
+  // how long its in or out takes (s)
+  setAnimDuration(target: AnimTarget, kind: AnimKind, seconds: number) {
+    const slot = this.animOf(target)?.[kind];
+    if (slot) this.putAnim(target, kind, { ...slot, params: { ...slot.params, duration: seconds } });
+  }
+
+  private putAnim(target: AnimTarget, kind: AnimKind, slot: ClipAnim[AnimKind]) {
+    if ('film' in target) this.project.setFilmAnim(target.film, kind, slot);
+    else if ('overlay' in target) this.project.setOverlayAnim(target.overlay, kind, slot);
+    else this.project.setLookAnim(target.look, kind, slot);
+  }
+
+  private animOf(target: AnimTarget): ClipAnim | null {
+    if ('film' in target) return this.state?.films[target.film]?.anim ?? null;
+    if ('look' in target) return this.project.look(target.look)?.anim ?? null;
+    return this.project.overlay(target.overlay)?.anim ?? null;
+  }
+
+  // when the clip plays, in the film's time
+  private spanOf(target: AnimTarget) {
+    if ('film' in target) {
+      const f = this.state?.films[target.film];
+      return f ? { s: f.at, e: f.at + playTime(f) } : null;
+    }
+    if ('look' in target) {
+      const c = this.project.look(target.look);
+      return c ? { s: c.at, e: c.at + c.len } : null;
+    }
+    const o = this.project.overlay(target.overlay);
+    return o ? { s: o.at, e: o.at + overlayLength(o) } : null;
+  }
+
+  // plays the part of the clip the animation moves: its start (in, and a little of combo), or its end
+  previewAnim(target: AnimTarget, kind: AnimKind) {
+    const span = this.spanOf(target),
+      slot = this.animOf(target)?.[kind];
+    if (!span || !slot) return;
+    const dur = kind === 'combo' ? 2 : (slot.params.duration as number) + 0.5;
+    const from = kind === 'out' ? Math.max(span.s, span.e - dur) : span.s;
+    this.playStretch(from, Math.min(span.e - 0.02, from + dur));
+  }
+
+  // plays the film from time `from` to `to`, then pauses there
+  private playStretch(from: number, to: number) {
+    clearTimeout(this.previewTimer);
+    this.pause();
+    this.seek(from);
+    const started = this.rv();
+    if (!started) return;
+    void started.video.play().catch(() => {});
+    // (the film may go on to another video: stop when the film's time gets there)
+    const stop = () => {
+      const rv = this.rv();
+      if (!rv || this.time() >= to - 0.03 || (rv.video.paused && !this.jumping)) this.pause();
+      else this.previewTimer = window.setTimeout(stop, 30);
+    };
+    this.previewTimer = window.setTimeout(stop, 30);
+  }
+
   // a text's words, or where it's placed
   setLookText(id: number, p: Partial<TextPlace>) {
     this.project.setLookText(id, p);
@@ -914,12 +1039,12 @@ export class Player {
 
   // a picture of each of a group's presets on the frame showing, for its menu (made once there's a
   // frame to show them on)
-  makeLookThumbs(group: PresetGroup) {
+  makeLookThumbs(group: LookGroup) {
     this.thumbsFor = group;
     this.redraw();
   }
 
-  private async drawThumbs(group: PresetGroup) {
+  private async drawThumbs(group: LookGroup) {
     if (!this.rv() || !this.CW || this.camera) return;
     // filters and effects on the frame without any looks, small; text on a dark square
     const w = LOOK_THUMB_W,
@@ -1101,6 +1226,7 @@ export class Player {
       if (rv.url) URL.revokeObjectURL(rv.url);
     }
     this.camera?.cancel();
+    clearTimeout(this.previewTimer);
     this.recorder?.stop();
     this.mixer.destroy();
     if (this.ui.result) URL.revokeObjectURL(this.ui.result.url);
@@ -1430,7 +1556,7 @@ export class Player {
       ready: s.reels.some(r => this.views.get(r.id)?.ready),
       canRecord: s.length > 0 && canRecord(this.view), // (a film just cut, sped up or cropped is worth exporting too)
     });
-    this.set({ looks: s.looks, lookRows: s.lookRows });
+    this.set({ looks: s.looks, lookRows: s.lookRows, transitions: s.transitions });
     this.refreshReels();
     this.refreshMusic();
     // the frame's crop changed (or came back with an undo)
@@ -1584,12 +1710,24 @@ export class Player {
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     const r = this.fitOf(rv);
-    if (r.w < this.CW || r.h < this.CH) {
+    const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
+    // the film playing, moved as its animation and any transition says (about the frame's middle)
+    const film = this.state?.films[this.project.filmAt(now)];
+    const cut = this.project.transitionAt(now);
+    let pose = film && hasAnim(film.anim) ? poseAt(film.anim, now - film.at, playTime(film)) : null;
+    if (cut) pose = combinePoses(pose ?? REST_POSE, cut.pose);
+    if (pose || r.w < this.CW || r.h < this.CH) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, this.CW, this.CH);
     }
+    if (pose) {
+      ctx.save();
+      applyPose(ctx, pose, this.CW / 2, this.CH / 2, this.CW, this.CH);
+    }
     ctx.drawImage(rv.renderer.canvas, r.x, r.y, r.w, r.h);
-    const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
+    if (pose) ctx.restore();
+    // (a transition's flash or blur is over the footage, under what's over it)
+    if (cut?.passes.length && !review) this.looks.apply(ctx, cut.passes);
     // (checking a cutout, just the footage and its outlines)
     if (!review) {
       this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {

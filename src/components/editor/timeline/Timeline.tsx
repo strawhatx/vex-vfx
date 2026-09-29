@@ -13,7 +13,7 @@ import { layerOf, type LayerKind } from '@/domain/project/track';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
 import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
-import type { PresetGroup } from '@/domain/effects/presets';
+import type { LookGroup } from '@/domain/effects/presets';
 import { LookClip } from './LookClip';
 import { MusicClip } from './MusicClip';
 import { PAD, type Scale } from './layout';
@@ -24,6 +24,7 @@ import { useTimelineZoom } from './useTimelineZoom';
 export function Timeline({
   ui,
   scene,
+  join,
   busy,
   currentTime,
   soundShape,
@@ -32,6 +33,7 @@ export function Timeline({
 }: {
   ui: UiState;
   scene: number | null; // the film selected
+  join: number | null; // the join whose transition is open (into this film)
   busy: boolean;
   soundShape(l: Lane): number[]; // each clip's sound effect, for its waveform
   makeThumbs: MakeThumbs; // the clip's filmstrip
@@ -40,12 +42,14 @@ export function Timeline({
     seek(t: number): void;
     deselect(): void;
     selectScene(scene: number): void;
+    // the join into film k tapped
+    selectJoin(film: number): void;
     selectLane(id: number): void;
     chooseFile(): void;
     addEffect(): void;
     addOverlay(): void;
     addAudio(): void;
-    addLook(group: PresetGroup): void;
+    addLook(group: LookGroup): void;
     // music dragged to start at time t
     moveMusic(id: number, t: number): void;
     // a look dragged to start at time t
@@ -95,7 +99,7 @@ export function Timeline({
     return a.kind === 'cutout' ? 'Drag a box round the object' : 'Tap the object in the preview';
   };
   // a layer of looks: text, video effects or filters
-  const lookLayer = (group: PresetGroup) => (
+  const lookLayer = (group: LookGroup) => (
     <Layer
       key={group}
       layer={group}
@@ -142,6 +146,8 @@ export function Timeline({
             selected={scene}
             onSelect={on.selectScene}
             onChooseFile={on.chooseFile}
+            onJoin={on.selectJoin}
+            joined={join}
             makeThumbs={makeThumbs}
           />
           {hasFilm && (
@@ -232,14 +238,14 @@ export function Timeline({
   );
 }
 
-const ADD_LOOK: Record<PresetGroup, string> = {
+const ADD_LOOK: Record<LookGroup, string> = {
   text: 'Add text',
   screen: 'Add video effect',
   filter: 'Add filter',
 };
 
 // how each layer is marked on the left
-type LayerName = LayerKind | 'audio' | PresetGroup;
+type LayerName = LayerKind | 'audio' | LookGroup;
 const LAYERS: Record<LayerName, { name: string; icon: string }> = {
   overlay: { name: 'Overlay', icon: I.cutout },
   audio: { name: 'Audio', icon: I.sound },

@@ -1,0 +1,20 @@
+{
+  "id": "blow-up-out",
+  "name": "Blow Up",
+  "group": "motion",
+  "category": "Out",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "duration": 0.5,
+        "ease": "out",
+        "scale": 2,
+        "opacity": 0
+      }
+    }
+  ],
+  "controls": []
+}

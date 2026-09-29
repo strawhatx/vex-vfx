@@ -5,6 +5,8 @@
 // left half as it was.
 import type { Preset } from '@/domain/effects/presets';
 import { looksAt, newLook, textsAt } from '@/domain/project/looks';
+import { NO_ANIM, isAnimKind, poseAt, type ClipAnim } from '@/domain/effects/animation';
+import { applyPose } from '@/infrastructure/rendering/pose';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
@@ -125,6 +127,17 @@ export class LabPlayer {
       this.canvas.height = H;
     }
     const ctx = this.ctx;
+    const motion = this.preset?.group === 'motion' ? animOf(this.preset) : null;
+    if (motion) {
+      // (the picture moved as the animation says, over black)
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      applyPose(ctx, poseAt(motion, this.state.t, this.preset!.length), W / 2, H / 2, W, H);
+      ctx.drawImage(src, 0, 0, W, H);
+      ctx.restore();
+      return;
+    }
     ctx.drawImage(src, 0, 0, W, H);
     if (!this.preset) return;
     // (a clip of it as long as it is, its controls at their defaults; a text with its type's words)
@@ -152,6 +165,14 @@ export class LabPlayer {
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = null;
   }
+}
+
+// a motion preset as a clip's animation: its first pass of each kind
+function animOf(p: Preset): ClipAnim {
+  const anim = { ...NO_ANIM };
+  for (const x of p.passes)
+    if (isAnimKind(x.kind) && !anim[x.kind]) anim[x.kind] = { preset: p.id, params: x.params };
+  return anim;
 }
 
 // a scene with what effects are judged on: sky, sun, skin, grass, deep shadow and white

@@ -1,0 +1,21 @@
+{
+  "id": "spin-out",
+  "name": "Spin Out",
+  "group": "motion",
+  "category": "Out",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "duration": 0.7,
+        "ease": "out",
+        "turn": 360,
+        "scale": 0.2,
+        "opacity": 0
+      }
+    }
+  ],
+  "controls": []
+}

@@ -72,30 +72,39 @@ export function PassCard({
           />
         ))}
       </div>
-      <div className="lab-params lab-motion">
-        <label className="lab-param">
-          <span>Motion</span>
-          <select value={m.kind} onChange={e => on.motion({ kind: e.target.value as MotionKind })}>
-            {MOTIONS.map(x => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {RATED.has(m.kind) && (
-          <Slider label="Per second" min={0.1} max={12} value={m.rate} onSet={rate => on.motion({ rate })} />
-        )}
-        {DECAYING.has(m.kind) && (
-          <Slider
-            label="Dies away (s)"
-            min={0.02}
-            max={2}
-            value={m.decay}
-            onSet={decay => on.motion({ decay })}
-          />
-        )}
-      </div>
+      {/* (strength that moves over time: only for passes that have a strength) */}
+      {specs.some(s => s.key === 'amount') && (
+        <div className="lab-params lab-motion">
+          <label className="lab-param">
+            <span>Motion</span>
+            <select value={m.kind} onChange={e => on.motion({ kind: e.target.value as MotionKind })}>
+              {MOTIONS.map(x => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {RATED.has(m.kind) && (
+            <Slider
+              label="Per second"
+              min={0.1}
+              max={12}
+              value={m.rate}
+              onSet={rate => on.motion({ rate })}
+            />
+          )}
+          {DECAYING.has(m.kind) && (
+            <Slider
+              label="Dies away (s)"
+              min={0.02}
+              max={2}
+              value={m.decay}
+              onSet={decay => on.motion({ decay })}
+            />
+          )}
+        </div>
+      )}
     </section>
   );
 }

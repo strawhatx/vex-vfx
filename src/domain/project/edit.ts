@@ -3,7 +3,8 @@
 // and the export show. Everything in the project (tracking, effects, cutouts) stays in the clip's
 // own time, source time, so deleting a film never touches it: it's only mapped between the two.
 // A film can play faster or slower than it was filmed (its speed): 2 plays its stretch of the clip in
-// half the time.
+// half the time. It can also move as it plays (its animation: see effects/animation.ts).
+import { NO_ANIM, hasAnim, type ClipAnim } from '../effects/animation';
 import { scenesOf } from './scenes';
 
 // a kept scene: its source range, where it starts in program time, and how fast it plays (pitch:
@@ -14,10 +15,13 @@ export interface Piece {
   at: number;
   speed: number;
   pitch: boolean;
+  anim: ClipAnim;
 }
 
 // a scene's speed, by where it starts (source time); scenes without one play at 1
 export type SceneSpeed = { s: number; speed: number; pitch: boolean };
+// a scene's animation, by where it starts; scenes without one don't move
+export type SceneAnim = { s: number; anim: ClipAnim };
 
 export const MIN_SPEED = 0.1,
   MAX_SPEED = 10;
@@ -33,13 +37,15 @@ export function piecesOf(
   gone: readonly number[],
   duration: number,
   speeds: readonly SceneSpeed[] = [],
+  anims: readonly SceneAnim[] = [],
 ): Piece[] {
   let at = 0;
   const out: Piece[] = [];
   for (const sc of scenesOf(cuts, duration)) {
     if (gone.some(g => Math.abs(g - sc.s) < EPS)) continue;
     const sp = speeds.find(x => Math.abs(x.s - sc.s) < EPS);
-    const p = { ...sc, at, speed: sp?.speed ?? 1, pitch: sp?.pitch ?? false };
+    const anim = anims.find(x => Math.abs(x.s - sc.s) < EPS)?.anim ?? NO_ANIM;
+    const p = { ...sc, at, speed: sp?.speed ?? 1, pitch: sp?.pitch ?? false, anim };
     out.push(p);
     at += playLength(p);
   }
@@ -51,6 +57,12 @@ export function withSpeed(speeds: readonly SceneSpeed[], s: number, speed: numbe
   const v = Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));
   const rest = speeds.filter(x => Math.abs(x.s - s) >= EPS);
   return Math.abs(v - 1) < 1e-3 && !pitch ? rest : [...rest, { s, speed: v, pitch }];
+}
+
+// sets the animation of the scene starting at source time s (none: nothing kept)
+export function withAnim(anims: readonly SceneAnim[], s: number, anim: ClipAnim) {
+  const rest = anims.filter(x => Math.abs(x.s - s) >= EPS);
+  return hasAnim(anim) ? [...rest, { s, anim }] : rest;
 }
 
 // how long the film plays, as edited

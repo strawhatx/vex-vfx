@@ -5,19 +5,19 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { gradeOf, gradeSwatch } from '@/domain/effects/color';
 import { presetsIn } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
-import type { Preset, PresetGroup } from '@/domain/effects/presets';
+import type { Preset, LookGroup } from '@/domain/effects/presets';
 import type { LookClip } from '@/domain/project/looks';
 import { MAX_SCALE, MAX_WORDS, MIN_SCALE, type TextPlace } from '@/domain/effects/typeset';
 import { Icon, I } from './icons';
 
-export const GROUP_NAMES: Record<PresetGroup, string> = {
+export const GROUP_NAMES: Record<LookGroup, string> = {
   filter: 'Filters',
   screen: 'Video effects',
   text: 'Text',
 };
 // whether a group's presets are split up by category (filters and text aren't: there are few enough
 // to list)
-const BY_CATEGORY: Record<PresetGroup, boolean> = { filter: false, screen: true, text: false };
+const BY_CATEGORY: Record<LookGroup, boolean> = { filter: false, screen: true, text: false };
 
 // a preset's picture when there's none of the frame: a filter's colors as it turns them, or a
 // screen effect's glow
@@ -38,7 +38,7 @@ export function PresetSheet({
   onClose,
   onShown,
 }: {
-  group: PresetGroup;
+  group: LookGroup;
   current: string | null; // the selected look's preset
   thumbs: Record<string, string>;
   onPick(presetId: string): void;

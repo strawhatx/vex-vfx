@@ -1,0 +1,20 @@
+{
+  "id": "shrink-out",
+  "name": "Shrink Away",
+  "group": "motion",
+  "category": "Out",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "duration": 0.5,
+        "ease": "out",
+        "scale": 0.3,
+        "opacity": 0
+      }
+    }
+  ],
+  "controls": []
+}

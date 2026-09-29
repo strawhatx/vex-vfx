@@ -9,11 +9,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_FX } from '@/application/editor';
 import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
-import type { PresetGroup } from '@/domain/effects/presets';
+import type { LookGroup } from '@/domain/effects/presets';
 import { ExportResult } from './ExportResult';
 import { LookControls, PresetSheet } from './LookSheet';
+import { AnimSheet } from './AnimSheet';
+import { TransitionSheet } from './TransitionSheet';
+import { playTime } from '@/application/project';
+import { fitDuration } from '@/domain/project/transitions';
+import { lookGroup } from '@/domain/project/looks';
 import { Icon, I } from './icons';
-import { INITIAL_UI, Player, type Lane, type MakeThumbs, type UiState } from './player';
+import { INITIAL_UI, Player, type AnimTarget, type Lane, type MakeThumbs, type UiState } from './player';
 import { Preview } from './Preview';
 import { RotoDock, RotoHeader, type RotoActions } from './roto/RotoScreen';
 import { CropDock, CropHeader, type CropActions } from './CropScreen';
@@ -29,6 +34,9 @@ import {
   type Tool,
 } from './ToolSheet';
 import { Transport } from './Transport';
+
+// the tools whose panels aren't ToolSheet's
+const SHEETS_OF_THEIR_OWN = new Set<Tool>(['presets', 'controls', 'animation']);
 
 // which list of categories the toolbar shows, if any
 type Catalog = 'effects' | 'elements' | 'impacts' | null;
@@ -47,7 +55,9 @@ export default function VfxStudio() {
   const [catalog, setCatalog] = useState<Catalog>(null);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
   // a group's presets open to add a look from (filters, or video effects)
-  const [lookMenu, setLookMenu] = useState<PresetGroup | null>(null);
+  const [lookMenu, setLookMenu] = useState<LookGroup | null>(null);
+  // the join (into this film) whose transition is being picked
+  const [join, setJoin] = useState<number | null>(null);
 
   const [full, setFull] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
@@ -94,6 +104,8 @@ export default function VfxStudio() {
   const fxLane = lane ?? (ui.lanes.length === 1 ? ui.lanes[0] : null);
   const fx = fxLane?.fx ?? draftFx;
   const mode = music ? 'music' : look ? 'look' : modeFor(lane, scene !== null, catalog);
+  // the presets menu showing: one to add a look from, or the selected look's to swap it for
+  const menuGroup = lookMenu ?? (tool === 'presets' && look ? lookGroup(look) : null);
   const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
@@ -159,11 +171,23 @@ export default function VfxStudio() {
     setCatalog(null);
     setTool(null);
     setLookMenu(null);
+    setJoin(null);
     player()?.select(null);
+  }
+
+  // a join between films tapped: its transition (tapped again, closed)
+  function selectJoin(k: number) {
+    setTool(null);
+    setScene(null);
+    setCatalog(null);
+    setLookMenu(null);
+    player()?.select(null);
+    setJoin(cur => (cur === k ? null : k));
   }
 
   // a film tapped on the timeline: its footage tools, with the playhead moved into it
   function selectScene(k: number) {
+    setJoin(null);
     setTool(null);
     setCatalog(null);
     player()?.select(null);
@@ -177,6 +201,7 @@ export default function VfxStudio() {
   function selectLane(id: number) {
     setTool(null);
     setLookMenu(null);
+    setJoin(null);
     setScene(null);
     setCatalog(null);
     player()?.select(id);
@@ -201,7 +226,8 @@ export default function VfxStudio() {
   }
 
   // Filters, or Video effects: the group's presets; picking one adds it at the playhead
-  function openLooks(group: PresetGroup) {
+  function openLooks(group: LookGroup) {
+    setJoin(null);
     setScene(null);
     setCatalog(null);
     setTool(null);
@@ -212,8 +238,8 @@ export default function VfxStudio() {
 
   // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
   // selected, swapped in for it, so presets can be tried one after another
-  function pickLook(group: PresetGroup, presetId: string) {
-    if (look && look.preset.group === group) player()?.setLookPreset(look.id, presetId);
+  function pickLook(group: LookGroup, presetId: string) {
+    if (look && lookGroup(look) === group) player()?.setLookPreset(look.id, presetId);
     else player()?.addLook(presetId);
   }
 
@@ -236,6 +262,29 @@ export default function VfxStudio() {
 
   // the film selected, and its video
   const film = scene !== null ? (ui.films[scene] ?? null) : null;
+  // the join being picked for: the film it goes into, and its transition
+  const joinFilm = join !== null && join > 0 ? (ui.films[join] ?? null) : null;
+  const joinCut = joinFilm
+    ? (ui.transitions.find(tr => tr.reel === joinFilm.reel && Math.abs(tr.s - joinFilm.s) < 1e-6) ?? null)
+    : null;
+  // what the Animation panel animates: the film selected, the cutout's overlay, or a text; its animation,
+  // and how long it plays
+  const animTarget: AnimTarget | null =
+    film && scene !== null
+      ? { film: scene }
+      : cutout
+        ? { overlay: cutout.id }
+        : look?.text
+          ? { look: look.id }
+          : null;
+  const animOf =
+    film && scene !== null
+      ? { anim: film.anim, length: (film.e - film.s) / film.speed }
+      : cutout?.cutout
+        ? { anim: cutout.cutout.anim, length: cutout.range.e - cutout.range.s }
+        : look?.text
+          ? { anim: look.anim, length: look.len }
+          : null;
   const filmVideo = film?.reel ?? null;
 
   const buttons = toolsFor(mode, {
@@ -337,6 +386,7 @@ export default function VfxStudio() {
       case 'speed':
       case 'presets':
       case 'controls':
+      case 'animation':
         setLookMenu(null);
         return setTool(cur => (cur === key ? null : key));
     }
@@ -478,6 +528,7 @@ export default function VfxStudio() {
         <Timeline
           ui={ui}
           scene={scene}
+          join={join}
           busy={busy}
           currentTime={currentTime}
           soundShape={l => player()?.soundShape(l) ?? []}
@@ -486,6 +537,7 @@ export default function VfxStudio() {
             seek: t => player()?.seek(t),
             deselect,
             selectScene,
+            selectJoin,
             selectLane,
             chooseFile: () => chooseFile(),
             addEffect,
@@ -529,18 +581,18 @@ export default function VfxStudio() {
             onBackground={bg => player()?.chooseBackground(bg)}
           />
         )}
-        {(lookMenu || (tool === 'presets' && look)) && !ui.choosing && !ui.cutting && (
+        {menuGroup && !ui.choosing && !ui.cutting && (
           <PresetSheet
-            key={lookMenu ?? look?.preset.group}
-            group={lookMenu ?? look!.preset.group}
-            current={look && look.preset.group === (lookMenu ?? look.preset.group) ? look.preset.id : null}
+            key={menuGroup}
+            group={menuGroup}
+            current={look && lookGroup(look) === menuGroup ? look.preset.id : null}
             thumbs={ui.lookThumbs}
-            onPick={id => pickLook(lookMenu ?? look!.preset.group, id)}
+            onPick={id => pickLook(menuGroup, id)}
             onClose={() => {
               setLookMenu(null);
               setTool(null);
             }}
-            onShown={() => player()?.makeLookThumbs(lookMenu ?? look!.preset.group)}
+            onShown={() => player()?.makeLookThumbs(menuGroup)}
           />
         )}
         {tool === 'controls' && look && (
@@ -551,7 +603,32 @@ export default function VfxStudio() {
             onClose={() => setTool(null)}
           />
         )}
-        {tool && tool !== 'presets' && tool !== 'controls' && !ui.choosing && !ui.cutting && (
+        {join !== null && joinFilm && !ui.choosing && !ui.cutting && (
+          <TransitionSheet
+            key={join}
+            current={joinCut?.preset.id ?? null}
+            duration={joinCut?.duration ?? 0}
+            most={fitDuration(
+              ui.films.map(f => ({ ...f, length: playTime(f) })),
+              join,
+              Infinity,
+            )}
+            onPick={id => player()?.setTransition(join, id)}
+            onDuration={s => player()?.setTransitionDuration(join, s)}
+            onEverywhere={() => player()?.setTransitionEverywhere(joinCut?.preset.id ?? null)}
+            onClose={() => setJoin(null)}
+          />
+        )}
+        {tool === 'animation' && animTarget && animOf && (
+          <AnimSheet
+            anim={animOf.anim}
+            length={animOf.length}
+            onPick={(kind, p) => player()?.setClipAnim(animTarget, kind, p?.id ?? null)}
+            onDuration={(kind, s) => player()?.setAnimDuration(animTarget, kind, s)}
+            onClose={() => setTool(null)}
+          />
+        )}
+        {tool && !SHEETS_OF_THEIR_OWN.has(tool) && !ui.choosing && !ui.cutting && (
           <ToolSheet
             tool={tool}
             title={

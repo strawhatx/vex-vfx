@@ -769,6 +769,38 @@ describe('the speed of a film', () => {
   });
 });
 
+describe('the animation of a film', () => {
+  const slot = (preset: string) => ({ preset, params: { duration: 0.5 } });
+
+  it('is set kind by kind, taken off, and undone', () => {
+    editor.split(20);
+    expect(editor.setAnim(1, 'in', slot('grow-in'))).toBe(true);
+    editor.setAnim(1, 'combo', slot('sway'));
+    expect(state.scenes[1].anim).toMatchObject({
+      in: { preset: 'grow-in' },
+      out: null,
+      combo: { preset: 'sway' },
+    });
+    expect(state.scenes[0].anim).toEqual({ in: null, out: null, combo: null });
+    editor.setAnim(1, 'in', null);
+    expect(state.scenes[1].anim.in).toBeNull();
+    editor.undo();
+    expect(state.scenes[1].anim.in).toMatchObject({ preset: 'grow-in' });
+    expect(editor.setAnim(9, 'in', slot('grow-in'))).toBe(false);
+  });
+
+  it('split, comes in on the first half and goes out on the second; both keep its combo', () => {
+    editor.setAnim(0, 'in', slot('grow-in'));
+    editor.setAnim(0, 'out', slot('fade-out'));
+    editor.setAnim(0, 'combo', slot('sway'));
+    editor.split(30);
+    expect(state.scenes.map(p => [p.anim.in?.preset, p.anim.out?.preset, p.anim.combo?.preset])).toEqual([
+      ['grow-in', undefined, 'sway'],
+      [undefined, 'fade-out', 'sway'],
+    ]);
+  });
+});
+
 describe('deleting a film', () => {
   it('leaves it out: the films either side play back to back', () => {
     editor.split(20);

@@ -43,7 +43,9 @@ export type Tool =
   | 'speed'
   // a look's (a filter or screen effect): its preset, and its controls (see LookSheet.tsx)
   | 'presets'
-  | 'controls';
+  | 'controls'
+  // how a film or an overlay moves (see AnimSheet.tsx)
+  | 'animation';
 // the effect categories: each continuous effect, and each family of impacts (listed together
 // under Impact)
 export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
@@ -94,6 +96,7 @@ export const TOOL_TITLES: Record<Tool, string> = {
   speed: 'Speed',
   presets: 'Style',
   controls: 'Adjust',
+  animation: 'Animation',
 };
 
 // the speed slider runs evenly over the log of the speed, from MIN_SPEED to MAX_SPEED

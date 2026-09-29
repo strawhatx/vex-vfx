@@ -283,9 +283,9 @@ describe('looks over the film', () => {
 
   it('are placed at the playhead, each group on a layer of its own', () => {
     addVideo(10);
-    const f = project.addLook(preset('noir'), 1),
-      g = project.addLook(preset('golden-hour'), 2),
-      s = project.addLook(preset('strobe'), 1);
+    const f = project.addLook(preset('noir'), 1)!,
+      g = project.addLook(preset('golden-hour'), 2)!,
+      s = project.addLook(preset('strobe'), 1)!;
     expect(state.looks.map(c => [c.id, c.preset.group, c.row])).toEqual([
       [f, 'filter', 0],
       [g, 'filter', 1], // (overlapping the first)
@@ -297,15 +297,15 @@ describe('looks over the film', () => {
 
   it('draw what is on at the time: filters, then screen effects', () => {
     addVideo(10);
-    project.addLook(preset('strobe'), 0);
-    project.addLook(preset('noir'), 0);
+    project.addLook(preset('strobe'), 0)!;
+    project.addLook(preset('noir'), 0)!;
     expect(project.looksAt(0.01).map(d => d.engine)).toEqual(['color', 'screen']);
     expect(project.looksAt(9)).toEqual([]);
   });
 
   it('are trimmed, moved, restyled and tuned, each a step to undo', () => {
     addVideo(10);
-    const id = project.addLook(preset('noir'), 1);
+    const id = project.addLook(preset('noir'), 1)!;
     project.setLookRange(id, { e: 3 });
     expect(state.looks[0]).toMatchObject({ at: 1, len: 2 });
     project.placeLook(id, 4);
@@ -325,7 +325,7 @@ describe('looks over the film', () => {
 
   it('are copied straight after themselves, and deleted', () => {
     addVideo(10);
-    const id = project.addLook(preset('noir'), 1);
+    const id = project.addLook(preset('noir'), 1)!;
     project.setLookRange(id, { e: 3 });
     const d = project.duplicateLook(id)!;
     expect(project.look(d)).toMatchObject({ at: 3, len: 2, name: 'Noir' });
@@ -333,5 +333,58 @@ describe('looks over the film', () => {
     expect(state.looks.map(c => c.id)).toEqual([d]);
     project.undo();
     expect(state.looks).toHaveLength(2);
+  });
+});
+
+describe('animations', () => {
+  it('move a film of the film, and an overlay, each a step to undo', () => {
+    const a = addVideo(6);
+    const grow = { preset: 'grow-in', params: presetById('grow-in')!.passes[0].params };
+    expect(project.setFilmAnim(0, 'in', grow)).toBe(true);
+    expect(state.films[0].anim.in).toMatchObject({ preset: 'grow-in' });
+    expect(project.setFilmAnim(5, 'in', grow)).toBe(false);
+    const id = project.addCutout(a, 10, { x: 50, y: 25 }, 'keep', null)!;
+    expect(project.overlay(id)!.anim).toEqual({ in: null, out: null, combo: null });
+    project.setOverlayAnim(id, 'out', grow);
+    expect(project.overlay(id)!.anim.out).toMatchObject({ preset: 'grow-in' });
+    project.undo();
+    expect(project.overlay(id)!.anim.out).toBeNull();
+    const t = project.addLook(presetById('clean-title')!, 1)!;
+    project.setLookAnim(t, 'combo', { preset: 'sway', params: presetById('sway')!.passes[0].params });
+    expect(project.look(t)!.anim.combo).toMatchObject({ preset: 'sway' });
+  });
+});
+
+describe('transitions', () => {
+  it('go at the joins between films, across videos too, each a step to undo', () => {
+    addVideo(6);
+    addVideo(4);
+    const flash = presetById('flash-cut')!;
+    expect(project.setTransition(0, flash)).toBe(false); // (nothing before the first)
+    expect(project.setTransition(1, presetById('noir')!)).toBe(false); // (not a transition)
+    expect(project.setTransition(1, flash)).toBe(true);
+    expect(state.transitions).toMatchObject([{ s: 0, duration: 0.5, preset: { id: 'flash-cut' } }]);
+    expect(project.transitionAt(6)?.passes.map(p => p.engine)).toEqual(['screen']);
+    expect(project.transitionAt(3)).toBeNull();
+    project.setTransitionDuration(1, 9);
+    expect(state.transitions[0].duration).toBe(2);
+    project.undo();
+    expect(state.transitions[0].duration).toBe(0.5);
+    project.setTransition(1, null);
+    expect(state.transitions).toEqual([]);
+    project.undo();
+    expect(state.transitions).toHaveLength(1);
+  });
+
+  it('can go at every join at once', () => {
+    const a = addVideo(6);
+    addVideo(4);
+    project.split(3);
+    expect(state.films).toHaveLength(3);
+    project.setTransitionEverywhere(presetById('blur-cut')!);
+    expect(state.transitions.map(tr => [tr.reel === a, tr.s])).toEqual([
+      [true, 3],
+      [false, 0],
+    ]);
   });
 });

@@ -26,6 +26,7 @@ import {
   type Overlay,
 } from '@/domain/project/overlay';
 import { filmLength, layoutReels, nextReel, reelAt } from '@/domain/project/sequence';
+import { NO_ANIM, type AnimKind, type AnimSlot, type ClipAnim } from '@/domain/effects/animation';
 import { FULL, type Crop } from '@/domain/project/crop';
 import {
   musicRange,
@@ -48,8 +49,9 @@ import {
   type LookClip,
 } from '@/domain/project/looks';
 import type { ParamValue } from '@/domain/effects/params';
-import type { Preset, PresetGroup } from '@/domain/effects/presets';
+import type { LookGroup, Preset } from '@/domain/effects/presets';
 import type { TextPlace } from '@/domain/effects/typeset';
+import { transitionAt, withTransition, type Played, type Transition } from '@/domain/project/transitions';
 import { assignLayerRows, assignRows, layerOf, type Lane } from '@/domain/project/track';
 import type { Selection, TrackMeta } from '@/domain/tracking/types';
 import type { JobStatus } from './jobs';
@@ -86,6 +88,7 @@ export interface Film {
   at: number;
   speed: number;
   pitch: boolean;
+  anim: ClipAnim;
 }
 
 // how long a film plays for
@@ -99,8 +102,9 @@ export interface ProjectState {
   cutRows: number;
   music: (MusicClip & { row: number })[]; // on the Audio layer, on `audioRows`
   audioRows: number;
+  transitions: Transition[]; // at the joins between films (see transitions.ts)
   looks: (LookClip & { row: number })[]; // filters and screen effects, each on its group's layer
-  lookRows: Record<PresetGroup, number>;
+  lookRows: Record<LookGroup, number>;
   crop: Crop; // the film's frame, cropped (see crop.ts)
   length: number;
   scan: number | null; // a video's frames being listed: how far
@@ -131,6 +135,7 @@ interface Snap {
   nextOverlay: number;
   music: MusicClip[];
   looks: LookClip[];
+  transitions: Transition[];
   crop: Crop;
 }
 
@@ -152,6 +157,7 @@ const EMPTY: ProjectState = {
   cutRows: 0,
   music: [],
   audioRows: 0,
+  transitions: [],
   looks: [],
   lookRows: { filter: 0, screen: 0, text: 0 },
   crop: FULL,
@@ -168,6 +174,7 @@ export class Project {
   private overlays: Overlay[] = [];
   private music: MusicClip[] = [];
   private looks: LookClip[] = [];
+  private transitions: Transition[] = [];
   private crop: Crop = FULL;
   private nextMusic = MUSIC_IDS;
   private nextLook = LOOK_IDS;
@@ -300,6 +307,12 @@ export class Project {
     return !!f && !!this.editorOf(f.reel)?.setSpeed(f.k, speed, pitch);
   }
 
+  // film k's animation of this kind (in, out or combo) set, or taken off (null)
+  setFilmAnim(k: number, kind: AnimKind, slot: AnimSlot | null) {
+    const f = this.state.films[k];
+    return !!f && !!this.editorOf(f.reel)?.setAnim(f.k, kind, slot);
+  }
+
   // deletes film k (of this.state.films)
   deleteFilm(k: number) {
     const f = this.state.films[k];
@@ -336,6 +349,7 @@ export class Project {
         at: this.filmTimeOf(r, cut.range.s),
         src: { ...cut.range },
         frames: cut.frames,
+        anim: NO_ANIM,
       };
       this.overlays.push(o);
       this.publish(true);
@@ -522,6 +536,11 @@ export class Project {
     });
   }
 
+  // an overlay's animation of this kind set, or taken off (null)
+  setOverlayAnim(id: number, kind: AnimKind, slot: AnimSlot | null) {
+    this.changeOverlay(id, o => ({ ...o, anim: { ...o.anim, [kind]: slot } }), `anim:${id}:${kind}`);
+  }
+
   private changeOverlay(id: number, change: (o: Overlay) => Overlay, merge?: string) {
     const o = this.overlay(id);
     if (!o) return;
@@ -602,6 +621,7 @@ export class Project {
 
   // a look made from `preset`, placed at film time `at` on its group's layer
   addLook(preset: Preset, at: number) {
+    if (preset.group === 'motion') return null; // (an animation for a clip, not a clip of its own)
     return this.step(undefined, () => {
       const c = newLook(this.nextLook++, preset, Math.max(0, at), this.length);
       this.looks.push(c);
@@ -631,6 +651,11 @@ export class Project {
   // a text's words, or where it's placed (live while dragging it)
   setLookText(id: number, p: Partial<TextPlace>) {
     this.changeLook(id, c => withText(c, p), `text:${id}:${Object.keys(p).join()}`);
+  }
+
+  // a text's animation of this kind set, or taken off (null)
+  setLookAnim(id: number, kind: AnimKind, slot: AnimSlot | null) {
+    this.changeLook(id, c => ({ ...c, anim: { ...c.anim, [kind]: slot } }), `anim:${id}:${kind}`);
   }
 
   // moves its start or end (film time); live while dragging
@@ -686,6 +711,56 @@ export class Project {
       this.looks = this.looks.map(x => (x.id === id ? next : x));
       this.publish(true);
     });
+  }
+
+  // ---------- transitions ----------
+
+  // the transition into film k (of this.state.films) made from `preset` (null: taken off), lasting
+  // `duration` (its preset's own, if not given)
+  setTransition(k: number, preset: Preset | null, duration?: number) {
+    if (preset && preset.group !== 'transition') return false;
+    const had = this.state.transitions;
+    const next = withTransition(this.played(), had, k, preset, duration ?? preset?.length ?? 0);
+    if (next.length === had.length && next.every((tr, j) => tr === had[j])) return false;
+    this.step(undefined, () => {
+      this.transitions = next;
+      this.publish(true);
+    });
+    return true;
+  }
+
+  // how long the transition into film k lasts (live while dragging its slider)
+  setTransitionDuration(k: number, duration: number) {
+    const played = this.played(),
+      f = played[k];
+    const tr = f && this.transitions.find(x => x.reel === f.reel && Math.abs(x.s - f.s) < 1e-6);
+    if (!tr) return;
+    this.step(`transition:${f.reel}:${f.s}`, () => {
+      this.transitions = withTransition(played, this.transitions, k, tr.preset, duration);
+      this.publish(true);
+    });
+  }
+
+  // the same transition at every join
+  setTransitionEverywhere(preset: Preset | null, duration?: number) {
+    const played = this.played();
+    this.step(undefined, () => {
+      let trs = this.transitions;
+      for (let k = 1; k < played.length; k++)
+        trs = withTransition(played, trs, k, preset, duration ?? preset?.length ?? 0);
+      this.transitions = trs;
+      this.publish(true);
+    });
+  }
+
+  // what the transitions do at film time t
+  transitionAt(t: number) {
+    return transitionAt(this.played(), this.transitions, t);
+  }
+
+  // the films as transitions need them
+  private played(): Played[] {
+    return this.state.films.map(f => ({ reel: f.reel, s: f.s, at: f.at, length: playTime(f) }));
   }
 
   // ---------- undo ----------
@@ -758,6 +833,7 @@ export class Project {
       nextOverlay: this.nextOverlay,
       music: this.music.slice(),
       looks: this.looks.slice(),
+      transitions: this.transitions.slice(),
       crop: this.crop,
     };
   }
@@ -768,6 +844,7 @@ export class Project {
     this.nextOverlay = s.nextOverlay;
     this.music = s.music.slice();
     this.looks = s.looks.slice();
+    this.transitions = s.transitions.slice();
     this.crop = s.crop;
   }
 
@@ -874,7 +951,16 @@ export class Project {
           keys: l.keys.map(t => t + at),
         });
       s.scenes.forEach((p, j) =>
-        films.push({ reel: r.id, k: j, s: p.s, e: p.e, at: at + p.at, speed: p.speed, pitch: p.pitch }),
+        films.push({
+          reel: r.id,
+          k: j,
+          s: p.s,
+          e: p.e,
+          at: at + p.at,
+          speed: p.speed,
+          pitch: p.pitch,
+          anim: p.anim,
+        }),
       );
     });
     const { rows, counts } = assignLayerRows(
@@ -894,8 +980,8 @@ export class Project {
     const count = (r: number[]) => (r.length ? Math.max(...r) + 1 : 0);
     // each group's looks on rows of their own
     const lookRow = new Map<number, number>(),
-      lookRows: Record<PresetGroup, number> = { filter: 0, screen: 0, text: 0 };
-    for (const group of Object.keys(lookRows) as PresetGroup[]) {
+      lookRows: Record<LookGroup, number> = { filter: 0, screen: 0, text: 0 };
+    for (const group of Object.keys(lookRows) as LookGroup[]) {
       const mine = this.looks.filter(c => c.preset.group === group);
       const got = assignRows(
         mine.map(lookRange),
@@ -919,6 +1005,7 @@ export class Project {
       cutRows: count(cutRows),
       music: this.music.map((m, k) => ({ ...m, row: audioRows[k] })),
       audioRows: count(audioRows),
+      transitions: this.transitions,
       looks: this.looks.map(c => ({ ...c, row: lookRow.get(c.id) ?? 0 })),
       lookRows,
       crop: this.crop,
@@ -959,6 +1046,7 @@ export class Project {
         from: src && cut ? this.filmTimeOf(src, o.src.s) : null,
         bg: cut?.bg ?? 'keep',
         moves: o.keys.map(k => o.at + k.t),
+        anim: o.anim,
       },
     };
   }

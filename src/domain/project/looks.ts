@@ -5,6 +5,7 @@
 import { envelope } from '../effects/curves';
 import { passAt, drawsAnything, type DrawnPass, type LookPass } from '../effects/passes';
 import { arriving, type LetterAnim } from '../effects/letters';
+import { NO_ANIM, poseAt, type ClipAnim } from '../effects/animation';
 import {
   MAX_SCALE,
   MAX_WORDS,
@@ -20,8 +21,8 @@ import {
   fitControl,
   passesWith,
   type ControlValues,
+  type LookGroup,
   type Preset,
-  type PresetGroup,
 } from '../effects/presets';
 import type { ParamValue } from '../effects/params';
 
@@ -34,6 +35,7 @@ export interface LookClip {
   at: number; // when it starts, in the film's time
   len: number; // how long it lasts
   text: TextPlace | null; // a text's words and placement
+  anim: ClipAnim; // how a text moves as a whole (in, out, combo), on top of its letters' own
 }
 
 // a text starts in the middle, as big as its type says
@@ -45,7 +47,8 @@ const startPlace = (preset: Preset): TextPlace | null =>
 // the shortest a look can be trimmed to
 export const MIN_LOOK_S = 0.1;
 
-export const lookGroup = (c: LookClip): PresetGroup => c.preset.group;
+// (a look is never made from a motion preset: see Project.addLook)
+export const lookGroup = (c: Pick<LookClip, 'preset'>) => c.preset.group as LookGroup;
 
 export const lookRange = (c: Pick<LookClip, 'at' | 'len'>) => ({ s: c.at, e: c.at + c.len });
 
@@ -62,6 +65,7 @@ export function newLook(id: number, preset: Preset, at: number, filmLength: numb
     at: Math.max(0, at),
     len: room > MIN_LOOK_S ? Math.min(preset.length, room) : preset.length,
     text: startPlace(preset),
+    anim: NO_ANIM,
   };
 }
 
@@ -136,15 +140,9 @@ export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
     .map(c => {
       const local = t - c.at;
       const strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
-      return textAt(
-        c.id,
-        passesWith(c.preset, c.values) as TextPass[],
-        c.text!,
-        local,
-        c.len,
-        strength,
-        c.id,
-      );
+      const passes = passesWith(c.preset, c.values) as TextPass[];
+      const d = textAt(c.id, passes, c.text!, local, c.len, strength, c.id);
+      return { ...d, pose: poseAt(c.anim, local, c.len) };
     });
 }
 

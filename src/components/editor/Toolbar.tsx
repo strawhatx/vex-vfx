@@ -143,6 +143,7 @@ export function toolsFor(
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
       { ...sheet('speed', 'Speed', I.speed), disabled: s.busy || s.films < 1 },
       { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
+      { ...sheet('animation', 'Animation', I.move), disabled: s.busy || s.films < 1 },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       ...(s.video && s.video.of > 1
@@ -205,6 +206,7 @@ export function toolsFor(
     return [
       sheet('presets', 'Style', I.effects),
       s.text ? sheet('controls', 'Edit', I.text) : sheet('controls', 'Adjust', I.adjust),
+      ...(s.text ? [sheet('animation', 'Animation', I.wave)] : []),
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
@@ -221,6 +223,7 @@ export function toolsFor(
       { key: 'review', label: 'Check outline', icon: I.eye, disabled: s.busy },
       { key: 'isolate', label: 'View alone', icon: I.cutout, on: s.isolated, disabled: !s.ready },
       sheet('transform', 'Transform', I.move),
+      sheet('animation', 'Animation', I.wave),
       {
         key: 'movekey',
         label: s.moveKey ? 'Remove key' : 'Keyframe',

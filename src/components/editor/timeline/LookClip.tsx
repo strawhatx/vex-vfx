@@ -2,15 +2,15 @@
 // text's own words). Tap to
 // select, drag to move it (or onto another row); selected, grips on its ends trim it.
 import type { CSSProperties } from 'react';
-import { lookRange } from '@/domain/project/looks';
+import { lookGroup, lookRange } from '@/domain/project/looks';
 import { mmss } from '@/domain/tracking/timeLabels';
 import { Icon, I } from '../icons';
-import type { PresetGroup } from '@/domain/effects/presets';
+import type { LookGroup } from '@/domain/effects/presets';
 import type { LookUi } from '../player';
 import { Grips, useSlide, type ClipActions } from './FxClips';
 import type { Scale } from './layout';
 
-const GROUP_ICONS: Record<PresetGroup, string> = { filter: I.color, screen: I.effects, text: I.text };
+const GROUP_ICONS: Record<LookGroup, string> = { filter: I.color, screen: I.effects, text: I.text };
 
 export function LookClip({
   look: c,
@@ -44,7 +44,7 @@ export function LookClip({
         {...slide.handlers(() => on.select(c.id))}
       >
         <span className="fx-label">
-          <Icon d={GROUP_ICONS[c.preset.group]} size={12} />
+          <Icon d={GROUP_ICONS[lookGroup(c)]} size={12} />
           {c.text ? c.text.words || c.name : c.name}
         </span>
       </button>

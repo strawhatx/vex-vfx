@@ -10,6 +10,7 @@ import type { DrawnText } from '@/domain/effects/typeset';
 import type { Pose } from '@/domain/effects/letters';
 import { FireShader } from './fireShader';
 import { fontFor, type Fonts } from './fonts';
+import { applyPose } from './pose';
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -60,9 +61,19 @@ export class TextClipPainter {
         h: laid.px * 1.3,
         rot: (t.place.rot * Math.PI) / 180,
       };
-      this.boxes.push(box);
       this.drawText(ctx, t, laid, fonts, box, W, H);
-      if (opts.outline && opts.selected === t.id) outlineBox(ctx, box);
+      // (where it's found and outlined: where its animation has moved it)
+      const p = t.pose;
+      const moved = {
+        ...box,
+        x: box.x + p.x * W,
+        y: box.y + p.y * H,
+        w: box.w * p.scale,
+        h: box.h * p.scale,
+        rot: box.rot + p.rot,
+      };
+      this.boxes.push(moved);
+      if (opts.outline && opts.selected === t.id) outlineBox(ctx, moved);
     }
   }
 
@@ -109,17 +120,26 @@ export class TextClipPainter {
     g.font = fontFor(fonts, t.font as FontId, laid.px);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
+    // what's drawn so far put onto the frame, moved as the clip's animation says
+    const put = (img: OffscreenCanvas, mode: GlobalCompositeOperation = 'source-over') => {
+      ctx.save();
+      ctx.globalCompositeOperation = mode;
+      applyPose(ctx, t.pose, box.x, box.y, W, H);
+      ctx.drawImage(img, 0, 0, W, H);
+      ctx.restore();
+    };
     for (const s of t.styles) {
       // (fire is added onto the frame itself, which has to have what's under it already: its
       // canvas is black where there are no flames)
       if (s.kind === 'fire') {
-        ctx.drawImage(this.layer, 0, 0);
+        put(this.layer);
         g.clearRect(0, 0, W, H);
-        this.drawFire(ctx, t, laid, fonts, box, s.values, W, H);
+        const fire = this.drawFire(t, laid, fonts, box, s.values, W, H);
+        if (fire) put(fire, 'lighter');
       } else
         this.eachLetter(g, t, laid, box, (pose, letter) => style(g, s.kind, s.values, letter, laid.px, pose));
     }
-    ctx.drawImage(this.layer, 0, 0);
+    put(this.layer);
   }
 
   // runs draw for each visible letter, with the canvas moved to it
@@ -146,25 +166,16 @@ export class TextClipPainter {
     });
   }
 
-  // flames rising off the letters, added onto g: their shape (at half size) is the fire's heat
-  // source
-  private drawFire(
-    g: Ctx,
-    t: DrawnText,
-    laid: Laid,
-    fonts: Fonts,
-    box: TextBox,
-    v: Params,
-    W: number,
-    H: number,
-  ) {
+  // flames rising off the letters (W/2 x H/2, to be added onto the frame; null without WebGL2): their
+  // shape is the fire's heat source
+  private drawFire(t: DrawnText, laid: Laid, fonts: Fonts, box: TextBox, v: Params, W: number, H: number) {
     const fw = Math.max(1, Math.round(W / 2)),
       fh = Math.max(1, Math.round(H / 2));
     if (!this.fire && !this.noFire) {
       this.fire = FireShader.create(fw, fh);
       this.noFire = !this.fire;
     }
-    if (!this.fire) return;
+    if (!this.fire) return null;
     const m = this.surface(this.mask, fw, fh);
     m.setTransform(1, 0, 0, 1, 0, 0);
     m.clearRect(0, 0, fw, fh);
@@ -189,11 +200,7 @@ export class TextClipPainter {
       v.amount as number,
       pal,
     );
-    g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.globalCompositeOperation = 'lighter';
-    g.drawImage(out, 0, 0, W, H);
-    g.restore();
+    return out;
   }
 
   private surface(c: OffscreenCanvas, w: number, h: number) {

@@ -157,6 +157,16 @@ describe('text on the film', () => {
     expect(withPreset(c, title).text!.words).toBe('Mine');
   });
 
+  it('moves as a whole as its animation says', () => {
+    const grow = {
+      preset: 'grow',
+      params: { duration: 1, ease: 'linear', scale: 0, x: 0, y: 0, turn: 0, opacity: 1, blur: 0 },
+    };
+    const c = { ...newLook(1, title, 0, 20), anim: { in: grow, out: null, combo: null } };
+    expect(textsAt([c], 0.5)[0].pose.scale).toBeCloseTo(0.5);
+    expect(textsAt([c], 1.5)[0].pose.scale).toBe(1);
+  });
+
   it('shows on its button with all its letters in', () => {
     expect(textPreviewOf(title).poses.every(p => p.alpha === 1)).toBe(true);
   });
