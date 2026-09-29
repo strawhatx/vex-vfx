@@ -322,6 +322,14 @@ describe('body parts', () => {
     expect(await answer).toBeNull();
   });
 
+  it('text has a layer of its own on the timeline', () => {
+    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'fire' });
+    editor.addTrack(14, { x: 50, y: 50 }, { effect: 'text', text: 'HI' });
+    // both on the first row of their own layers, though they overlap
+    expect(state.lanes.map(l => l.row)).toEqual([0, 0]);
+    expect([state.rows, state.textRows]).toEqual([1, 1]);
+  });
+
   it('an effect on a body part tracks that part and is named after it', () => {
     editor.addTrack(14, { x: 50, y: 50 }, {}, 'eyes');
     expect(trackCall().req.part).toBe('eyes');
@@ -524,7 +532,7 @@ function cutoutCall() {
 describe('splitting the film', () => {
   it('splits into two films at the frame shown', () => {
     expect(editor.split(20)).toBe(true);
-    expect(state.scenes).toEqual([
+    expect(state.scenes).toMatchObject([
       { s: 0, e: 2, at: 0 },
       { s: 2, e: 6, at: 2 },
     ]);
@@ -740,12 +748,33 @@ describe('cutting an object out', () => {
 
 // ---------- deleting films ----------
 
+describe('the speed of a film', () => {
+  it('plays it faster or slower: the film and what’s on it close up or stretch to match', () => {
+    editor.split(20);
+    editor.addTrack(30, { x: 50, y: 50 }); // 3.0 to 6.0, in the second film
+    expect(editor.setSpeed(1, 2, false)).toBe(true);
+    expect(state.scenes).toMatchObject([
+      { s: 0, e: 2, at: 0, speed: 1 },
+      { s: 2, e: 6, at: 2, speed: 2 },
+    ]);
+    expect(state.length).toBe(4);
+    expect(state.lanes[0].range).toEqual({ s: 2.5, e: 4 });
+    expect(editor.speedAt(3)).toEqual({ speed: 2, pitch: false });
+    // split again, both halves keep the speed; undo goes back
+    editor.split(40);
+    expect(state.scenes.map(p => p.speed)).toEqual([1, 2, 2]);
+    editor.undo();
+    editor.undo();
+    expect(state.length).toBe(6);
+  });
+});
+
 describe('deleting a film', () => {
   it('leaves it out: the films either side play back to back', () => {
     editor.split(20);
     editor.split(40);
     expect(editor.deleteScene(1)).toBe(true);
-    expect(state.scenes).toEqual([
+    expect(state.scenes).toMatchObject([
       { s: 0, e: 2, at: 0 },
       { s: 4, e: 6, at: 2 },
     ]);
@@ -825,7 +854,7 @@ describe('undo and redo', () => {
     expect(state.scenes).toHaveLength(2);
     editor.undo();
     expect(state.scenes).toHaveLength(1);
-    expect(state.scenes[0]).toEqual({ s: 0, e: 6, at: 0 });
+    expect(state.scenes[0]).toMatchObject({ s: 0, e: 6, at: 0 });
   });
 
   it('a drag is one step, however many moves it takes', () => {

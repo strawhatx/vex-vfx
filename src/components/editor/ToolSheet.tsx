@@ -13,6 +13,8 @@ import {
 import type { Aim } from '@/domain/effects/laser';
 import { BACKGROUNDS, MAX_SCALE, MIN_SCALE, type Background, type Transform } from '@/domain/project/cutout';
 import { EDGE_LIMITS, type EdgeSettings } from '@/domain/project/edge';
+import { MAX_VOLUME } from '@/domain/project/music';
+import { MAX_SPEED, MIN_SPEED } from '@/domain/project/edit';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
@@ -36,7 +38,12 @@ export type Tool =
   | 'aim'
   | 'background'
   | 'transform'
-  | 'edge';
+  | 'edge'
+  | 'volume'
+  | 'speed'
+  // a look's (a filter or screen effect): its preset, and its controls (see LookSheet.tsx)
+  | 'presets'
+  | 'controls';
 // the effect categories: each continuous effect, and each family of impacts (listed together
 // under Impact)
 export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
@@ -83,7 +90,18 @@ export const TOOL_TITLES: Record<Tool, string> = {
   background: 'Where it was',
   transform: 'Transform',
   edge: 'Edge',
+  volume: 'Volume',
+  speed: 'Speed',
+  presets: 'Style',
+  controls: 'Adjust',
 };
+
+// the speed slider runs evenly over the log of the speed, from MIN_SPEED to MAX_SPEED
+const speedAt = (u: number) => MIN_SPEED * (MAX_SPEED / MIN_SPEED) ** u;
+const speedPos = (v: number) => Math.log(v / MIN_SPEED) / Math.log(MAX_SPEED / MIN_SPEED);
+const SPEED_MARKS = [0.1, 0.5, 1, 2, 5, 10];
+// speeds close to a mark land on it
+const snapSpeed = (v: number) => SPEED_MARKS.find(m => Math.abs(Math.log(v / m)) < 0.06) ?? +v.toFixed(2);
 
 // a cutout's edge settings, as sliders (see domain/project/edge.ts)
 const EDGE_ROWS: { key: keyof EdgeSettings; label: string; about: string; show(v: number): string }[] = [
@@ -245,6 +263,10 @@ export function ToolSheet({
   onReset,
   edge,
   onEdge,
+  volume,
+  onVolume,
+  speed,
+  onSpeed,
 }: {
   tool: Tool;
   title: string;
@@ -275,6 +297,12 @@ export function ToolSheet({
   // edge: a cutout's, being checked
   edge?: EdgeSettings;
   onEdge?(p: Partial<EdgeSettings>): void;
+  // volume: music's (1 = as recorded)
+  volume?: number;
+  onVolume?(v: number): void;
+  // speed: a film's (and how long it's filmed for, s), and whether its pitch changes with it
+  speed?: { speed: number; pitch: boolean; length: number };
+  onSpeed?(p: { speed?: number; pitch?: boolean }): void;
 }) {
   return (
     <div className="sheet" role="dialog" aria-label={title}>
@@ -536,6 +564,58 @@ export function ToolSheet({
               </label>
             );
           })}
+        </div>
+      )}
+      {tool === 'speed' && speed && (
+        <div className="sliders">
+          <p className="sheet-note">
+            Duration: {speed.length.toFixed(1)}s → <b>{(speed.length / speed.speed).toFixed(1)}s</b>
+          </p>
+          <label className="slider">
+            <span>Speed</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.001}
+              value={speedPos(speed.speed)}
+              style={pct(speedPos(speed.speed), 0, 1)}
+              onChange={e => onSpeed?.({ speed: snapSpeed(speedAt(+e.target.value)) })}
+            />
+            <output>{+speed.speed.toFixed(2)}×</output>
+          </label>
+          <div className="speed-marks" aria-hidden="true">
+            {SPEED_MARKS.map(m => (
+              <span key={m} style={{ left: `${speedPos(m) * 100}%` }}>
+                {m}×
+              </span>
+            ))}
+          </div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={speed.pitch}
+              onChange={e => onSpeed?.({ pitch: e.target.checked })}
+            />
+            Change audio pitch
+          </label>
+        </div>
+      )}
+      {tool === 'volume' && volume !== undefined && (
+        <div className="sliders">
+          <label className="slider">
+            <span>Volume</span>
+            <input
+              type="range"
+              min={0}
+              max={MAX_VOLUME}
+              step={0.05}
+              value={volume}
+              style={pct(volume, 0, MAX_VOLUME)}
+              onChange={e => onVolume?.(+e.target.value)}
+            />
+            <output>{volume === 0 ? 'Off' : Math.round(volume * 100)}</output>
+          </label>
         </div>
       )}
       {tool === 'aim' && aim && onAim && (

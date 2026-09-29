@@ -1,0 +1,66 @@
+{
+  "id": "old-film",
+  "name": "Old Film",
+  "group": "screen",
+  "category": "Retro",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "grain",
+      "params": {
+        "amount": 0.6,
+        "size": 0.5
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "vignette",
+      "params": {
+        "amount": 0.65,
+        "size": 0.45,
+        "color": "#000000"
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "flash",
+      "params": {
+        "amount": 0.08,
+        "color": "#fff2d0"
+      },
+      "motion": {
+        "kind": "flicker",
+        "rate": 12
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.9
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.9
+        },
+        {
+          "pass": 2,
+          "param": "amount",
+          "from": 0,
+          "to": 0.15
+        }
+      ]
+    }
+  ]
+}

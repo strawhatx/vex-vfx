@@ -1,0 +1,47 @@
+{
+  "id": "earthquake",
+  "name": "Earthquake",
+  "group": "screen",
+  "category": "Motion",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "shake",
+      "params": {
+        "amount": 0.8,
+        "speed": 18,
+        "turn": 0.4
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "zoom",
+      "params": {
+        "amount": 0.06
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.1
+        }
+      ]
+    }
+  ]
+}

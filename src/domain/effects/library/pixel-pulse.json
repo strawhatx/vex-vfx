@@ -1,0 +1,36 @@
+{
+  "id": "pixel-pulse",
+  "name": "Pixel Pulse",
+  "group": "screen",
+  "category": "Retro",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "pixelate",
+      "params": {
+        "amount": 0.5
+      },
+      "motion": {
+        "kind": "pulse",
+        "rate": 1
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.8
+        }
+      ]
+    }
+  ]
+}

@@ -337,6 +337,31 @@ export function duplicate(t: Track, id: number, clip: ClipFrame[]): Track {
   return d;
 }
 
+// the timeline layer a clip sits on: cutouts on Overlay, text on Text, and effects and impacts on
+// Effects. Each layer has rows of its own (see assignRows).
+export type LayerKind = 'overlay' | 'text' | 'effects';
+export const layerOf = (c: { kind: TrackKind; fx: FxSettings }): LayerKind =>
+  c.kind === 'cutout' ? 'overlay' : c.kind === 'effect' && c.fx.effect === 'text' ? 'text' : 'effects';
+
+// assignRows for each layer on its own: each clip's row within its layer, and how many rows each
+// layer has
+export function assignLayerRows(
+  clips: readonly { range: { s: number; e: number }; layer: LayerKind; row: number | null }[],
+) {
+  const rows = new Array<number>(clips.length),
+    counts: Record<LayerKind, number> = { overlay: 0, text: 0, effects: 0 };
+  for (const layer of Object.keys(counts) as LayerKind[]) {
+    const mine = clips.map((c, k) => (c.layer === layer ? k : -1)).filter(k => k >= 0);
+    const got = assignRows(
+      mine.map(k => clips[k].range),
+      mine.map(k => clips[k].row),
+    );
+    mine.forEach((k, n) => (rows[k] = got[n]));
+    counts[layer] = got.length ? Math.max(...got) + 1 : 0;
+  }
+  return { rows, counts };
+}
+
 // puts clips on timeline rows, like a video editor's tracks: each on the row it wants (where the
 // user put it) if nothing there overlaps it, else the next free row below; one that wants none goes
 // on the first free row. Rows left empty close up. Returns each clip's row, 0 at the top.

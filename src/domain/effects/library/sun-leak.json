@@ -1,0 +1,68 @@
+{
+  "id": "sun-leak",
+  "name": "Sun Leak",
+  "group": "screen",
+  "category": "Light",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "leak",
+      "params": {
+        "amount": 0.75,
+        "color": "#ff7a2f",
+        "x": 0.85,
+        "y": 0.15,
+        "size": 0.7,
+        "drift": 0.6
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "glow",
+      "params": {
+        "amount": 0.3,
+        "threshold": 0.6,
+        "size": 0.5
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.5
+        }
+      ]
+    },
+    {
+      "id": "color",
+      "label": "Color",
+      "type": "color",
+      "def": "#ff7a2f",
+      "drives": [
+        {
+          "pass": 0,
+          "param": "color"
+        }
+      ]
+    }
+  ],
+  "fade": {
+    "in": 0.5,
+    "out": 0.5
+  }
+}

@@ -365,7 +365,7 @@ button.primary {
 .tl-inner {
   position: relative;
   box-sizing: content-box;
-  padding: 0 120px 4px 16px;
+  padding: 0 120px 4px 44px; /* (44: PAD in timeline/layout.ts) */
   min-height: 1px;
 }
 .ruler {
@@ -440,6 +440,37 @@ button.primary {
   border-radius: 0 6px 6px 0;
 }
 /* a split film: each scene its own block, with a gap between */
+/* the speed slider's marks, under it */
+.speed-marks {
+  position: relative;
+  height: 16px;
+  margin: -6px 46px 6px 84px; /* (under the slider's track: see .slider) */
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.speed-marks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+/* a film playing faster or slower than filmed */
+.speed-mark {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  z-index: 1;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
 .lane.clip.scene {
   box-shadow:
     inset -2px 0 0 var(--dock),
@@ -484,6 +515,21 @@ button.primary {
 .tl-row.fx-row,
 .tl-row.add-row {
   height: 34px;
+}
+/* each layer's icon, on the left: it stays there as the timeline scrolls */
+.layer-tag {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 100%;
+  margin-left: -40px; /* into the margin before 0:00 */
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
 }
 .fx-clip {
   --c: var(--brand);
@@ -689,6 +735,27 @@ button.primary {
 }
 .toolbar.sub {
   animation: up 0.16s ease-out;
+}
+
+/* ---------- cropping the film's frame (its own top bar and dock) ---------- */
+.crop-top strong {
+  font-size: 1rem;
+}
+.crop {
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  animation: up 0.16s ease-out;
+}
+.crop-ratios {
+  margin-top: 10px;
+}
+.ratio-art {
+  display: grid;
+  place-items: center;
+}
+.ratio-art i {
+  display: block;
+  border: 2px solid currentColor;
+  border-radius: 3px;
 }
 
 /* ---------- the roto screen: checking a cutout's outline (its own top bar and dock) ---------- */
@@ -926,6 +993,42 @@ button.primary {
   background: #26262a;
   color: var(--ink);
   font-size: 1.9rem;
+}
+
+/* ---------- looks: a group's presets by category, each shown on the frame ---------- */
+.sheet-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -4px 8px;
+  padding: 0 4px;
+}
+.sheet-tabs button {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.sheet-tabs button[aria-selected='true'] {
+  background: var(--ink);
+  color: var(--panel);
+}
+img.tile-art {
+  display: block;
+  object-fit: cover;
+  background: #26262a;
+}
+.color-input {
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
 }
 
 /* ---------- the Text tool: the words, and the font ---------- */
@@ -1282,6 +1385,34 @@ input[type='range']::-moz-range-thumb {
   fill: currentColor;
 }
 /* each effect's sound along the bottom of its bar */
+/* music on the Audio layer: its sound's waveform along it */
+.music-clip {
+  --c: #3fb6ff;
+}
+.music-clip .fx-body {
+  touch-action: none;
+  background: color-mix(in srgb, var(--c) 30%, var(--panel));
+}
+/* looks on their layers: filters and video effects */
+.look-clip .fx-body {
+  touch-action: none;
+  background: color-mix(in srgb, var(--c) 30%, var(--panel));
+}
+.filter-clip {
+  --c: #b98bff;
+}
+.screen-clip {
+  --c: #ffb347;
+}
+.music-wave {
+  position: absolute;
+  inset: 3px 0;
+  width: 100%;
+  height: calc(100% - 6px);
+  fill: color-mix(in srgb, var(--c) 70%, #fff);
+  opacity: 0.55;
+  pointer-events: none;
+}
 .fx-wave {
   position: absolute;
   left: 0;

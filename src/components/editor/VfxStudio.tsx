@@ -2,17 +2,21 @@
 
 // The editor page: top bar, preview, playback controls, and the dock (timeline, toolbar and tool
 // panels). It keeps what's selected (a film, or a clip on it) and which panel is open; all editing
-// goes through the Player. The toolbar's two menus keep effects and the footage apart: Effects
-// adds effects and impacts; Footage splits the film and cuts objects out of it.
+// goes through the Player. The main tools, like CapCut's: Edit (the footage: split, delete, replace),
+// Text, Effects (effects, impacts, and video effects over the whole frame), Filters, and Overlay (an
+// object cut out of the footage). Each kind of clip has a layer of its own on the timeline.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_FX } from '@/application/editor';
 import { IMPACTS, familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Effect, FxSettings } from '@/domain/effects/palettes';
+import type { PresetGroup } from '@/domain/effects/presets';
 import { ExportResult } from './ExportResult';
+import { LookControls, PresetSheet } from './LookSheet';
 import { Icon, I } from './icons';
 import { INITIAL_UI, Player, type Lane, type MakeThumbs, type UiState } from './player';
 import { Preview } from './Preview';
 import { RotoDock, RotoHeader, type RotoActions } from './roto/RotoScreen';
+import { CropDock, CropHeader, type CropActions } from './CropScreen';
 import { Timeline } from './timeline/Timeline';
 import { Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
 import {
@@ -32,6 +36,7 @@ type Catalog = 'effects' | 'elements' | 'impacts' | null;
 export default function VfxStudio() {
   const viewRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [ui, setUi] = useState<UiState>(INITIAL_UI);
 
@@ -41,6 +46,8 @@ export default function VfxStudio() {
   // the toolbar lists the effect categories, or the impact families
   const [catalog, setCatalog] = useState<Catalog>(null);
   const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
+  // a group's presets open to add a look from (filters, or video effects)
+  const [lookMenu, setLookMenu] = useState<PresetGroup | null>(null);
 
   const [full, setFull] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
@@ -81,13 +88,25 @@ export default function VfxStudio() {
   const scanning = ui.scan !== null;
   const busy = !ui.ready || scanning || ui.recording;
   const lane = ui.lanes.find(l => l.id === ui.selected) ?? null;
+  const music = ui.music.find(m => m.id === ui.selected) ?? null;
+  const look = ui.looks.find(c => c.id === ui.selected) ?? null;
   // the settings the panels show and change: the selected clip's, or the only clip's
   const fxLane = lane ?? (ui.lanes.length === 1 ? ui.lanes[0] : null);
   const fx = fxLane?.fx ?? draftFx;
-  const mode = modeFor(lane, scene !== null, catalog);
+  const mode = music ? 'music' : look ? 'look' : modeFor(lane, scene !== null, catalog);
   const cutout = lane?.kind === 'cutout' ? lane : null;
 
   // ---------- actions ----------
+
+  // cropping the film's frame (see CropScreen.tsx)
+  const cropping = ui.cropping;
+  const crop: CropActions = {
+    cancel: () => player()?.cancelCrop(),
+    apply: () => player()?.applyCrop(),
+    rotate: deg => player()?.setCropRot(deg),
+    ratio: id => player()?.setCropRatio(id),
+    reset: () => player()?.resetCrop(),
+  };
 
   // the roto screen: checking a cutout's outline (see roto/RotoScreen.tsx)
   const review = ui.review;
@@ -139,6 +158,7 @@ export default function VfxStudio() {
     setScene(null);
     setCatalog(null);
     setTool(null);
+    setLookMenu(null);
     player()?.select(null);
   }
 
@@ -151,11 +171,12 @@ export default function VfxStudio() {
     setScene(k);
     const sc = ui.films[k],
       t = player()?.time() ?? 0;
-    if (sc && (t < sc.at || t >= sc.at + sc.e - sc.s)) player()?.seek(sc.at);
+    if (sc && (t < sc.at || t >= sc.at + (sc.e - sc.s) / sc.speed)) player()?.seek(sc.at);
   }
 
   function selectLane(id: number) {
     setTool(null);
+    setLookMenu(null);
     setScene(null);
     setCatalog(null);
     player()?.select(id);
@@ -168,6 +189,42 @@ export default function VfxStudio() {
     player()?.select(null);
     if (ui.adding) player()?.cancelAdding();
     else setCatalog('effects');
+  }
+
+  // Text: its styles (behind the object, following it, a title); picking one, the next tap adds it
+  function addText() {
+    setScene(null);
+    setCatalog(null);
+    player()?.select(null);
+    if (ui.adding) return player()?.cancelAdding();
+    setCategory('text');
+    setTool('styles');
+  }
+
+  // Overlay: an object cut out of the footage, on a layer of its own
+  function addOverlay() {
+    setScene(null);
+    setCatalog(null);
+    setTool(null);
+    if (ui.adding) return player()?.cancelAdding();
+    player()?.startAdding({ kind: 'cutout' });
+  }
+
+  // Filters, or Video effects: the group's presets; picking one adds it at the playhead
+  function openLooks(group: PresetGroup) {
+    setScene(null);
+    setCatalog(null);
+    setTool(null);
+    player()?.select(null);
+    if (ui.adding) player()?.cancelAdding();
+    setLookMenu(group);
+  }
+
+  // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
+  // selected, swapped in for it, so presets can be tried one after another
+  function pickLook(group: PresetGroup, presetId: string) {
+    if (look && look.preset.group === group) player()?.setLookPreset(look.id, presetId);
+    else player()?.addLook(presetId);
   }
 
   // Back from the Elements or Impact menu: the effect categories again
@@ -187,8 +244,9 @@ export default function VfxStudio() {
     );
   }
 
-  // the video of the film selected
-  const filmVideo = scene !== null ? (ui.films[scene]?.reel ?? null) : null;
+  // the film selected, and its video
+  const film = scene !== null ? (ui.films[scene] ?? null) : null;
+  const filmVideo = film?.reel ?? null;
 
   const buttons = toolsFor(mode, {
     ready: ui.ready,
@@ -243,11 +301,18 @@ export default function VfxStudio() {
         return setScene(null);
       case 'cutout':
         if (lane) break; // (a cutout's own tools don't have this)
-        setTool(null);
-        setScene(null);
-        return pl?.startAdding({ kind: 'cutout' });
+        return addOverlay();
       case 'catalog':
         return addEffect();
+      case 'filters':
+        return openLooks('filter');
+      case 'screenfx':
+        return openLooks('screen');
+      case 'addtext':
+        return addText();
+      case 'crop':
+        setTool(null);
+        return pl?.startCrop();
       case 'elements':
       case 'impacts':
         setTool(null);
@@ -277,7 +342,33 @@ export default function VfxStudio() {
       case 'aim':
       case 'transform':
       case 'background':
+      case 'volume':
+      case 'speed':
+      case 'presets':
+      case 'controls':
+        setLookMenu(null);
         return setTool(cur => (cur === key ? null : key));
+    }
+    if (look) {
+      switch (key) {
+        case 'start':
+          return pl?.rangeHere(look.id, 's');
+        case 'end':
+          return pl?.rangeHere(look.id, 'e');
+        case 'place':
+          return pl?.placeLook(look.id);
+        case 'duplicate':
+          setTool(null);
+          return pl?.duplicate(look.id);
+        case 'delete':
+          setTool(null);
+          return pl?.deleteTrack(look.id);
+      }
+      return;
+    }
+    if (music && key === 'delete') {
+      setTool(null);
+      return pl?.deleteTrack(music.id);
     }
     if (!lane) return;
     switch (key) {
@@ -310,6 +401,8 @@ export default function VfxStudio() {
       {/* (the preview stays in its place, so its canvas stays the same) */}
       {review ? (
         <RotoHeader review={review} job={ui.job} canUndo={ui.canUndo} canRedo={ui.canRedo} on={roto} />
+      ) : cropping ? (
+        <CropHeader on={crop} />
       ) : (
         <header className="topbar">
           <div className="top-tools">
@@ -384,7 +477,13 @@ export default function VfxStudio() {
         </div>
       )}
 
-      <div className="dock" hidden={!!ui.review}>
+      {cropping && (
+        <div className="dock">
+          <CropDock rot={cropping.crop.rot} ratio={cropping.ratio} on={crop} />
+        </div>
+      )}
+
+      <div className="dock" hidden={!!ui.review || !!cropping}>
         <Timeline
           ui={ui}
           scene={scene}
@@ -399,6 +498,12 @@ export default function VfxStudio() {
             selectLane,
             chooseFile: () => chooseFile(),
             addEffect,
+            addText,
+            addOverlay,
+            addAudio: () => audioRef.current?.click(),
+            addLook: openLooks,
+            moveMusic: (id, t) => player()?.placeMusic(id, t),
+            moveLook: (id, t) => player()?.placeLook(id, t),
             setRange: (id, r) => player()?.setRange(id, r),
             commitRange: id => player()?.commitRange(id),
             moveImpact: (id, t) => player()?.moveImpact(id, t),
@@ -407,7 +512,7 @@ export default function VfxStudio() {
           }}
         />
         <Toolbar
-          label={toolbarLabel(mode, lane)}
+          label={music ? `${music.name} tools` : look ? `${look.name} tools` : toolbarLabel(mode, lane)}
           buttons={buttons}
           onPress={runTool}
           onBack={mode === 'impacts' || mode === 'elements' ? backToCatalog : mode ? deselect : undefined}
@@ -434,7 +539,28 @@ export default function VfxStudio() {
             onBackground={bg => player()?.chooseBackground(bg)}
           />
         )}
-        {tool && !ui.choosing && !ui.cutting && (
+        {(lookMenu || (tool === 'presets' && look)) && !ui.choosing && !ui.cutting && (
+          <PresetSheet
+            key={lookMenu ?? look?.preset.group}
+            group={lookMenu ?? look!.preset.group}
+            current={look && look.preset.group === (lookMenu ?? look.preset.group) ? look.preset.id : null}
+            thumbs={ui.lookThumbs}
+            onPick={id => pickLook(lookMenu ?? look!.preset.group, id)}
+            onClose={() => {
+              setLookMenu(null);
+              setTool(null);
+            }}
+            onShown={() => void player()?.makeLookThumbs(lookMenu ?? look!.preset.group)}
+          />
+        )}
+        {tool === 'controls' && look && (
+          <LookControls
+            look={look}
+            onChange={(c, v) => player()?.setLookControl(look.id, c, v)}
+            onClose={() => setTool(null)}
+          />
+        )}
+        {tool && tool !== 'presets' && tool !== 'controls' && !ui.choosing && !ui.cutting && (
           <ToolSheet
             tool={tool}
             title={
@@ -468,6 +594,14 @@ export default function VfxStudio() {
             keyed={!!ui.cutoutNow?.keyed}
             onTransform={p => cutout && player()?.setTransform(cutout.id, p)}
             onReset={() => cutout && player()?.resetTransform(cutout.id)}
+            speed={film ? { speed: film.speed, pitch: film.pitch, length: film.e - film.s } : undefined}
+            onSpeed={p =>
+              film &&
+              scene !== null &&
+              player()?.setSpeed(scene, p.speed ?? film.speed, p.pitch ?? film.pitch)
+            }
+            volume={music?.volume}
+            onVolume={v => music && player()?.setMusicVolume(music.id, v)}
           />
         )}
       </div>
@@ -484,6 +618,20 @@ export default function VfxStudio() {
         onChange={e => {
           const f = e.target.files?.[0];
           if (f) fileChosen(f);
+          e.target.value = '';
+        }}
+      />
+      {/* music for the Audio layer */}
+      <input
+        ref={audioRef}
+        className="file-input"
+        type="file"
+        accept="audio/*"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) void player()?.addMusic(f);
           e.target.value = '';
         }}
       />
@@ -516,6 +664,6 @@ function toolbarLabel(mode: Mode, lane: Lane | null) {
   if (mode === 'catalog') return 'Effects';
   if (mode === 'impacts') return 'Impacts';
   if (mode === 'elements') return 'Elements';
-  if (mode === 'clip') return 'Footage';
+  if (mode === 'clip') return 'Edit';
   return lane ? `${lane.name} tools` : 'Tools';
 }

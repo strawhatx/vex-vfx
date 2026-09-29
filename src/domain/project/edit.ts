@@ -2,33 +2,61 @@
 // left out. What's kept plays back to back: that's program time, what the timeline, the playhead
 // and the export show. Everything in the project (tracking, effects, cutouts) stays in the clip's
 // own time, source time, so deleting a film never touches it: it's only mapped between the two.
+// A film can play faster or slower than it was filmed (its speed): 2 plays its stretch of the clip in
+// half the time.
 import { scenesOf } from './scenes';
 
-// a kept scene: its source range, and where it starts in program time
+// a kept scene: its source range, where it starts in program time, and how fast it plays (pitch:
+// its sound's pitch changes with it, rather than staying as it was)
 export interface Piece {
   s: number;
   e: number;
   at: number;
+  speed: number;
+  pitch: boolean;
 }
+
+// a scene's speed, by where it starts (source time); scenes without one play at 1
+export type SceneSpeed = { s: number; speed: number; pitch: boolean };
+
+export const MIN_SPEED = 0.1,
+  MAX_SPEED = 10;
 
 const EPS = 1e-6;
 
+// how long a piece plays for, in program time
+export const playLength = (p: Pick<Piece, 's' | 'e' | 'speed'>) => (p.e - p.s) / p.speed;
+
 // the kept scenes, back to back. gone: the source start of each deleted scene
-export function piecesOf(cuts: readonly number[], gone: readonly number[], duration: number): Piece[] {
+export function piecesOf(
+  cuts: readonly number[],
+  gone: readonly number[],
+  duration: number,
+  speeds: readonly SceneSpeed[] = [],
+): Piece[] {
   let at = 0;
   const out: Piece[] = [];
   for (const sc of scenesOf(cuts, duration)) {
     if (gone.some(g => Math.abs(g - sc.s) < EPS)) continue;
-    out.push({ ...sc, at });
-    at += sc.e - sc.s;
+    const sp = speeds.find(x => Math.abs(x.s - sc.s) < EPS);
+    const p = { ...sc, at, speed: sp?.speed ?? 1, pitch: sp?.pitch ?? false };
+    out.push(p);
+    at += playLength(p);
   }
   return out;
+}
+
+// sets the speed of the scene starting at source time s (1 with the pitch kept: none)
+export function withSpeed(speeds: readonly SceneSpeed[], s: number, speed: number, pitch: boolean) {
+  const v = Math.max(MIN_SPEED, Math.min(MAX_SPEED, speed));
+  const rest = speeds.filter(x => Math.abs(x.s - s) >= EPS);
+  return Math.abs(v - 1) < 1e-3 && !pitch ? rest : [...rest, { s, speed: v, pitch }];
 }
 
 // how long the film plays, as edited
 export function lengthOf(pieces: readonly Piece[]) {
   const last = pieces[pieces.length - 1];
-  return last ? last.at + last.e - last.s : 0;
+  return last ? last.at + playLength(last) : 0;
 }
 
 // the program time source time t plays at; within a deleted stretch, where the next kept scene
@@ -36,7 +64,7 @@ export function lengthOf(pieces: readonly Piece[]) {
 export function toProgram(pieces: readonly Piece[], t: number) {
   for (const p of pieces) {
     if (t < p.s) return p.at;
-    if (t < p.e) return p.at + t - p.s;
+    if (t < p.e) return p.at + (t - p.s) / p.speed;
   }
   return lengthOf(pieces);
 }
@@ -45,8 +73,8 @@ export function toProgram(pieces: readonly Piece[], t: number) {
 // it's the end of the scene before rather than the start of the next
 export function toSource(pieces: readonly Piece[], p: number, end = false) {
   for (const q of pieces) {
-    const stop = q.at + q.e - q.s;
-    if (end ? p <= stop + EPS : p < stop) return q.s + Math.max(0, p - q.at);
+    const stop = q.at + playLength(q);
+    if (end ? p <= stop + EPS : p < stop) return Math.min(q.e, q.s + Math.max(0, p - q.at) * q.speed);
   }
   return pieces[pieces.length - 1]?.e ?? 0;
 }

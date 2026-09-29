@@ -16,10 +16,16 @@ const stop = (f: () => void) => (e: MouseEvent) => {
 
 // a video's kept films (k: index into the film's films, -1 until its frames are listed), in the
 // film's time
+// (and how fast each plays: its stretch of the video takes up (e - s) / speed of the timeline)
 function piecesOf(ui: UiState, r: ReelUi) {
-  if (!r.scanned) return [{ k: -1, s: 0, e: r.srcDuration, at: r.at }];
-  return ui.films.flatMap((f, k) => (f.reel === r.id ? [{ k, s: f.s, e: f.e, at: f.at }] : []));
+  if (!r.scanned) return [{ k: -1, s: 0, e: r.srcDuration, at: r.at, speed: 1 }];
+  return ui.films.flatMap((f, k) =>
+    f.reel === r.id ? [{ k, s: f.s, e: f.e, at: f.at, speed: f.speed }] : [],
+  );
 }
+
+// how fast a film plays, to mark it: '' at normal speed, else e.g. 2× or 0.5×
+const speedMark = (speed: number) => (Math.abs(speed - 1) < 1e-3 ? '' : `${+speed.toFixed(2)}×`);
 
 // whether the film has anything to show
 export const hasFilm = (ui: UiState) => ui.ready && ui.reels.some(r => !r.scanned || r.length > 0);
@@ -105,7 +111,7 @@ function ReelStrip({
       key={`${r.id}:${sc.k}:${sc.s}`}
       type="button"
       className={`lane clip${sc.k >= 0 && selected === sc.k ? ' sel' : ''}${count > 1 ? ' scene' : ''}`}
-      style={{ left: x(sc.at), width: x(sc.e - sc.s), height: THUMB_H }}
+      style={{ left: x(sc.at), width: x((sc.e - sc.s) / sc.speed), height: THUMB_H }}
       aria-pressed={sc.k >= 0 && selected === sc.k}
       aria-label={count > 1 ? `Film ${sc.k + 1} of ${count}` : 'Video clip'}
       onClick={stop(() => sc.k >= 0 && onSelect(sc.k))}
@@ -118,10 +124,15 @@ function ReelStrip({
             <span
               key={i}
               className="thumb"
-              style={{ left: x(i * step - sc.s), width: x(step), backgroundImage: `url(${url})` }}
+              style={{
+                left: x((i * step - sc.s) / sc.speed),
+                width: x(step / sc.speed),
+                backgroundImage: `url(${url})`,
+              }}
             />
           ),
       )}
+      {speedMark(sc.speed) && <span className="speed-mark">{speedMark(sc.speed)}</span>}
     </button>
   ));
 }
@@ -188,7 +199,7 @@ function ReelSound({ ui, reel: r, scale }: { ui: UiState; reel: ReelUi; scale: S
     <span
       key={`${p.k}:${p.s}`}
       className="wave-piece"
-      style={{ left: scale.x(p.at), width: scale.x(p.e - p.s) }}
+      style={{ left: scale.x(p.at), width: scale.x((p.e - p.s) / p.speed) }}
     >
       <Wave levels={wave.slice(Math.floor((p.s / dur) * n), Math.ceil((p.e / dur) * n))} className="wave" />
     </span>

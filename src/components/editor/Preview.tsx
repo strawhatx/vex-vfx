@@ -49,7 +49,7 @@ export function Preview({
     if (stageRef.current) ro.observe(stageRef.current);
     return () => ro.disconnect();
   }, [fit]);
-  useLayoutEffect(fit, [fit, ui.ready, scanning, full, ui.lanes.length]);
+  useLayoutEffect(fit, [fit, ui.ready, scanning, full, ui.lanes.length, ui.frame.w, ui.frame.h]);
 
   // a new status shows for a few seconds
   const [seenStatus, setSeenStatus] = useState('');

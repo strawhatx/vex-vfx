@@ -1,0 +1,52 @@
+{
+  "id": "zoom-rush",
+  "name": "Zoom Rush",
+  "group": "screen",
+  "category": "Blur",
+  "length": 1.5,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "zoomBlur",
+      "params": {
+        "amount": 0.7
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "zoom",
+      "params": {
+        "amount": 0.1
+      },
+      "motion": {
+        "kind": "rise"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.25
+        }
+      ]
+    }
+  ],
+  "fade": {
+    "in": 0,
+    "out": 0.3
+  }
+}

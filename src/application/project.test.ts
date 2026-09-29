@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ClipFrame, Shape } from '@/domain/tracking/types';
+import { presetById } from '@/domain/effects/library';
 import { FakeAnalysis, FakeLayers, FakePictures } from './fakes';
 import { Project, REEL_IDS, type ProjectState } from './project';
 
@@ -253,5 +254,84 @@ describe('one history for the film', () => {
     project.redo();
     expect(state.lanes.map(l => l.reel)).toEqual([a]);
     expect(state.canRedo).toBe(true);
+  });
+});
+
+describe('music on the Audio layer', () => {
+  it('is placed where asked, trimmed and moved, each a step to undo', () => {
+    addVideo(6);
+    const id = project.addMusic('song', 30, 1)!;
+    // as much of it as fits before the film ends
+    expect(state.music).toMatchObject([{ id, at: 1, src: { s: 0, e: 5 }, row: 0 }]);
+    expect(state.audioRows).toBe(1);
+    project.setMusicRange(id, { s: 2 });
+    expect(state.music[0]).toMatchObject({ at: 2, src: { s: 1, e: 5 } });
+    project.setMusicVolume(id, 0.5);
+    project.undo();
+    expect(state.music[0].volume).toBe(1);
+    project.undo();
+    expect(state.music[0]).toMatchObject({ at: 1, src: { s: 0, e: 5 } });
+    project.deleteMusic(id);
+    expect(state.music).toEqual([]);
+    project.undo();
+    expect(state.music).toHaveLength(1);
+  });
+});
+
+describe('looks over the film', () => {
+  const preset = (id: string) => presetById(id)!;
+
+  it('are placed at the playhead, each group on a layer of its own', () => {
+    addVideo(10);
+    const f = project.addLook(preset('noir'), 1),
+      g = project.addLook(preset('golden-hour'), 2),
+      s = project.addLook(preset('strobe'), 1);
+    expect(state.looks.map(c => [c.id, c.preset.group, c.row])).toEqual([
+      [f, 'filter', 0],
+      [g, 'filter', 1], // (overlapping the first)
+      [s, 'screen', 0],
+    ]);
+    expect(state.lookRows).toEqual({ filter: 2, screen: 1 });
+    expect(state.hasEffects).toBe(true);
+  });
+
+  it('draw what is on at the time: filters, then screen effects', () => {
+    addVideo(10);
+    project.addLook(preset('strobe'), 0);
+    project.addLook(preset('noir'), 0);
+    expect(project.looksAt(0.01).map(d => d.engine)).toEqual(['color', 'screen']);
+    expect(project.looksAt(9)).toEqual([]);
+  });
+
+  it('are trimmed, moved, restyled and tuned, each a step to undo', () => {
+    addVideo(10);
+    const id = project.addLook(preset('noir'), 1);
+    project.setLookRange(id, { e: 3 });
+    expect(state.looks[0]).toMatchObject({ at: 1, len: 2 });
+    project.placeLook(id, 4);
+    expect(state.looks[0].at).toBe(4);
+    project.setLookControl(id, 'strength', 0.3);
+    expect(state.looks[0].values.strength).toBe(0.3);
+    expect(project.setLookPreset(id, preset('strobe'))).toBe(false); // (not a filter)
+    project.setLookPreset(id, preset('silver'));
+    expect(state.looks[0]).toMatchObject({ name: 'Silver', at: 4, len: 2, values: { strength: 0.3 } });
+    project.undo();
+    expect(state.looks[0].name).toBe('Noir');
+    project.undo();
+    expect(state.looks[0].values.strength).toBe(1);
+    project.undo();
+    expect(state.looks[0].at).toBe(1);
+  });
+
+  it('are copied straight after themselves, and deleted', () => {
+    addVideo(10);
+    const id = project.addLook(preset('noir'), 1);
+    project.setLookRange(id, { e: 3 });
+    const d = project.duplicateLook(id)!;
+    expect(project.look(d)).toMatchObject({ at: 3, len: 2, name: 'Noir' });
+    project.deleteLook(id);
+    expect(state.looks.map(c => c.id)).toEqual([d]);
+    project.undo();
+    expect(state.looks).toHaveLength(2);
   });
 });

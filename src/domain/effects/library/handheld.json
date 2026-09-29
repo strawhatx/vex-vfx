@@ -1,0 +1,41 @@
+{
+  "id": "handheld",
+  "name": "Handheld",
+  "group": "screen",
+  "category": "Motion",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "shake",
+      "params": {
+        "amount": 0.25,
+        "speed": 2.5,
+        "turn": 0.6
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "zoom",
+      "params": {
+        "amount": 0.05
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.6
+        }
+      ]
+    }
+  ]
+}

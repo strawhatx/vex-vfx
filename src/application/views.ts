@@ -1,20 +1,30 @@
 // What the editor's clips look like from outside: lanes for the timeline, and layers for the
 // renderer. Pure functions of the tracks.
 import { pieceAt, toProgram, type Piece } from '@/domain/project/edit';
-import { assignRows, hitFrame, isPinned, toLane, type Lane, type Track } from '@/domain/project/track';
+import {
+  assignLayerRows,
+  hitFrame,
+  isPinned,
+  layerOf,
+  toLane,
+  type Lane,
+  type Track,
+} from '@/domain/project/track';
 import type { ClipFrame } from '@/domain/tracking/types';
 import type { LayerSpec } from './ports';
 
 export interface Timeline {
   lanes: Lane[];
   rows: number; // timeline rows the effects and impacts are stacked on
+  textRows: number; // timeline rows the text is stacked on
   cutRows: number; // timeline rows the cutouts are stacked on, with the footage
   hasEffects: boolean; // some clip has something to draw: an explosion, or an object found
 }
 
 // The video's effects and impacts as the timeline shows them, in program time (the video as edited:
 // see edit.ts). A clip that runs over a deleted film closes up round it; one wholly inside a deleted
-// film isn't shown. Each goes on the row the user put it on, where it fits (see assignRows).
+// film isn't shown. Each goes on the row the user put it on in its layer (see layerOf), where it
+// fits (see assignRows).
 // Cutouts aren't listed: what's cut is a layer of the film's (see project.ts).
 export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly Piece[]): Timeline {
   const P = (t: number) => toProgram(pieces, t);
@@ -32,14 +42,14 @@ export function timelineOf(tracks: Track[], clip: ClipFrame[], pieces: readonly 
       keys: l.keys.filter(k => pieceAt(pieces, k) >= 0).map(P),
     }));
   const wanted = (l: Lane) => tracks.find(t => t.id === l.id)?.row ?? null;
-  const rows = assignRows(
-    shown.map(l => l.range),
-    shown.map(wanted),
+  const { rows, counts } = assignLayerRows(
+    shown.map(l => ({ range: l.range, layer: layerOf(l), row: wanted(l) })),
   );
   shown.forEach((l, k) => (l.row = rows[k]));
   return {
     lanes: shown,
-    rows: rows.length ? Math.max(...rows) + 1 : 0,
+    rows: counts.effects,
+    textRows: counts.text,
     cutRows: 0,
     hasEffects: tracks.some(t => isPinned(t) || t.frames.some(f => f.shapes.length)),
   };

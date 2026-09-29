@@ -1,0 +1,79 @@
+{
+  "id": "vhs-tape",
+  "name": "VHS Tape",
+  "group": "screen",
+  "category": "Retro",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "rgbSplit",
+      "params": {
+        "amount": 0.35
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "scanlines",
+      "params": {
+        "amount": 0.45,
+        "density": 0.55
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "grain",
+      "params": {
+        "amount": 0.4,
+        "size": 0.4
+      }
+    },
+    {
+      "engine": "screen",
+      "kind": "wave",
+      "params": {
+        "amount": 0.06,
+        "freq": 0.8,
+        "speed": 0.6
+      },
+      "motion": {
+        "kind": "flicker",
+        "rate": 3
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.6
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.8
+        },
+        {
+          "pass": 2,
+          "param": "amount",
+          "from": 0,
+          "to": 0.7
+        },
+        {
+          "pass": 3,
+          "param": "amount",
+          "from": 0,
+          "to": 0.15
+        }
+      ]
+    }
+  ]
+}

@@ -8,6 +8,8 @@ export type ToolKey =
   | Tool
   | `cat-${Category}`
   | 'catalog'
+  | 'filters'
+  | 'screenfx'
   | 'impacts'
   | 'elements'
   | 'cancel'
@@ -28,6 +30,8 @@ export type ToolKey =
   | 'place'
   | 'deletescene'
   | 'isolate'
+  | 'addtext'
+  | 'crop'
   | 'review'
   | 'removevideo'
   | 'videoearlier'
@@ -51,8 +55,9 @@ export interface ToolBtn {
   disabled?: boolean;
 }
 // what the toolbar lists: the effect categories, the elements, the impact families, the footage
-// tools (the film selected), a selected effect, impact or cutout's tools
-export type Mode = 'catalog' | 'elements' | 'impacts' | 'clip' | 'track' | 'impact' | 'cutout' | null;
+// tools (the film selected), a selected effect, impact, cutout, music or look's tools
+export type Mode =
+  'catalog' | 'elements' | 'impacts' | 'clip' | 'track' | 'impact' | 'cutout' | 'music' | 'look' | null;
 
 // the Elements menu
 export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
@@ -62,13 +67,13 @@ export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[]
   { id: 'water', label: 'Water', icon: I.water },
 ];
 
-// the other effect categories; Elements (first) and Impact (last) open menus of their own
+// the other effect categories; Elements (first) and Impact (last) open menus of their own. (Text
+// has a menu of its own, beside Effects.)
 export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
   { id: 'sparks', label: 'Sparks', icon: I.effects },
   { id: 'laser', label: 'Laser', icon: I.laser },
   { id: 'outline', label: 'Outline', icon: I.outline },
   { id: 'glitch', label: 'Glitch', icon: I.glitch },
-  { id: 'text', label: 'Text', icon: I.text },
 ];
 
 // the Impact menu: one button per family
@@ -123,6 +128,7 @@ export function toolsFor(
   });
   if (mode === 'catalog')
     return [
+      { key: 'screenfx', label: 'Video', icon: I.scene, disabled: s.busy || !s.ready },
       { key: 'elements', label: 'Elements', icon: I.flame, disabled: s.busy },
       ...CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
       { key: 'impacts', label: 'Impact', icon: I.burst, disabled: s.busy },
@@ -133,6 +139,8 @@ export function toolsFor(
   if (mode === 'clip')
     return [
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
+      { ...sheet('speed', 'Speed', I.speed), disabled: s.busy || s.films < 1 },
+      { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       ...(s.video && s.video.of > 1
@@ -190,6 +198,22 @@ export function toolsFor(
       { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
+  // a filter or screen effect
+  if (mode === 'look')
+    return [
+      sheet('presets', 'Style', I.effects),
+      sheet('controls', 'Adjust', I.adjust),
+      { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
+      { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
+      { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
+      { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
+      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
+    ];
+  if (mode === 'music')
+    return [
+      sheet('volume', 'Volume', I.sound),
+      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
+    ];
   if (mode === 'cutout')
     return [
       { key: 'review', label: 'Check outline', icon: I.eye, disabled: s.busy },
@@ -228,9 +252,14 @@ export function toolsFor(
       { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];
+  // the main tools, like CapCut's: the footage, text, effects, filters, and objects cut out of the
+  // footage
   return [
+    { key: 'edit', label: 'Edit', icon: I.film },
+    { key: 'addtext', label: 'Text', icon: I.text, disabled: s.busy || !s.ready },
     { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
-    { key: 'edit', label: 'Footage', icon: I.film },
+    { key: 'filters', label: 'Filters', icon: I.color, disabled: s.busy || !s.ready },
+    { key: 'cutout', label: 'Overlay', icon: I.cutout, disabled: s.busy || !s.ready },
   ];
 }
 

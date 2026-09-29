@@ -1,0 +1,32 @@
+{
+  "id": "fisheye",
+  "name": "Fisheye",
+  "group": "screen",
+  "category": "Distort",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "screen",
+      "kind": "warp",
+      "params": {
+        "amount": 0.6
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

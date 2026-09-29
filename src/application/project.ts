@@ -1,6 +1,7 @@
 // The film: the videos added to it, played one after another (see domain/project/sequence), each
-// edited by an Editor of its own, and the overlays over them all (objects cut out of them: see
-// domain/project/overlay). One history to undo covers all of it.
+// edited by an Editor of its own, the overlays over them all (objects cut out of them: see
+// domain/project/overlay), music under them (see domain/project/music), and looks over everything
+// (filters and screen effects: see domain/project/looks). One history to undo covers all of it.
 //
 // Times: everything in and out is the film's time unless said otherwise. Clip ids are unique across
 // the film: each video numbers its clips from its own base (REEL_IDS apart); an overlay takes the
@@ -25,12 +26,37 @@ import {
   type Overlay,
 } from '@/domain/project/overlay';
 import { filmLength, layoutReels, nextReel, reelAt } from '@/domain/project/sequence';
-import { assignRows, type Lane } from '@/domain/project/track';
+import { FULL, type Crop } from '@/domain/project/crop';
+import {
+  musicRange,
+  newMusic,
+  placeMusic,
+  trimMusic,
+  withVolume,
+  type MusicClip,
+} from '@/domain/project/music';
+import {
+  looksAt,
+  lookRange,
+  newLook,
+  placeLook,
+  trimLook,
+  withControl,
+  withPreset,
+  type LookClip,
+} from '@/domain/project/looks';
+import type { ParamValue } from '@/domain/effects/params';
+import type { Preset, PresetGroup } from '@/domain/effects/presets';
+import { assignLayerRows, assignRows, layerOf, type Lane } from '@/domain/project/track';
 import type { Selection, TrackMeta } from '@/domain/tracking/types';
 import type { JobStatus } from './jobs';
 import type { Analysis, CutFrame, EffectLayers, OverlayPictures } from './ports';
 
 export const REEL_IDS = 100000;
+// music is numbered from here, apart from every clip
+export const MUSIC_IDS = 1_000_000_000;
+// and looks from here
+export const LOOK_IDS = 1_500_000_000;
 
 // what each video needs from the outside: its own analysis and its own drawing
 export interface ReelPorts {
@@ -47,21 +73,33 @@ export interface ReelInfo {
 }
 
 // film k of video `reel` (a kept scene of it: see edit.ts): the stretch of the video it plays (s, e:
-// the video's own time), and where it starts in the film
+// the video's own time), where it starts in the film, and how fast it plays (so how long it plays
+// for: see filmLength); pitch: its sound's pitch changes with its speed
 export interface Film {
   reel: number;
   k: number;
   s: number;
   e: number;
   at: number;
+  speed: number;
+  pitch: boolean;
 }
+
+// how long a film plays for
+export const playTime = (f: Pick<Film, 's' | 'e' | 'speed'>) => (f.e - f.s) / f.speed;
 
 export interface ProjectState {
   reels: ReelInfo[];
   films: Film[];
-  lanes: Lane[]; // effects and impacts (on `rows`), then overlays (on `cutRows`)
+  lanes: Lane[]; // effects and impacts (on `rows`), text (on `textRows`), then overlays (on `cutRows`)
   rows: number;
+  textRows: number;
   cutRows: number;
+  music: (MusicClip & { row: number })[]; // on the Audio layer, on `audioRows`
+  audioRows: number;
+  looks: (LookClip & { row: number })[]; // filters and screen effects, each on its group's layer
+  lookRows: Record<PresetGroup, number>;
+  crop: Crop; // the film's frame, cropped (see crop.ts)
   length: number;
   scan: number | null; // a video's frames being listed: how far
   job: JobStatus | null; // analysis work in progress
@@ -89,6 +127,9 @@ interface Snap {
   reels: Reel[];
   overlays: Overlay[];
   nextOverlay: number;
+  music: MusicClip[];
+  looks: LookClip[];
+  crop: Crop;
 }
 
 // one step to undo: the editors that kept a step of their own for it, in order, and the film as it
@@ -106,7 +147,13 @@ const EMPTY: ProjectState = {
   films: [],
   lanes: [],
   rows: 0,
+  textRows: 0,
   cutRows: 0,
+  music: [],
+  audioRows: 0,
+  looks: [],
+  lookRows: { filter: 0, screen: 0 },
+  crop: FULL,
   length: 0,
   scan: null,
   job: null,
@@ -118,6 +165,11 @@ const EMPTY: ProjectState = {
 export class Project {
   private reels: Reel[] = [];
   private overlays: Overlay[] = [];
+  private music: MusicClip[] = [];
+  private looks: LookClip[] = [];
+  private crop: Crop = FULL;
+  private nextMusic = MUSIC_IDS;
+  private nextLook = LOOK_IDS;
   private nextReel = 1;
   private nextOverlay = 1;
   private undos: Step[] = [];
@@ -241,6 +293,12 @@ export class Project {
     return !!ed && ed.split(ed.frameAt(at.t));
   }
 
+  // film k (of this.state.films) plays at `speed`; pitch: its sound's pitch changes with it
+  setSpeed(k: number, speed: number, pitch: boolean) {
+    const f = this.state.films[k];
+    return !!f && !!this.editorOf(f.reel)?.setSpeed(f.k, speed, pitch);
+  }
+
   // deletes film k (of this.state.films)
   deleteFilm(k: number) {
     const f = this.state.films[k];
@@ -250,7 +308,7 @@ export class Project {
   // the film playing at t (index into films)
   filmAt(t: number) {
     const films = this.state.films;
-    const k = films.findIndex(f => t >= f.at - 1e-6 && t < f.at + (f.e - f.s) - 1e-6);
+    const k = films.findIndex(f => t >= f.at - 1e-6 && t < f.at + playTime(f) - 1e-6);
     return k >= 0 ? k : Math.max(0, films.length - 1);
   }
 
@@ -473,6 +531,152 @@ export class Project {
     });
   }
 
+  // ---------- the frame ----------
+
+  // crops the film's frame (and turns it): everything on it is cropped together
+  setCrop(crop: Crop) {
+    this.step(undefined, () => {
+      this.crop = { ...crop };
+      this.publish(true);
+    });
+  }
+
+  // ---------- music ----------
+
+  // a sound file `length` seconds long, placed at film time `at` on the Audio layer
+  addMusic(name: string, length: number, at: number) {
+    return this.step(undefined, () => {
+      const m = newMusic(this.nextMusic++, name, length, Math.max(0, at), this.length);
+      this.music.push(m);
+      this.publish();
+      return m.id;
+    });
+  }
+
+  musicClip(id: number | null) {
+    return this.music.find(m => m.id === id) ?? null;
+  }
+
+  // what's on the Audio layer
+  get musicList(): readonly MusicClip[] {
+    return this.music;
+  }
+
+  // moves its start or end (film time), keeping what plays where it is; live while dragging
+  setMusicRange(id: number, r: { s?: number; e?: number }) {
+    this.changeMusic(id, m => trimMusic(m, r), `music:${id}`);
+  }
+
+  placeMusic(id: number, at: number) {
+    this.changeMusic(id, m => placeMusic(m, at));
+  }
+
+  moveMusicRow(id: number, row: number) {
+    this.changeMusic(id, m => ({ ...m, row }));
+  }
+
+  setMusicVolume(id: number, volume: number) {
+    this.changeMusic(id, m => withVolume(m, volume), `volume:${id}`);
+  }
+
+  deleteMusic(id: number) {
+    if (!this.musicClip(id)) return;
+    this.step(undefined, () => {
+      this.music = this.music.filter(m => m.id !== id);
+      this.publish();
+    });
+  }
+
+  private changeMusic(id: number, change: (m: MusicClip) => MusicClip, merge?: string) {
+    const m = this.musicClip(id);
+    if (!m) return;
+    this.step(merge, () => {
+      const next = change(m);
+      this.music = this.music.map(x => (x.id === id ? next : x));
+      this.publish();
+    });
+  }
+
+  // ---------- looks ----------
+
+  // a look made from `preset`, placed at film time `at` on its group's layer
+  addLook(preset: Preset, at: number) {
+    return this.step(undefined, () => {
+      const c = newLook(this.nextLook++, preset, Math.max(0, at), this.length);
+      this.looks.push(c);
+      this.publish(true);
+      return c.id;
+    });
+  }
+
+  look(id: number | null) {
+    return this.looks.find(c => c.id === id) ?? null;
+  }
+
+  get lookList(): readonly LookClip[] {
+    return this.looks;
+  }
+
+  // what the looks draw at film time t, in order
+  looksAt(t: number) {
+    return looksAt(this.looks, t);
+  }
+
+  // moves its start or end (film time); live while dragging
+  setLookRange(id: number, r: { s?: number; e?: number }) {
+    this.changeLook(id, c => trimLook(c, r), `look:${id}`);
+  }
+
+  placeLook(id: number, at: number) {
+    this.changeLook(id, c => placeLook(c, at));
+  }
+
+  moveLookRow(id: number, row: number) {
+    this.changeLook(id, c => ({ ...c, row }));
+  }
+
+  // another preset of the same group in its place, keeping its timing
+  setLookPreset(id: number, preset: Preset) {
+    const c = this.look(id);
+    if (!c || c.preset.group !== preset.group) return false;
+    this.changeLook(id, x => withPreset(x, preset));
+    return true;
+  }
+
+  setLookControl(id: number, control: string, v: ParamValue) {
+    this.changeLook(id, c => withControl(c, control, v), `control:${id}:${control}`);
+  }
+
+  // a copy, straight after it on the same row
+  duplicateLook(id: number) {
+    const c = this.look(id);
+    if (!c) return null;
+    return this.step(undefined, () => {
+      const d: LookClip = { ...c, id: this.nextLook++, at: c.at + c.len };
+      this.looks.push(d);
+      this.publish(true);
+      return d.id;
+    });
+  }
+
+  deleteLook(id: number) {
+    if (!this.look(id)) return;
+    this.step(undefined, () => {
+      this.looks = this.looks.filter(c => c.id !== id);
+      this.publish(true);
+    });
+  }
+
+  private changeLook(id: number, change: (c: LookClip) => LookClip, merge?: string) {
+    const c = this.look(id);
+    if (!c) return;
+    this.step(merge, () => {
+      const next = change(c);
+      this.looks = this.looks.map(x => (x.id === id ? next : x));
+      this.publish(true);
+    });
+  }
+
   // ---------- undo ----------
 
   undo() {
@@ -537,13 +741,23 @@ export class Project {
   }
 
   private snapshot(): Snap {
-    return { reels: this.reels.slice(), overlays: this.overlays.slice(), nextOverlay: this.nextOverlay };
+    return {
+      reels: this.reels.slice(),
+      overlays: this.overlays.slice(),
+      nextOverlay: this.nextOverlay,
+      music: this.music.slice(),
+      looks: this.looks.slice(),
+      crop: this.crop,
+    };
   }
 
   private restore(s: Snap) {
     this.reels = s.reels.slice();
     this.overlays = s.overlays.slice();
     this.nextOverlay = s.nextOverlay;
+    this.music = s.music.slice();
+    this.looks = s.looks.slice();
+    this.crop = s.crop;
   }
 
   // ---------- internals ----------
@@ -648,11 +862,12 @@ export class Project {
           spans: l.spans.map(shift),
           keys: l.keys.map(t => t + at),
         });
-      s.scenes.forEach((p, j) => films.push({ reel: r.id, k: j, s: p.s, e: p.e, at: at + p.at }));
+      s.scenes.forEach((p, j) =>
+        films.push({ reel: r.id, k: j, s: p.s, e: p.e, at: at + p.at, speed: p.speed, pitch: p.pitch }),
+      );
     });
-    const rows = assignRows(
-      lanes.map(l => l.range),
-      lanes.map(l => l.row),
+    const { rows, counts } = assignLayerRows(
+      lanes.map(l => ({ range: l.range, layer: layerOf(l), row: l.row })),
     );
     lanes.forEach((l, k) => (l.row = rows[k]));
     const cutRows = assignRows(
@@ -661,7 +876,24 @@ export class Project {
     );
     this.overlays.forEach((o, k) => (o.row = cutRows[k]));
     const overlayLanes = this.overlays.map((o, k) => this.overlayLane(o, cutRows[k]));
+    const audioRows = assignRows(
+      this.music.map(musicRange),
+      this.music.map(m => m.row),
+    );
     const count = (r: number[]) => (r.length ? Math.max(...r) + 1 : 0);
+    // each group's looks on rows of their own
+    const lookRow = new Map<number, number>(),
+      lookRows: Record<PresetGroup, number> = { filter: 0, screen: 0 };
+    for (const group of Object.keys(lookRows) as PresetGroup[]) {
+      const mine = this.looks.filter(c => c.preset.group === group);
+      const got = assignRows(
+        mine.map(lookRange),
+        mine.map(c => c.row),
+      );
+      mine.forEach((c, k) => lookRow.set(c.id, got[k]));
+      lookRows[group] = count(got);
+    }
+    this.looks.forEach(c => (c.row = lookRow.get(c.id) ?? 0));
     const reels = this.reels.map((r, k) => ({
       id: r.id,
       at: spans[k].at,
@@ -672,12 +904,22 @@ export class Project {
       reels,
       films,
       lanes: [...lanes, ...overlayLanes],
-      rows: count(rows),
+      rows: counts.effects,
+      textRows: counts.text,
       cutRows: count(cutRows),
+      music: this.music.map((m, k) => ({ ...m, row: audioRows[k] })),
+      audioRows: count(audioRows),
+      looks: this.looks.map(c => ({ ...c, row: lookRow.get(c.id) ?? 0 })),
+      lookRows,
+      crop: this.crop,
       length: filmLength(spans),
       scan: this.reels.find(r => r.state?.scan != null)?.state.scan ?? null,
       job: this.reels.find(r => r.state?.job)?.state.job ?? null,
-      hasEffects: this.overlays.length > 0 || this.reels.some(r => r.state?.hasEffects),
+      hasEffects:
+        this.overlays.length > 0 ||
+        this.music.length > 0 ||
+        this.looks.length > 0 ||
+        this.reels.some(r => r.state?.hasEffects),
       canUndo: this.undos.length > 0,
       canRedo: this.redos.length > 0,
     };

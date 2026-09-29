@@ -1,13 +1,21 @@
-// The timeline: a ruler, the clip's filmstrip and sound, and the effects and impacts as bars
-// covering the stretch each one lasts, stacked in rows where they overlap. It starts at the left;
+// The timeline: a ruler, the film's filmstrip and sound, then a layer for each kind of clip, like
+// CapCut's: Overlay (objects cut out), Audio (music), Text, Effects (effects and impacts), Video
+// effects and Filters (looks over the whole frame), each
+// marked with its
+// icon on the left and its clips named on their bars, stacked in rows of its own where they
+// overlap. An empty layer shows a button to add one. It starts at the left;
 // the playhead moves across as the video plays, and the timeline scrolls along to keep it in view.
 // Tap or drag the ruler (or the playhead's handle) to scrub; scrolling just scrolls. Pinch (or
 // Ctrl/⌘ + scroll) zooms it, keeping the playhead where it is on screen.
 import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
+import { layerOf, type LayerKind } from '@/domain/project/track';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
 import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
+import type { PresetGroup } from '@/domain/effects/presets';
+import { LookClip } from './LookClip';
+import { MusicClip } from './MusicClip';
 import { PAD, type Scale } from './layout';
 import { Ruler } from './Ruler';
 import { usePlayhead } from './usePlayhead';
@@ -35,6 +43,14 @@ export function Timeline({
     selectLane(id: number): void;
     chooseFile(): void;
     addEffect(): void;
+    addText(): void;
+    addOverlay(): void;
+    addAudio(): void;
+    addLook(group: PresetGroup): void;
+    // music dragged to start at time t
+    moveMusic(id: number, t: number): void;
+    // a look dragged to start at time t
+    moveLook(id: number, t: number): void;
     // live while dragging a clip's end; commit once the drag ends
     setRange(id: number, r: { s?: number; e?: number }): void;
     commitRange(id: number): void;
@@ -67,10 +83,20 @@ export function Timeline({
   const scale: Scale = { pps, x: t => t * pps };
   // every film deleted: nothing but the button to add a clip
   const hasFilm = filmShowing(ui);
-  const fxLanes = ui.lanes.filter(l => l.kind !== 'cutout'),
-    cutLanes = ui.lanes.filter(l => l.kind === 'cutout');
-  const rows = Array.from({ length: ui.rows }, (_, r) => fxLanes.filter(l => l.row === r));
-  const cutRows = Array.from({ length: ui.cutRows }, (_, r) => cutLanes.filter(l => l.row === r));
+  // each layer's rows of clips
+  const rowsOf = (layer: LayerKind, count: number) => {
+    const mine = ui.lanes.filter(l => layerOf(l) === layer);
+    return Array.from({ length: count }, (_, r) => mine.filter(l => l.row === r));
+  };
+  // what the next tap adds, on the layer it goes on
+  const addingText = ui.adding?.kind === 'effect' && ui.adding.fx.effect === 'text';
+  const adding = (layer: LayerKind) => {
+    const a = ui.adding;
+    if (!a) return null;
+    const on = a.kind === 'cutout' ? 'overlay' : addingText ? 'text' : 'effects';
+    if (on !== layer) return null;
+    return a.kind === 'cutout' ? 'Drag a box round the object' : 'Tap the object in the preview';
+  };
   const clipActions = {
     select: on.selectLane,
     setRange: on.setRange,
@@ -107,28 +133,52 @@ export function Timeline({
             />
           )}
 
-          {/* cutouts: layers cut out of the footage, with it */}
-          {cutRows.map((lanes, r) => (
-            <div key={`c${r}`} className="tl-row fx-row cut-row">
-              {lanes.map(l => (
-                <CutoutClip
-                  key={l.id}
-                  lane={l}
-                  scale={scale}
-                  selected={l.id === ui.selected}
-                  duration={dur}
-                  on={clipActions}
-                />
-              ))}
-            </div>
-          ))}
-
-          {rows.map((lanes, r) => (
-            <div key={r} className="tl-row fx-row">
-              {lanes.map(l => {
-                const Clip = l.kind === 'impact' ? ImpactClip : EffectClip;
-                return (
-                  <Clip
+          {hasFilm && (
+            <>
+              <Layer
+                layer="overlay"
+                rows={rowsOf('overlay', ui.cutRows)}
+                add={{
+                  label: adding('overlay') ?? 'Add overlay',
+                  on: ui.adding?.kind === 'cutout',
+                  run: on.addOverlay,
+                }}
+                busy={busy}
+                clip={l => (
+                  <CutoutClip
+                    key={l.id}
+                    lane={l}
+                    scale={scale}
+                    selected={l.id === ui.selected}
+                    duration={dur}
+                    on={clipActions}
+                  />
+                )}
+              />
+              <Layer
+                layer="audio"
+                rows={Array.from({ length: ui.audioRows }, (_, r) => ui.music.filter(m => m.row === r))}
+                add={{ label: 'Add audio', on: false, run: on.addAudio }}
+                busy={busy}
+                clip={m => (
+                  <MusicClip
+                    key={m.id}
+                    music={m}
+                    scale={scale}
+                    selected={m.id === ui.selected}
+                    duration={dur}
+                    on={clipActions}
+                    moveTo={t => on.moveMusic(m.id, t)}
+                  />
+                )}
+              />
+              <Layer
+                layer="text"
+                rows={rowsOf('text', ui.textRows)}
+                add={{ label: adding('text') ?? 'Add text', on: addingText, run: on.addText }}
+                busy={busy}
+                clip={l => (
+                  <EffectClip
                     key={l.id}
                     lane={l}
                     scale={scale}
@@ -137,30 +187,59 @@ export function Timeline({
                     sound={soundShape(l)}
                     on={clipActions}
                   />
-                );
-              })}
-            </div>
-          ))}
-
-          {hasFilm && (
-            <div className="tl-row add-row">
-              <button
-                type="button"
-                className={`add-hint${ui.adding ? ' on' : ''}`}
-                disabled={busy}
-                onClick={e => {
-                  e.stopPropagation();
-                  on.addEffect();
+                )}
+              />
+              <Layer
+                layer="effects"
+                rows={rowsOf('effects', ui.rows)}
+                add={{
+                  label: adding('effects') ?? 'Add effect',
+                  on: !!ui.adding && ui.adding.kind !== 'cutout' && !addingText,
+                  run: on.addEffect,
                 }}
-              >
-                <Icon d={I.plus} size={16} />
-                {ui.adding?.kind === 'cutout'
-                  ? 'Drag a box round the object'
-                  : ui.adding
-                    ? 'Tap the object in the preview'
-                    : 'Add effect'}
-              </button>
-            </div>
+                busy={busy}
+                clip={l => {
+                  const Clip = l.kind === 'impact' ? ImpactClip : EffectClip;
+                  return (
+                    <Clip
+                      key={l.id}
+                      lane={l}
+                      scale={scale}
+                      selected={l.id === ui.selected}
+                      duration={dur}
+                      sound={soundShape(l)}
+                      on={clipActions}
+                    />
+                  );
+                }}
+              />
+              {(['screen', 'filter'] as const).map(group => (
+                <Layer
+                  key={group}
+                  layer={group}
+                  rows={Array.from({ length: ui.lookRows[group] }, (_, r) =>
+                    ui.looks.filter(c => c.preset.group === group && c.row === r),
+                  )}
+                  add={{
+                    label: group === 'filter' ? 'Add filter' : 'Add video effect',
+                    on: false,
+                    run: () => on.addLook(group),
+                  }}
+                  busy={busy}
+                  clip={c => (
+                    <LookClip
+                      key={c.id}
+                      look={c}
+                      scale={scale}
+                      selected={c.id === ui.selected}
+                      duration={dur}
+                      on={clipActions}
+                      moveTo={t => on.moveLook(c.id, t)}
+                    />
+                  )}
+                />
+              ))}
+            </>
           )}
 
           {/* the playhead: moves across as the video plays; drag its handle to scrub */}
@@ -171,4 +250,69 @@ export function Timeline({
       </div>
     </div>
   );
+}
+
+// how each layer is marked on the left
+type LayerName = LayerKind | 'audio' | PresetGroup;
+const LAYERS: Record<LayerName, { name: string; icon: string }> = {
+  overlay: { name: 'Overlay', icon: I.cutout },
+  audio: { name: 'Audio', icon: I.sound },
+  text: { name: 'Text', icon: I.text },
+  effects: { name: 'Effects', icon: I.effects },
+  screen: { name: 'Video effects', icon: I.scene },
+  filter: { name: 'Filters', icon: I.color },
+};
+
+// one layer: its rows of clips, marked with its icon on the left; empty, a button to add one
+function Layer<C>({
+  layer,
+  rows,
+  add,
+  busy,
+  clip,
+}: {
+  layer: LayerName;
+  rows: C[][];
+  add: { label: string; on: boolean; run(): void };
+  busy: boolean;
+  clip(c: C): React.ReactNode;
+}) {
+  const { name, icon } = LAYERS[layer];
+  const tag = (
+    <span className="layer-tag" title={name} aria-label={`${name} layer`}>
+      <Icon d={icon} size={16} />
+    </span>
+  );
+  if (!rows.length || add.on)
+    return (
+      <>
+        {rows.map((lanes, r) => (
+          <div key={r} className={`tl-row fx-row layer-${layer}`}>
+            {r === 0 && tag}
+            {lanes.map(clip)}
+          </div>
+        ))}
+        <div className={`tl-row add-row layer-${layer}`}>
+          {!rows.length && tag}
+          <button
+            type="button"
+            className={`add-hint${add.on ? ' on' : ''}`}
+            disabled={busy}
+            onClick={e => {
+              e.stopPropagation();
+              add.run();
+            }}
+          >
+            <Icon d={I.plus} size={16} />
+            {add.label}
+          </button>
+        </div>
+      </>
+    );
+  return rows.map((lanes, r) => (
+    <div key={r} className={`tl-row fx-row layer-${layer}`}>
+      {r === 0 && tag}
+      {lanes.map(clip)}
+    </div>
+  ));
 }

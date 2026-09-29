@@ -1,0 +1,39 @@
+{
+  "id": "inferno",
+  "name": "Inferno",
+  "group": "filter",
+  "category": "Moody",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "color",
+      "kind": "grade",
+      "params": {
+        "amount": 1,
+        "temperature": 0.7,
+        "tint": 0.3,
+        "saturation": 0.35,
+        "contrast": 0.45,
+        "exposure": -0.3,
+        "shadowTone": "#8a0019",
+        "shadowAmount": 0.8
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

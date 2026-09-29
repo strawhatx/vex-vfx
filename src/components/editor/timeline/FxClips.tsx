@@ -9,6 +9,9 @@ import { effectName } from '../ToolSheet';
 import { ROW_PITCH, type Scale } from './layout';
 import { Wave } from './Wave';
 
+// what the timeline needs of a clip to drag it about: where it is, its row, and its name
+export type Placed = Pick<Lane, 'id' | 'range' | 'row' | 'name'>;
+
 // what a clip on the timeline can do
 export interface ClipActions {
   select(id: number): void;
@@ -68,8 +71,18 @@ export function EffectClip({ lane: l, scale, selected, duration, sound, on }: Cl
           <i key={i} className="key" style={{ left: x(k - l.range.s) }} />
         ))}
         <span className="fx-label">
-          <i style={{ background: l.color }} />
-          {w > 110 ? `${l.name} · ${name}` : name}
+          {/* (text shows its words; an effect its name, and its kind when there's room) */}
+          {l.fx.effect === 'text' ? (
+            <>
+              <Icon d={I.text} size={12} />
+              {l.fx.text || 'Text'}
+            </>
+          ) : (
+            <>
+              <i style={{ background: l.color }} />
+              {w > 110 ? `${l.name} · ${name}` : name}
+            </>
+          )}
         </span>
       </button>
       {selected && !slide.dragging && <Grips lane={l} scale={scale} duration={duration} on={on} />}
@@ -80,7 +93,13 @@ export function EffectClip({ lane: l, scale, selected, duration, sound, on }: Cl
 // dragging a clip about the timeline: along it to another time, and up or down onto another row
 // (or a new one above or below). While dragged, where it would start and how far it's lifted; the
 // pointer handlers for its body. A tap selects it; a drag moves it and selects it too.
-function useSlide(l: Lane, scale: Scale, duration: number, on: ClipActions, moveTo: (t: number) => void) {
+export function useSlide(
+  l: Placed,
+  scale: Scale,
+  duration: number,
+  on: Pick<ClipActions, 'moveRow'>,
+  moveTo: (t: number) => void,
+) {
   const [drag, setDrag] = useState<{
     x: number;
     y: number;
@@ -223,7 +242,12 @@ function speedLabel(speed: number) {
 }
 
 // the grips on a selected clip's start and end
-function Grips(props: { lane: Lane; scale: Scale; duration: number; on: ClipActions }) {
+export function Grips(props: {
+  lane: Placed;
+  scale: Scale;
+  duration: number;
+  on: Pick<ClipActions, 'setRange' | 'commitRange'>;
+}) {
   return (
     <>
       <Grip {...props} end="s" />
@@ -239,10 +263,10 @@ function Grip({
   on,
   end,
 }: {
-  lane: Lane;
+  lane: Placed;
   scale: Scale;
   duration: number;
-  on: ClipActions;
+  on: Pick<ClipActions, 'setRange' | 'commitRange'>;
   end: 's' | 'e';
 }) {
   const drag = useRef<{ x: number; t: number } | null>(null);

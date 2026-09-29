@@ -1,0 +1,37 @@
+{
+  "id": "midnight",
+  "name": "Midnight",
+  "group": "filter",
+  "category": "Cool",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "color",
+      "kind": "grade",
+      "params": {
+        "amount": 1,
+        "temperature": -0.4,
+        "exposure": -0.4,
+        "contrast": 0.3,
+        "shadowTone": "#1b2a6b",
+        "shadowAmount": 0.7
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

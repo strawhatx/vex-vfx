@@ -23,6 +23,8 @@ import {
   lengthOf,
   pieceAt,
   piecesOf,
+  withSpeed,
+  type SceneSpeed,
   toProgram,
   toSource,
   type Piece,
@@ -92,6 +94,7 @@ interface Snapshot {
   nextId: number;
   cuts: number[];
   gone: number[];
+  speeds: SceneSpeed[];
   tracked: [number, FrameSpan][];
   jobs: TrackJob[];
   lastFx: FxSettings;
@@ -137,6 +140,7 @@ export const EMPTY_STATE: EditorState = {
   job: null,
   lanes: [],
   rows: 0,
+  textRows: 0,
   cutRows: 0,
   hasEffects: false,
   scenes: [],
@@ -185,6 +189,8 @@ export class Editor {
   // where the film is split into scenes (see scenes.ts), and the source start of each one deleted
   private cuts: number[] = [];
   private gone: number[] = [];
+  // how fast each film plays, by where it starts (see edit.ts)
+  private speeds: SceneSpeed[] = [];
 
   // the effects and impacts on it
   private tracks: Track[] = [];
@@ -303,6 +309,7 @@ export class Editor {
     this.camPath = [];
     this.cuts = [];
     this.gone = [];
+    this.speeds = [];
     this.undos = [];
     this.redos = [];
     this.merge = null;
@@ -354,10 +361,33 @@ export class Editor {
       return false;
     }
     this.record();
+    // both halves play as fast as the film did
+    const t = this.clip[i]?.t ?? 0,
+      was = this.pieces().find(p => t >= p.s && t < p.e),
+      at = cuts.find(c => !this.cuts.includes(c));
+    if (was && at !== undefined) this.speeds = withSpeed(this.speeds, at, was.speed, was.pitch);
     this.cuts = cuts;
     this.sendScenes();
     this.update(this.filmState(), true);
     return true;
+  }
+
+  // film k (of those kept) plays at `speed` (1: as filmed); pitch: its sound's pitch changes with it.
+  // Changes straight after one another (dragging the slider) are one step to undo.
+  setSpeed(k: number, speed: number, pitch: boolean) {
+    const p = this.pieces()[k];
+    if (!p) return false;
+    this.record(`speed:${p.s}`);
+    this.speeds = withSpeed(this.speeds, p.s, speed, pitch);
+    this.publish(true);
+    this.update(this.filmState(), true);
+    return true;
+  }
+
+  // how fast the film plays at source time t, and whether its pitch changes with it
+  speedAt(t: number) {
+    const p = this.pieces().find(q => t >= q.s - 1e-6 && t < q.e);
+    return { speed: p?.speed ?? 1, pitch: p?.pitch ?? false };
   }
 
   // deletes film k (of those kept): the ones either side then play one after the other. Whatever
@@ -865,6 +895,7 @@ export class Editor {
       nextId: this.nextId,
       cuts: this.cuts,
       gone: this.gone,
+      speeds: this.speeds,
       tracked: [...this.tracked],
       jobs: this.jobs.pending(),
       lastFx: this.lastFx,
@@ -880,6 +911,7 @@ export class Editor {
     this.nextId = snap.nextId;
     this.cuts = snap.cuts;
     this.gone = snap.gone;
+    this.speeds = snap.speeds;
     this.tracked = new Map(snap.tracked);
     this.lastFx = snap.lastFx;
     this.lastImpact = snap.lastImpact;
@@ -915,7 +947,7 @@ export class Editor {
 
   // the kept films, back to back
   private pieces() {
-    return piecesOf(this.cuts, this.gone, this.duration);
+    return piecesOf(this.cuts, this.gone, this.duration, this.speeds);
   }
 
   // program time t in the clip's own time (end: t ends a stretch)

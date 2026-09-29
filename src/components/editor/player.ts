@@ -13,6 +13,24 @@ import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
 import { fitRect } from '@/domain/project/overlay';
 import type { EdgeSettings } from '@/domain/project/edge';
+import {
+  FULL,
+  MAX_ROT,
+  RATIOS,
+  coverZoom,
+  dragCorner,
+  fromCropped,
+  isFull,
+  moveBox,
+  withRatio,
+  type Crop,
+  type RatioId,
+} from '@/domain/project/crop';
+import type { MusicClip } from '@/domain/project/music';
+import { presetById, presets } from '@/domain/effects/library';
+import type { ParamValue } from '@/domain/effects/params';
+import type { PresetGroup } from '@/domain/effects/presets';
+import { previewOf, type LookClip } from '@/domain/project/looks';
 import type { PartOp } from '@/domain/project/parts';
 import { nextFlagged, type Flag } from '@/domain/project/review';
 import { canPin } from '@/domain/project/spot';
@@ -22,8 +40,10 @@ import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { workSize, type Selection } from '@/domain/tracking/types';
 import { AnalysisClient } from '@/infrastructure/analysis/client';
 import { Mixer } from '@/infrastructure/audio/mixer';
-import { clipPeaks, laneSound, type ClipWave } from '@/infrastructure/audio/waveform';
+import { soundLength } from '@/infrastructure/audio/soundFile';
+import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
 import { OverlayPainter } from '@/infrastructure/rendering/overlays';
+import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import type { Fonts } from '@/infrastructure/rendering/fonts';
 import { loadFonts } from './fonts';
@@ -64,6 +84,7 @@ export interface UiState {
   films: Film[];
   lanes: Lane[];
   rows: number;
+  textRows: number;
   cutRows: number;
   scan: number | null;
   job: ProjectState['job'];
@@ -88,6 +109,18 @@ export interface UiState {
   muted: boolean; // the videos' own sound is off
   canRecord: boolean;
   result: Recording | null;
+  // the Audio layer: its music, each with its file's waveform (undefined while it's read), and rows
+  music: MusicUi[];
+  audioRows: number;
+  // filters and screen effects on the film, each group on a layer of its own, and a picture of each
+  // preset on the frame showing (by preset id; missing until made, or where the GPU can't)
+  looks: LookUi[];
+  lookRows: Record<PresetGroup, number>;
+  lookThumbs: Record<string, string>;
+  // the preview's size (px): the film's frame, cropped
+  frame: { w: number; h: number };
+  // the frame being cropped (see startCrop): the box and turn so far, and the ratio it's held to
+  cropping: { crop: Crop; ratio: RatioId } | null;
   // a cutout's outlines being checked before it's cut out (see openReview)
   review: ReviewUi | null;
 }
@@ -97,6 +130,10 @@ export interface UiState {
 // and the video's length, which frames look wrong, the frames it was picked or changed on, its edge
 // settings, the frame showing and when it starts, and what taps and loops on the preview do now:
 // add pieces, or take them out
+// music on the Audio layer, with the waveform of the stretch it plays (empty until it's read)
+export type MusicUi = MusicClip & { row: number; wave: number[] };
+export type LookUi = LookClip & { row: number };
+
 export interface ReviewUi {
   id: number;
   reel: number;
@@ -158,6 +195,7 @@ export const INITIAL_UI: UiState = {
   films: [],
   lanes: [],
   rows: 0,
+  textRows: 0,
   cutRows: 0,
   scan: null,
   job: null,
@@ -175,6 +213,13 @@ export const INITIAL_UI: UiState = {
   muted: false,
   canRecord: false,
   result: null,
+  music: [],
+  audioRows: 0,
+  looks: [],
+  lookRows: { filter: 0, screen: 0 },
+  lookThumbs: {},
+  frame: { w: 0, h: 0 },
+  cropping: null,
   review: null,
 };
 
@@ -208,6 +253,8 @@ const LASSO_STEP = 3;
 const TAP_SLOP = 10;
 // the preview is the film's first video scaled to at most this wide
 const MAX_W = 960;
+// how wide the presets' pictures are (px)
+const LOOK_THUMB_W = 144;
 
 // one video of the film, in the player
 interface ReelView {
@@ -231,8 +278,22 @@ export class Player {
   private views = new Map<number, ReelView>();
   private active: number | null = null; // the video being shown
   private mixer = new Mixer();
+  // each music clip's file's waveform
+  private waves = new Map<number, ClipWave>();
   private overlays = new OverlayPainter();
+  // the looks, drawn over the whole frame on the GPU
+  private looks = new LookPainter();
+  // drawing the frame without them (for the presets' pictures)
+  private plain = false;
+  // everything is drawn on the stage (the film's whole frame, CW x CH), then shown on the preview
+  // cropped (see present)
+  private stage = document.createElement('canvas');
   private ctx: CanvasRenderingContext2D;
+  private out: CanvasRenderingContext2D;
+  private crop: Crop = FULL;
+  // a crop box handle (or the box) being dragged: where the press started and the box then
+  private cropDrag: { part: 'nw' | 'ne' | 'sw' | 'se' | 'move'; x: number; y: number; from: Crop } | null =
+    null;
   private CW = 0; // the preview's size
   private CH = 0;
   private fonts: Fonts | null = null;
@@ -275,7 +336,8 @@ export class Player {
     private view: HTMLCanvasElement,
     private onUi: (ui: UiState) => void,
   ) {
-    this.ctx = view.getContext('2d')!;
+    this.ctx = this.stage.getContext('2d')!;
+    this.out = view.getContext('2d')!;
     this.project = new Project(reel => this.newReel(reel), this.overlays, {
       changed: (s, drawn) => this.projectChanged(s, drawn),
       status: m => this.say(m),
@@ -455,15 +517,19 @@ export class Player {
 
   // puts the clip on another timeline row
   moveToRow(id: number, row: number) {
-    if (this.project.overlay(id)) this.project.moveOverlayRow(id, row);
+    if (this.project.look(id)) this.project.moveLookRow(id, row);
+    else if (this.project.musicClip(id)) this.project.moveMusicRow(id, row);
+    else if (this.project.overlay(id)) this.project.moveOverlayRow(id, row);
     else this.clip(id)?.ed.moveToRow(id, row);
   }
 
   // a copy of the clip, selected
   duplicate(id: number) {
-    const d = this.project.overlay(id)
-      ? this.project.duplicateOverlay(id)
-      : (this.clip(id)?.ed.duplicate(id) ?? null);
+    const d = this.project.look(id)
+      ? this.project.duplicateLook(id)
+      : this.project.overlay(id)
+        ? this.project.duplicateOverlay(id)
+        : (this.clip(id)?.ed.duplicate(id) ?? null);
     if (d !== null) this.select(d);
   }
 
@@ -503,6 +569,12 @@ export class Player {
   }
 
   // ---------- the footage ----------
+
+  // film k plays at `speed`; pitch: its sound's pitch changes with it
+  setSpeed(k: number, speed: number, pitch: boolean) {
+    this.project.setSpeed(k, speed, pitch);
+    this.redraw();
+  }
 
   // splits the film at the playhead into two
   splitHere() {
@@ -708,6 +780,7 @@ export class Player {
       ctx.stroke();
     });
     ctx.restore();
+    this.present();
   }
 
   // the cutout being checked changed (or went, with an undo)
@@ -746,9 +819,112 @@ export class Player {
   }
 
   deleteTrack(id: number) {
-    if (this.project.overlay(id)) this.project.deleteOverlay(id);
+    if (this.project.look(id)) this.project.deleteLook(id);
+    else if (this.project.musicClip(id)) this.project.deleteMusic(id);
+    else if (this.project.overlay(id)) this.project.deleteOverlay(id);
     else this.clip(id)?.ed.deleteTrack(id);
     if (this.ui.selected === id) this.select(null);
+  }
+
+  // ---------- music ----------
+
+  // a sound file added to the Audio layer at the playhead, selected
+  async addMusic(f: File) {
+    this.pause();
+    this.mixer.start(); // (a tap or click chose the file)
+    const url = URL.createObjectURL(f);
+    const length = await soundLength(url);
+    URL.revokeObjectURL(url);
+    if (this.destroyed) return;
+    if (!length) {
+      this.say('This sound file can’t be played in this browser. Try an MP3 or M4A.');
+      return;
+    }
+    const id = this.project.addMusic(f.name.replace(/\.[^.]+$/, '') || 'Music', length, this.time());
+    this.mixer.addMusicFile(id, f);
+    void clipPeaks(f).then(wave => {
+      this.waves.set(id, wave);
+      this.refreshMusic();
+    });
+    this.select(id);
+  }
+
+  // music starts at time t (the playhead, or where it was dragged on the timeline)
+  placeMusic(id: number, t = this.time()) {
+    this.project.placeMusic(id, t);
+  }
+
+  setMusicVolume(id: number, volume: number) {
+    this.project.setMusicVolume(id, volume);
+  }
+
+  // the Audio layer, for the timeline
+  private refreshMusic() {
+    const s = this.state;
+    if (!s) return;
+    const waveOf = (m: MusicClip) => {
+      const w = this.waves.get(m.id);
+      return Array.isArray(w)
+        ? w.slice(Math.floor(m.src.s * WAVE_PER_S), Math.ceil(m.src.e * WAVE_PER_S))
+        : [];
+    };
+    this.set({ music: s.music.map(m => ({ ...m, wave: waveOf(m) })), audioRows: s.audioRows });
+  }
+
+  // ---------- looks ----------
+
+  // a filter or screen effect from preset `id`, at the playhead, selected
+  addLook(presetId: string) {
+    const p = presetById(presetId);
+    if (!p) return;
+    const id = this.project.addLook(p, this.time());
+    this.select(id);
+  }
+
+  // look `id` made from another preset (of the same group), keeping its timing
+  setLookPreset(id: number, presetId: string) {
+    const p = presetById(presetId);
+    if (p) this.project.setLookPreset(id, p);
+  }
+
+  setLookControl(id: number, control: string, v: ParamValue) {
+    this.project.setLookControl(id, control, v);
+  }
+
+  // a look starts at time t (the playhead, or where it was dragged on the timeline)
+  placeLook(id: number, t = this.time()) {
+    this.project.placeLook(id, t);
+  }
+
+  // a picture of each of a group's presets on the frame showing, for its menu
+  async makeLookThumbs(group: PresetGroup) {
+    const rv = this.rv();
+    if (!rv || !this.CW || this.camera) return;
+    // the frame without any looks, small
+    this.plain = true;
+    this.redraw();
+    this.plain = false;
+    const w = LOOK_THUMB_W,
+      h = Math.min(Math.round((w * this.CH) / this.CW), 2 * w);
+    const frame = new OffscreenCanvas(w, h);
+    frame.getContext('2d')!.drawImage(this.stage, 0, 0, w, h);
+    this.redraw();
+    const made: Record<string, string> = {};
+    for (const p of presets()) {
+      if (p.group !== group) continue;
+      const out = this.looks.render(frame, w, h, previewOf(p));
+      if (!out) break; // (no GPU here: the menus show swatches)
+      const pic = new OffscreenCanvas(w, h);
+      pic.getContext('2d')!.drawImage(out, 0, 0);
+      const blob = await pic.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+      if (this.destroyed) return;
+      made[p.id] = URL.createObjectURL(blob);
+    }
+    for (const id of Object.keys(made)) {
+      const old = this.ui.lookThumbs[id];
+      if (old) URL.revokeObjectURL(old);
+    }
+    this.set({ lookThumbs: { ...this.ui.lookThumbs, ...made } });
   }
 
   // ---------- fixing the selected clip at the playhead ----------
@@ -767,6 +943,8 @@ export class Player {
 
   // live while dragging a clip's ends; commitRange when the drag ends tracks what it uncovered
   setRange(id: number, r: { s?: number; e?: number }) {
+    if (this.project.look(id)) return this.project.setLookRange(id, r);
+    if (this.project.musicClip(id)) return this.project.setMusicRange(id, r);
     if (this.project.overlay(id)) return this.project.setOverlayRange(id, r);
     const c = this.clip(id);
     if (!c) return;
@@ -777,6 +955,7 @@ export class Player {
   }
 
   commitRange(id: number) {
+    if (this.project.musicClip(id) || this.project.look(id)) return; // (nothing to track)
     if (this.project.overlay(id)) return this.project.commitOverlayRange(id);
     this.clip(id)?.ed.commitRange(id);
   }
@@ -890,6 +1069,7 @@ export class Player {
     this.recorder?.stop();
     this.mixer.destroy();
     if (this.ui.result) URL.revokeObjectURL(this.ui.result.url);
+    for (const url of Object.values(this.ui.lookThumbs)) URL.revokeObjectURL(url);
   }
 
   // ---------- internals ----------
@@ -923,9 +1103,17 @@ export class Player {
     const signal = this.events.signal;
     const mine = () => this.active === id;
     video.addEventListener('play', () => mine() && this.set({ playing: true }), { signal });
-    video.addEventListener('pause', () => mine() && !this.jumping && this.set({ playing: false }), {
-      signal,
-    });
+    video.addEventListener(
+      'pause',
+      () => {
+        if (!mine() || this.jumping) return;
+        this.set({ playing: false });
+        this.mixer.tick(this.time(), false); // (the music and effect sounds stop too)
+      },
+      {
+        signal,
+      },
+    );
     video.addEventListener('timeupdate', () => mine() && this.set({ time: this.time() }), { signal });
     video.addEventListener('seeked', () => mine() && this.draw(video.currentTime), { signal });
     video.addEventListener('ended', () => mine() && this.advance(), { signal });
@@ -974,8 +1162,176 @@ export class Player {
     const k = Math.min(1, MAX_W / (vw || 1));
     this.CW = Math.round(vw * k);
     this.CH = Math.round(vh * k);
-    this.view.width = this.CW;
-    this.view.height = this.CH;
+    this.stage.width = this.CW;
+    this.stage.height = this.CH;
+    this.layoutView();
+  }
+
+  // the preview's size: the frame's, cropped (or all of it, while cropping)
+  private layoutView() {
+    const c = this.ui.cropping ? FULL : this.crop;
+    const w = Math.max(1, Math.round(c.w * this.CW)),
+      h = Math.max(1, Math.round(c.h * this.CH));
+    if (this.view.width !== w || this.view.height !== h) {
+      this.view.width = w;
+      this.view.height = h;
+    }
+    if (this.ui.frame.w !== w || this.ui.frame.h !== h) this.set({ frame: { w, h } });
+  }
+
+  // shows the stage on the preview: cropped and turned; while cropping, all of it (turned as it
+  // will be), with the crop box over it
+  private present() {
+    const out = this.out,
+      { CW, CH } = this;
+    if (!CW) return;
+    const cropping = this.ui.cropping;
+    const c = cropping?.crop ?? this.crop;
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    if (!cropping && isFull(c)) {
+      out.drawImage(this.stage, 0, 0);
+      return;
+    }
+    out.fillStyle = '#000';
+    out.fillRect(0, 0, this.view.width, this.view.height);
+    const cx = (c.x + c.w / 2) * CW,
+      cy = (c.y + c.h / 2) * CH,
+      k = coverZoom(c, CW, CH);
+    // the frame turned and zoomed about the box's middle (placed where the box is on the preview)
+    const at = cropping ? { x: cx, y: cy } : { x: (c.w * CW) / 2, y: (c.h * CH) / 2 };
+    out.translate(at.x, at.y);
+    out.rotate((c.rot * Math.PI) / 180);
+    out.scale(k, k);
+    out.translate(-cx, -cy);
+    out.drawImage(this.stage, 0, 0);
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    if (cropping) this.drawCropBox(c);
+  }
+
+  // the crop box over the whole frame: outside it dimmed, a grid of thirds, and its corners
+  private drawCropBox(c: Crop) {
+    const out = this.out,
+      x = c.x * this.CW,
+      y = c.y * this.CH,
+      w = c.w * this.CW,
+      h = c.h * this.CH;
+    out.save();
+    out.fillStyle = 'rgba(0,0,0,0.55)';
+    out.beginPath();
+    out.rect(0, 0, this.CW, this.CH);
+    out.rect(x, y, w, h);
+    out.fill('evenodd');
+    const line = Math.max(1, this.CW / 640);
+    out.strokeStyle = 'rgba(255,255,255,0.6)';
+    out.lineWidth = line;
+    out.beginPath();
+    for (const f of [1 / 3, 2 / 3]) {
+      out.moveTo(x + w * f, y);
+      out.lineTo(x + w * f, y + h);
+      out.moveTo(x, y + h * f);
+      out.lineTo(x + w, y + h * f);
+    }
+    out.stroke();
+    out.strokeStyle = '#fff';
+    out.lineWidth = line * 1.5;
+    out.strokeRect(x, y, w, h);
+    // the corners: thick brackets
+    const len = Math.min(w, h, this.CW / 12),
+      t = line * 4;
+    out.lineWidth = t;
+    out.beginPath();
+    for (const [px, py, dx, dy] of [
+      [x, y, 1, 1],
+      [x + w, y, -1, 1],
+      [x, y + h, 1, -1],
+      [x + w, y + h, -1, -1],
+    ]) {
+      out.moveTo(px + dx * len, py);
+      out.lineTo(px, py);
+      out.lineTo(px, py + dy * len);
+    }
+    out.stroke();
+    out.restore();
+  }
+
+  // ---------- cropping the frame ----------
+
+  // starts cropping: the whole frame shows, with the crop box over it
+  startCrop() {
+    this.pause();
+    this.set({ cropping: { crop: { ...this.crop }, ratio: 'custom' } });
+    this.layoutView();
+    this.redraw();
+  }
+
+  // the crop box held to an aspect ratio (or any, custom)
+  setCropRatio(ratio: RatioId) {
+    const cr = this.ui.cropping;
+    if (!cr) return;
+    const r = RATIOS.find(x => x.id === ratio)?.ratio ?? null;
+    this.setCropping({ crop: withRatio(cr.crop, r, this.CW, this.CH), ratio });
+  }
+
+  // the frame turned (degrees, clockwise)
+  setCropRot(rot: number) {
+    const cr = this.ui.cropping;
+    if (cr)
+      this.setCropping({ ...cr, crop: { ...cr.crop, rot: Math.max(-MAX_ROT, Math.min(MAX_ROT, rot)) } });
+  }
+
+  resetCrop() {
+    if (this.ui.cropping) this.setCropping({ crop: { ...FULL }, ratio: 'custom' });
+  }
+
+  // done: the frame is cropped so (a step to undo)
+  applyCrop() {
+    const cr = this.ui.cropping;
+    if (!cr) return;
+    this.set({ cropping: null });
+    this.project.setCrop(cr.crop);
+  }
+
+  cancelCrop() {
+    this.set({ cropping: null });
+    this.layoutView();
+    this.redraw();
+  }
+
+  private setCropping(cropping: { crop: Crop; ratio: RatioId }) {
+    this.set({ cropping });
+    this.present();
+  }
+
+  // a press on the crop box: a corner drags it, the box moves it
+  private cropPress(x: number, y: number) {
+    const cr = this.ui.cropping!,
+      c = cr.crop;
+    const r = this.view.getBoundingClientRect(),
+      reach = (28 * this.CW) / (r.width || 1); // (a finger's width, in frame px)
+    const corners = [
+      ['nw', c.x, c.y],
+      ['ne', c.x + c.w, c.y],
+      ['sw', c.x, c.y + c.h],
+      ['se', c.x + c.w, c.y + c.h],
+    ] as const;
+    const hit = corners.find(([, fx, fy]) => Math.hypot(fx * this.CW - x, fy * this.CH - y) < reach);
+    const inside =
+      x >= c.x * this.CW && x <= (c.x + c.w) * this.CW && y >= c.y * this.CH && y <= (c.y + c.h) * this.CH;
+    if (!hit && !inside) return false;
+    this.cropDrag = { part: hit ? hit[0] : 'move', x, y, from: c };
+    return true;
+  }
+
+  private cropMove(x: number, y: number) {
+    const d = this.cropDrag,
+      cr = this.ui.cropping;
+    if (!d || !cr) return;
+    const ratio = RATIOS.find(r => r.id === cr.ratio)?.ratio ?? null;
+    const crop =
+      d.part === 'move'
+        ? moveBox(d.from, (x - d.x) / this.CW, (y - d.y) / this.CH)
+        : dragCorner(d.from, d.part, x / this.CW, y / this.CH, ratio, this.CW, this.CH);
+    this.setCropping({ ...cr, crop: { ...crop, rot: d.from.rot } });
   }
 
   // shows video `id` (the one playing stops)
@@ -1030,6 +1386,7 @@ export class Player {
       films: s.films,
       lanes: s.lanes,
       rows: s.rows,
+      textRows: s.textRows,
       cutRows: s.cutRows,
       scan: s.scan,
       job: s.job,
@@ -1037,9 +1394,18 @@ export class Player {
       canRedo: s.canRedo,
       duration: s.length,
       ready: s.reels.some(r => this.views.get(r.id)?.ready),
-      canRecord: s.hasEffects && s.length > 0 && canRecord(this.view),
+      canRecord: s.length > 0 && canRecord(this.view), // (a film just cut, sped up or cropped is worth exporting too)
     });
+    this.set({ looks: s.looks, lookRows: s.lookRows });
     this.refreshReels();
+    this.refreshMusic();
+    // the frame's crop changed (or came back with an undo)
+    if (s.crop !== this.crop) {
+      this.crop = s.crop;
+      this.layoutView();
+      drawn = true;
+    }
+    this.mixer.setMusic(s.music);
     this.mixer.setClips(
       s.lanes
         .filter(l => l.kind !== 'cutout')
@@ -1086,6 +1452,10 @@ export class Player {
       'pointerup',
       e => {
         this.fingers.delete(e.pointerId);
+        if (this.ui.cropping) {
+          this.cropDrag = null;
+          return;
+        }
         if (this.ui.review?.hand) this.view.style.cursor = 'grab';
         const dragged = this.grab?.moved;
         this.grab = null;
@@ -1102,6 +1472,7 @@ export class Player {
         this.grab = null;
         this.boxing = null;
         this.lasso = null;
+        this.cropDrag = null;
       },
       { signal },
     );
@@ -1128,6 +1499,7 @@ export class Player {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, this.CW, this.CH);
+    this.present();
   }
 
   private drawCamera() {
@@ -1136,6 +1508,7 @@ export class Player {
     const r = fitRect(v.videoWidth / (v.videoHeight || 1), this.CW, this.CH);
     this.drawEmpty();
     this.ctx.drawImage(v, r.x, r.y, r.w, r.h);
+    this.present();
   }
 
   // t: the showing video element's time
@@ -1159,6 +1532,10 @@ export class Player {
       if (to !== null) return this.jumpTo(rv, to);
     }
     if (this.jumping) return;
+    // the film playing here plays at its speed (with its pitch kept, unless it's asked to change)
+    const sp = ed.speedAt(t - rv.start);
+    if (rv.video.playbackRate !== sp.speed) rv.video.playbackRate = sp.speed;
+    if (rv.video.preservesPitch === sp.pitch) rv.video.preservesPitch = !sp.pitch;
     const review = this.ui.review;
     const outline = (this.showOutline || !!review) && !this.recorder;
     const idx = rv.renderer.render(rv.video, t - rv.start, {
@@ -1180,12 +1557,17 @@ export class Player {
     ctx.drawImage(rv.renderer.canvas, r.x, r.y, r.w, r.h);
     const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
     // (checking a cutout, just the footage and its outlines)
-    if (!review)
+    if (!review) {
       this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
         selected: this.ui.selected,
         outline,
         isolate: this.recorder ? null : this.ui.isolated,
       });
+      // the looks over everything (not over a cutout shown on its own)
+      if (!this.plain && (this.recorder || this.ui.isolated === null))
+        this.looks.apply(ctx, this.project.looksAt(now));
+    }
+    if (this.plain) return;
     this.mixer.tick(now, !paused);
     const ui = this.ui;
     const state = {
@@ -1199,6 +1581,7 @@ export class Player {
       adding: addingWhat(ui.adding),
       selected: ui.selected,
     };
+    this.present();
     if (review?.pen.on) this.drawPath(LOOP_COLORS[review.tool]);
     const hint = review
       ? review.pen.on
@@ -1299,10 +1682,15 @@ export class Player {
 
   // ---------- tapping the preview ----------
 
-  // the pointer's spot in preview pixels
+  // the pointer's spot on the stage (the film's whole frame, px): through the crop, unless it's
+  // being cropped (then the preview shows the whole frame)
   private canvasPt(e: PointerEvent): [number, number] {
     const r = this.view.getBoundingClientRect();
-    return [((e.clientX - r.left) / r.width) * this.CW, ((e.clientY - r.top) / r.height) * this.CH];
+    const x = ((e.clientX - r.left) / r.width) * this.view.width,
+      y = ((e.clientY - r.top) / r.height) * this.view.height;
+    if (this.ui.cropping || isFull(this.crop)) return [x, y];
+    const q = fromCropped(this.crop, this.CW, this.CH, x, y);
+    return [q.x, q.y];
   }
 
   // preview pixels to the showing video's analysis pixels (null outside its picture)
@@ -1347,6 +1735,15 @@ export class Player {
     }
     if (!this.ui.ready || this.camera || this.recorder) return;
     const [x, y] = this.canvasPt(e);
+    // cropping: a press drags the crop box (or a corner of it)
+    if (this.ui.cropping) {
+      this.press = null;
+      if (this.cropPress(x, y)) {
+        e.stopPropagation();
+        this.view.setPointerCapture?.(e.pointerId);
+      }
+      return;
+    }
     this.press = { x, y, cx: e.clientX, cy: e.clientY };
     this.boxing = null;
     this.grab = null;
@@ -1383,6 +1780,10 @@ export class Player {
   }
 
   private pointerMove(e: PointerEvent) {
+    if (this.cropDrag) {
+      const [x, y] = this.canvasPt(e);
+      return this.cropMove(x, y);
+    }
     // the pen's line follows the pointer
     if (this.ui.review?.pen.on && this.path.length) {
       const [x, y] = this.canvasPt(e);
@@ -1573,6 +1974,7 @@ export class Player {
     if (closed) ctx.setLineDash([8, 6]);
     ctx.stroke();
     ctx.restore();
+    this.present();
   }
 
   // the box being drawn, over the preview
@@ -1596,6 +1998,7 @@ export class Player {
     ctx.setLineDash([8, 6]);
     ctx.strokeRect(x, y, w, h);
     ctx.restore();
+    this.present();
   }
 
   // a person, or an effect that can come from a spot? then ask where it comes from; anything else
