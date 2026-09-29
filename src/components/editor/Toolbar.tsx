@@ -11,6 +11,7 @@ export type ToolKey =
   | 'filters'
   | 'screenfx'
   | 'body'
+  | 'packs'
   | 'impacts'
   | 'elements'
   | 'cancel'
@@ -58,7 +59,17 @@ export interface ToolBtn {
 // what the toolbar lists: the effect categories, the elements, the impact families, the footage
 // tools (the film selected), a selected effect, impact, cutout, music or look's tools
 export type Mode =
-  'catalog' | 'elements' | 'impacts' | 'clip' | 'track' | 'impact' | 'cutout' | 'music' | 'look' | null;
+  | 'catalog'
+  | 'elements'
+  | 'impacts'
+  | 'clip'
+  | 'track'
+  | 'impact'
+  | 'cutout'
+  | 'music'
+  | 'look'
+  | 'effectclip'
+  | null;
 
 // the Elements menu
 export const ELEMENT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
@@ -135,6 +146,7 @@ export function toolsFor(
   if (mode === 'catalog')
     return [
       { key: 'body', label: 'Body', icon: I.person, disabled: s.busy || !s.ready },
+      { key: 'packs', label: 'My clips', icon: I.film, disabled: s.busy || !s.ready },
       { key: 'screenfx', label: 'Video', icon: I.scene, disabled: s.busy || !s.ready },
       { key: 'elements', label: 'Elements', icon: I.flame, disabled: s.busy },
       ...CATEGORIES.filter(c => SHOW_LASERS || c.id !== 'laser').map(category),
@@ -209,6 +221,16 @@ export function toolsFor(
         icon: I.target,
         disabled: s.busy,
       },
+      { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
+      { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
+    ];
+  // one of the user's own effect clips
+  if (mode === 'effectclip')
+    return [
+      sheet('controls', 'Adjust', I.adjust),
+      { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
+      { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
+      { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
       { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
       { key: 'delete', label: 'Delete', icon: I.trash, disabled: s.recording },
     ];

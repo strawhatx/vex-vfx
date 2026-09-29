@@ -13,6 +13,7 @@ import { ExportResult } from './ExportResult';
 import { PresetControls, PresetSheet, type MenuGroup } from './LookSheet';
 import { AnimSheet } from './AnimSheet';
 import { TransitionSheet } from './TransitionSheet';
+import { EffectClipControls, PackSheet } from './PackSheet';
 import { playTime } from '@/application/project';
 import { fitDuration } from '@/domain/project/transitions';
 import { lookGroup } from '@/domain/project/looks';
@@ -58,6 +59,8 @@ export default function VfxStudio({ id }: { id: string }) {
   const [lookMenu, setLookMenu] = useState<MenuGroup | null>(null);
   // the join (into this film) whose transition is being picked
   const [join, setJoin] = useState<number | null>(null);
+  // the effects library open, to place one of its clips
+  const [packMenu, setPackMenu] = useState(false);
 
   const [full, setFull] = useState(false);
   const [showOutline, setShowOutline] = useState(true);
@@ -100,10 +103,17 @@ export default function VfxStudio({ id }: { id: string }) {
   const lane = ui.lanes.find(l => l.id === ui.selected) ?? null;
   const music = ui.music.find(m => m.id === ui.selected) ?? null;
   const look = ui.looks.find(c => c.id === ui.selected) ?? null;
+  const effectClip = ui.effectClips.find(c => c.id === ui.selected) ?? null;
   // the settings the panels show and change: the selected clip's, or the only clip's
   const fxLane = lane ?? (ui.lanes.length === 1 ? ui.lanes[0] : null);
   const fx = fxLane?.fx ?? draftFx;
-  const mode = music ? 'music' : look ? 'look' : modeFor(lane, scene !== null, catalog);
+  const mode = music
+    ? 'music'
+    : look
+      ? 'look'
+      : effectClip
+        ? 'effectclip'
+        : modeFor(lane, scene !== null, catalog);
   // the presets menu showing: one to add a look from, or the selected look's to swap it for
   // (a body effect selected: its body presets)
   const bodyLane = lane?.kind === 'effect' && lane.body ? lane : null;
@@ -180,6 +190,7 @@ export default function VfxStudio({ id }: { id: string }) {
     setTool(null);
     setLookMenu(null);
     setJoin(null);
+    setPackMenu(false);
     player()?.select(null);
   }
 
@@ -210,6 +221,7 @@ export default function VfxStudio({ id }: { id: string }) {
     setTool(null);
     setLookMenu(null);
     setJoin(null);
+    setPackMenu(false);
     setScene(null);
     setCatalog(null);
     player()?.select(id);
@@ -237,12 +249,25 @@ export default function VfxStudio({ id }: { id: string }) {
   // playhead (a body effect, where the person or object is tapped next)
   function openLooks(group: MenuGroup) {
     setJoin(null);
+    setPackMenu(false);
     setScene(null);
     setCatalog(null);
     setTool(null);
     player()?.select(null);
     if (ui.adding) player()?.cancelAdding();
     setLookMenu(group);
+  }
+
+  // My clips: the effects library, to place one of its clips at the playhead
+  function openPacks() {
+    setJoin(null);
+    setScene(null);
+    setCatalog(null);
+    setTool(null);
+    setLookMenu(null);
+    player()?.select(null);
+    if (ui.adding) player()?.cancelAdding();
+    setPackMenu(true);
   }
 
   // a preset picked: added at the playhead, or, while the look it added (or any of its group) is
@@ -368,6 +393,8 @@ export default function VfxStudio({ id }: { id: string }) {
         return openLooks('screen');
       case 'body':
         return openLooks('body');
+      case 'packs':
+        return openPacks();
       case 'addtext':
         return openLooks('text');
       case 'crop':
@@ -409,6 +436,23 @@ export default function VfxStudio({ id }: { id: string }) {
       case 'animation':
         setLookMenu(null);
         return setTool(cur => (cur === key ? null : key));
+    }
+    if (effectClip) {
+      switch (key) {
+        case 'start':
+          return pl?.rangeHere(effectClip.id, 's');
+        case 'end':
+          return pl?.rangeHere(effectClip.id, 'e');
+        case 'place':
+          return pl?.placeEffect(effectClip.id);
+        case 'duplicate':
+          setTool(null);
+          return pl?.duplicate(effectClip.id);
+        case 'delete':
+          setTool(null);
+          return pl?.deleteTrack(effectClip.id);
+      }
+      return;
     }
     if (look) {
       switch (key) {
@@ -564,6 +608,8 @@ export default function VfxStudio({ id }: { id: string }) {
             addOverlay,
             addAudio: () => audioRef.current?.click(),
             addLook: openLooks,
+            addEffectClip: openPacks,
+            moveEffect: (id, t) => player()?.placeEffect(id, t),
             moveMusic: (id, t) => player()?.placeMusic(id, t),
             moveLook: (id, t) => player()?.placeLook(id, t),
             setRange: (id, r) => player()?.setRange(id, r),
@@ -574,7 +620,15 @@ export default function VfxStudio({ id }: { id: string }) {
           }}
         />
         <Toolbar
-          label={music ? `${music.name} tools` : look ? `${look.name} tools` : toolbarLabel(mode, lane)}
+          label={
+            music
+              ? `${music.name} tools`
+              : look
+                ? `${look.name} tools`
+                : effectClip
+                  ? `${effectClip.name} tools`
+                  : toolbarLabel(mode, lane)
+          }
           buttons={buttons}
           onPress={runTool}
           onBack={mode === 'impacts' || mode === 'elements' ? backToCatalog : mode ? deselect : undefined}
@@ -644,6 +698,25 @@ export default function VfxStudio({ id }: { id: string }) {
                 ? player()?.setBurstControl(presetLane.id, c, v)
                 : player()?.setBodyControl(presetLane.id, c, v)
             }
+            onClose={() => setTool(null)}
+          />
+        )}
+        {packMenu && !ui.choosing && !ui.cutting && (
+          <PackSheet
+            packs={ui.packs}
+            onAdd={f => void player()?.addPack(f)}
+            onPick={id => {
+              setPackMenu(false);
+              player()?.addEffectClip(id);
+            }}
+            onRemove={id => void player()?.removePack(id)}
+            onClose={() => setPackMenu(false)}
+          />
+        )}
+        {tool === 'controls' && effectClip && (
+          <EffectClipControls
+            clip={effectClip}
+            onChange={p => player()?.setEffectLook(effectClip.id, p)}
             onClose={() => setTool(null)}
           />
         )}

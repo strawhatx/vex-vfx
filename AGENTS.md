@@ -23,7 +23,7 @@ src/
 ├── infrastructure/  # browser adapters that implement the ports
 │   ├── analysis/    #   worker, MediaPipe models (segmenter, pose, hands, face), object and body-part trackers (implements Analysis)
 │   ├── rendering/   #   canvas renderer, effect simulation, WebGL fire (implements EffectLayers); body effects as passes; gpu/: color, screen, tint and dissolve passes
-│   ├── storage/     #   films saved on this device, in IndexedDB (implements FilmStore)
+│   ├── storage/     #   films and the effects library, kept on this device in IndexedDB (implements FilmStore, PackLibrary)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root
 ├── components/home/    # the start page's list of saved projects; homeStore.ts is its root

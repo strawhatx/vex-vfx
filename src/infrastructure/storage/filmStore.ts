@@ -5,12 +5,7 @@
 // a picture of it, for listing films without reading them all. Nothing leaves the device.
 import type { FilmInfo, FilmStore } from '@/application/ports';
 import type { SavedFilm } from '@/application/project';
-
-const DB = 'flarecut',
-  VERSION = 2,
-  FILMS = 'films',
-  FILES = 'files',
-  INFO = 'info';
+import { FILES, FILMS, INFO, done, openDb, request } from './db';
 
 // a film as it's kept: its files by key rather than the files themselves
 type Kept = Omit<SavedFilm, 'reels' | 'music'> & {
@@ -19,7 +14,6 @@ type Kept = Omit<SavedFilm, 'reels' | 'music'> & {
 };
 
 export class IndexedDbFilmStore implements FilmStore {
-  private db: Promise<IDBDatabase> | null = null;
   // the key each file is kept under (files opened from here, or saved already)
   private keys = new WeakMap<Blob, string>();
 
@@ -91,33 +85,6 @@ export class IndexedDbFilmStore implements FilmStore {
   }
 
   private open() {
-    if (this.db) return this.db;
-    // (asks the browser not to clear what's kept when space runs short; it may say no)
-    void navigator.storage?.persist?.().catch(() => false);
-    this.db = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB, VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(FILMS)) db.createObjectStore(FILMS);
-        if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES);
-        if (!db.objectStoreNames.contains(INFO)) db.createObjectStore(INFO);
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    return this.db;
+    return openDb();
   }
 }
-
-const request = <T>(r: IDBRequest) =>
-  new Promise<T>((resolve, reject) => {
-    r.onsuccess = () => resolve(r.result as T);
-    r.onerror = () => reject(r.error);
-  });
-
-const done = (tx: IDBTransaction) =>
-  new Promise<void>((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-  });

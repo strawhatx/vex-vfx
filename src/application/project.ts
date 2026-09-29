@@ -51,6 +51,16 @@ import {
 import type { ParamValue } from '@/domain/effects/params';
 import type { LookGroup, Preset } from '@/domain/effects/presets';
 import type { TextPlace } from '@/domain/effects/typeset';
+import {
+  effectRange,
+  effectsAt,
+  newEffectClip,
+  placeEffect,
+  trimEffect,
+  withLook,
+  type EffectClip,
+  type PackItem,
+} from '@/domain/project/effectClips';
 import { transitionAt, withTransition, type Played, type Transition } from '@/domain/project/transitions';
 import { assignLayerRows, assignRows, layerOf, type Lane } from '@/domain/project/track';
 import type { Selection, TrackMeta } from '@/domain/tracking/types';
@@ -60,8 +70,9 @@ import type { Analysis, CutFrame, EffectLayers, OverlayPictures } from './ports'
 export const REEL_IDS = 100000;
 // music is numbered from here, apart from every clip
 export const MUSIC_IDS = 1_000_000_000;
-// and looks from here
+// and looks from here, and effect clips from here
 export const LOOK_IDS = 1_500_000_000;
+export const EFFECT_IDS = 1_800_000_000;
 
 // what each video needs from the outside: its own analysis and its own drawing
 export interface ReelPorts {
@@ -103,6 +114,8 @@ export interface ProjectState {
   music: (MusicClip & { row: number })[]; // on the Audio layer, on `audioRows`
   audioRows: number;
   transitions: Transition[]; // at the joins between films (see transitions.ts)
+  effectClips: (EffectClip & { row: number })[]; // on the Effect clips layer, on `effectRows`
+  effectRows: number;
   looks: (LookClip & { row: number })[]; // filters and screen effects, each on its group's layer
   lookRows: Record<LookGroup, number>;
   crop: Crop; // the film's frame, cropped (see crop.ts)
@@ -139,8 +152,10 @@ export interface SavedFilm {
   music: { clip: MusicClip; file: Blob }[];
   looks: LookClip[];
   transitions: Transition[];
+  effectClips: EffectClip[];
+  packs: { id: string; file: Blob }[]; // the library videos the effect clips play
   crop: Crop;
-  next: { reel: number; overlay: number; music: number; look: number };
+  next: { reel: number; overlay: number; music: number; look: number; effect: number };
 }
 
 export const SAVE_VERSION = 1;
@@ -153,6 +168,7 @@ interface Snap {
   music: MusicClip[];
   looks: LookClip[];
   transitions: Transition[];
+  effectClips: EffectClip[];
   crop: Crop;
 }
 
@@ -175,6 +191,8 @@ const EMPTY: ProjectState = {
   music: [],
   audioRows: 0,
   transitions: [],
+  effectClips: [],
+  effectRows: 0,
   looks: [],
   lookRows: { filter: 0, screen: 0, text: 0 },
   crop: FULL,
@@ -194,6 +212,10 @@ export class Project {
   private musicFiles = new Map<number, Blob>();
   private looks: LookClip[] = [];
   private transitions: Transition[] = [];
+  private effectClips: EffectClip[] = [];
+  // each library video an effect clip plays (kept after it's deleted, as it can come back with undo)
+  private packFiles = new Map<string, Blob>();
+  private nextEffect = EFFECT_IDS;
   private crop: Crop = FULL;
   private nextMusic = MUSIC_IDS;
   private nextLook = LOOK_IDS;
@@ -784,6 +806,81 @@ export class Project {
     return this.state.films.map(f => ({ reel: f.reel, s: f.s, at: f.at, length: playTime(f) }));
   }
 
+  // ---------- effect clips ----------
+
+  // a clip of library video `item` (its file: `file`), placed at film time `at`
+  addEffectClip(item: PackItem, file: Blob, at: number) {
+    return this.step(undefined, () => {
+      const c = newEffectClip(this.nextEffect++, item, Math.max(0, at), this.length);
+      this.packFiles.set(item.id, file);
+      this.effectClips.push(c);
+      this.publish(true);
+      return c.id;
+    });
+  }
+
+  effectClip(id: number | null) {
+    return this.effectClips.find(c => c.id === id) ?? null;
+  }
+
+  // the clips playing at film time t, each with the time in its video then
+  effectsAt(t: number) {
+    return effectsAt(this.effectClips, t);
+  }
+
+  setEffectRange(id: number, r: { s?: number; e?: number }) {
+    this.changeEffect(id, c => trimEffect(c, r), `effect:${id}`);
+  }
+
+  placeEffect(id: number, at: number) {
+    this.changeEffect(id, c => placeEffect(c, at));
+  }
+
+  moveEffectRow(id: number, row: number) {
+    this.changeEffect(id, c => ({ ...c, row }));
+  }
+
+  // where it's put in the frame and how it's blended (live while dragging it or a slider)
+  setEffectLook(id: number, p: Parameters<typeof withLook>[1]) {
+    this.changeEffect(id, c => withLook(c, p), `effectlook:${id}:${Object.keys(p).join()}`);
+  }
+
+  // a copy, straight after it on the same row
+  duplicateEffect(id: number) {
+    const c = this.effectClip(id);
+    if (!c) return null;
+    return this.step(undefined, () => {
+      const d: EffectClip = { ...c, id: this.nextEffect++, at: effectRange(c).e };
+      this.effectClips.push(d);
+      this.publish(true);
+      return d.id;
+    });
+  }
+
+  deleteEffect(id: number) {
+    if (!this.effectClip(id)) return;
+    this.step(undefined, () => {
+      this.effectClips = this.effectClips.filter(c => c.id !== id);
+      this.publish(true);
+    });
+  }
+
+  // the library videos the effect clips play, by id
+  get packsInUse() {
+    const ids = new Set(this.effectClips.map(c => c.pack));
+    return [...this.packFiles].filter(([id]) => ids.has(id)).map(([id, file]) => ({ id, file }));
+  }
+
+  private changeEffect(id: number, change: (c: EffectClip) => EffectClip, merge?: string) {
+    const c = this.effectClip(id);
+    if (!c) return;
+    this.step(merge, () => {
+      const next = change(c);
+      this.effectClips = this.effectClips.map(x => (x.id === id ? next : x));
+      this.publish(true);
+    });
+  }
+
   // ---------- saving ----------
 
   // the film as it's kept to open again later
@@ -798,8 +895,16 @@ export class Project {
       }),
       looks: this.looks.slice(),
       transitions: this.transitions.slice(),
+      effectClips: this.effectClips.slice(),
+      packs: this.packsInUse,
       crop: this.crop,
-      next: { reel: this.nextReel, overlay: this.nextOverlay, music: this.nextMusic, look: this.nextLook },
+      next: {
+        reel: this.nextReel,
+        overlay: this.nextOverlay,
+        music: this.nextMusic,
+        look: this.nextLook,
+        effect: this.nextEffect,
+      },
     };
   }
 
@@ -818,6 +923,9 @@ export class Project {
     this.musicFiles = new Map(s.music.map(m => [m.clip.id, m.file]));
     this.looks = s.looks.slice();
     this.transitions = s.transitions.slice();
+    this.effectClips = (s.effectClips ?? []).slice();
+    this.packFiles = new Map((s.packs ?? []).map(p => [p.id, p.file]));
+    this.nextEffect = s.next.effect ?? EFFECT_IDS;
     this.crop = s.crop;
     this.nextReel = s.next.reel;
     this.nextOverlay = s.next.overlay;
@@ -912,6 +1020,7 @@ export class Project {
       music: this.music.slice(),
       looks: this.looks.slice(),
       transitions: this.transitions.slice(),
+      effectClips: this.effectClips.slice(),
       crop: this.crop,
     };
   }
@@ -923,6 +1032,7 @@ export class Project {
     this.music = s.music.slice();
     this.looks = s.looks.slice();
     this.transitions = s.transitions.slice();
+    this.effectClips = s.effectClips.slice();
     this.crop = s.crop;
   }
 
@@ -1068,6 +1178,10 @@ export class Project {
       lookRows[group] = count(got);
     }
     this.looks.forEach(c => (c.row = lookRow.get(c.id) ?? 0));
+    const effectRows = assignRows(
+      this.effectClips.map(effectRange),
+      this.effectClips.map(c => c.row),
+    );
     const reels = this.reels.map((r, k) => ({
       id: r.id,
       at: spans[k].at,
@@ -1083,6 +1197,8 @@ export class Project {
       music: this.music.map((m, k) => ({ ...m, row: audioRows[k] })),
       audioRows: count(audioRows),
       transitions: this.transitions,
+      effectClips: this.effectClips.map((c, k) => ({ ...c, row: effectRows[k] })),
+      effectRows: count(effectRows),
       looks: this.looks.map(c => ({ ...c, row: lookRow.get(c.id) ?? 0 })),
       lookRows,
       crop: this.crop,
@@ -1093,6 +1209,7 @@ export class Project {
         this.overlays.length > 0 ||
         this.music.length > 0 ||
         this.looks.length > 0 ||
+        this.effectClips.length > 0 ||
         this.reels.some(r => r.state?.hasEffects),
       canUndo: this.undos.length > 0,
       canRedo: this.redos.length > 0,

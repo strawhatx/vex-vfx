@@ -15,6 +15,7 @@ import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
 import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
 import type { LookGroup } from '@/domain/effects/presets';
 import { LookClip } from './LookClip';
+import { EffectClipBar } from './EffectClipBar';
 import { MusicClip } from './MusicClip';
 import { PAD, type Scale } from './layout';
 import { Ruler } from './Ruler';
@@ -50,6 +51,9 @@ export function Timeline({
     addOverlay(): void;
     addAudio(): void;
     addLook(group: LookGroup): void;
+    addEffectClip(): void;
+    // an effect clip dragged to start at time t
+    moveEffect(id: number, t: number): void;
     // music dragged to start at time t
     moveMusic(id: number, t: number): void;
     // a look dragged to start at time t
@@ -200,6 +204,25 @@ export function Timeline({
               />
               {lookLayer('text')}
               <Layer
+                layer="clips"
+                rows={Array.from({ length: ui.effectRows }, (_, r) =>
+                  ui.effectClips.filter(c => c.row === r),
+                )}
+                add={{ label: 'Add effect clip', on: false, run: on.addEffectClip }}
+                busy={busy}
+                clip={c => (
+                  <EffectClipBar
+                    key={c.id}
+                    clip={c}
+                    scale={scale}
+                    selected={c.id === ui.selected}
+                    duration={dur}
+                    on={clipActions}
+                    moveTo={t => on.moveEffect(c.id, t)}
+                  />
+                )}
+              />
+              <Layer
                 layer="effects"
                 rows={rowsOf('effects', ui.rows)}
                 add={{
@@ -245,12 +268,13 @@ const ADD_LOOK: Record<LookGroup, string> = {
 };
 
 // how each layer is marked on the left
-type LayerName = LayerKind | 'audio' | LookGroup;
+type LayerName = LayerKind | 'audio' | 'clips' | LookGroup;
 const LAYERS: Record<LayerName, { name: string; icon: string }> = {
   overlay: { name: 'Overlay', icon: I.cutout },
   audio: { name: 'Audio', icon: I.sound },
   text: { name: 'Text', icon: I.text },
   effects: { name: 'Effects', icon: I.effects },
+  clips: { name: 'Effect clips', icon: I.flame },
   screen: { name: 'Video effects', icon: I.scene },
   filter: { name: 'Filters', icon: I.color },
 };

@@ -1562,6 +1562,25 @@ input[type='range']::-moz-range-thumb {
 .text-clip {
   --c: #f4f4f5;
 }
+.packclip-clip {
+  --c: #ff7a2f;
+}
+/* a clip in the effects library: a button to take it out, on its corner */
+.pack-tile {
+  position: relative;
+}
+.pack-remove {
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
 .music-wave {
   position: absolute;
   inset: 3px 0;

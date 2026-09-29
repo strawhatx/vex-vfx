@@ -454,3 +454,42 @@ describe('saving the film', () => {
     expect(project.open({ ...project.saved(), version: 99 as 1 })).toBe(false);
   });
 });
+
+describe('effect clips', () => {
+  const boom = { id: 'p1', name: 'Boom', length: 3, blend: 'screen' as const };
+
+  it('are placed, trimmed, moved and set, each a step to undo, and saved with their videos', () => {
+    addVideo(10);
+    const file = new Blob(['boom']);
+    const id = project.addEffectClip(boom, file, 2)!;
+    expect(state.effectClips).toMatchObject([{ id, at: 2, src: { s: 0, e: 3 }, row: 0 }]);
+    expect(state.effectRows).toBe(1);
+    project.setEffectRange(id, { s: 3 });
+    expect(state.effectClips[0]).toMatchObject({ at: 3, src: { s: 1, e: 3 } });
+    project.setEffectLook(id, { x: 0.2, blend: 'key' });
+    expect(project.effectsAt(3.5)).toEqual([{ clip: project.effectClip(id), time: 1.5 }]);
+    project.undo();
+    expect(state.effectClips[0].blend).toBe('screen');
+    const d = project.duplicateEffect(id)!;
+    expect(project.effectClip(d)?.at).toBe(5);
+
+    const saved = project.saved();
+    expect(saved.packs).toEqual([{ id: 'p1', file }]);
+    project = newProject();
+    project.open(saved);
+    expect(state.effectClips.map(c => c.id)).toEqual([id, d]);
+    expect(project.packsInUse).toEqual([{ id: 'p1', file }]);
+    project.deleteEffect(d);
+    expect(state.effectClips).toHaveLength(1);
+  });
+
+  it('open from a film saved before there were any', () => {
+    addVideo(6);
+    const old = project.saved() as Partial<ReturnType<typeof project.saved>>;
+    delete old.effectClips;
+    delete old.packs;
+    project = newProject();
+    expect(project.open(old as ReturnType<typeof project.saved>)).toBe(true);
+    expect(state.effectClips).toEqual([]);
+  });
+});

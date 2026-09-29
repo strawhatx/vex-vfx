@@ -3,6 +3,7 @@
 import type { ImpactLook, ImpactStyle } from '@/domain/effects/impacts';
 import type { FxSettings } from '@/domain/effects/palettes';
 import type { ObjectPass } from '@/domain/effects/passes';
+import type { PackItem } from '@/domain/project/effectClips';
 import type { SavedFilm } from './project';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Background } from '@/domain/project/cutout';
@@ -165,5 +166,13 @@ export interface FilmStore {
   save(id: string, film: SavedFilm, info: Omit<FilmInfo, 'id'>): Promise<void>;
   // every film kept, the last saved first
   list(): Promise<FilmInfo[]>;
+  remove(id: string): Promise<void>;
+}
+
+// The library of effect videos the user has added, kept on this device for any project.
+export interface PackLibrary {
+  // the last added first; picture: a small one of it (null if there wasn't one to take)
+  list(): Promise<{ item: PackItem; file: Blob; picture: Blob | null }[]>;
+  add(item: PackItem, file: Blob, picture: Blob | null): Promise<void>;
   remove(id: string): Promise<void>;
 }

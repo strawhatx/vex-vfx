@@ -19,6 +19,7 @@ import {
 } from '@/domain/effects/animation';
 import { overlayLength } from '@/domain/project/overlay';
 import type { Transition } from '@/domain/project/transitions';
+import { guessBlend, type EffectClip, type PackItem } from '@/domain/project/effectClips';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
 import { fitRect } from '@/domain/project/overlay';
@@ -55,6 +56,9 @@ import { soundLength } from '@/infrastructure/audio/soundFile';
 import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
 import { OverlayPainter } from '@/infrastructure/rendering/overlays';
 import { IndexedDbFilmStore } from '@/infrastructure/storage/filmStore';
+import { IndexedDbPackLibrary } from '@/infrastructure/storage/packLibrary';
+import { EffectClipPainter } from '@/infrastructure/rendering/effectClips';
+import { probeVideo } from '@/infrastructure/video/probe';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
@@ -131,6 +135,11 @@ export interface UiState {
   lookRows: Record<LookGroup, number>;
   lookThumbs: Record<string, string>;
   transitions: Transition[]; // at the joins between films
+  // effect clips on the film, on `effectRows`, and the library of effect videos they're from (each
+  // with a picture of it, if there was one)
+  effectClips: (EffectClip & { row: number })[];
+  effectRows: number;
+  packs: (PackItem & { picture: string | null })[];
   // the preview's size (px): the film's frame, cropped
   frame: { w: number; h: number };
   // the frame being cropped (see startCrop): the box and turn so far, and the ratio it's held to
@@ -236,6 +245,9 @@ export const INITIAL_UI: UiState = {
   lookRows: { filter: 0, screen: 0, text: 0 },
   lookThumbs: {},
   transitions: [],
+  effectClips: [],
+  effectRows: 0,
+  packs: [],
   frame: { w: 0, h: 0 },
   cropping: null,
   review: null,
@@ -316,6 +328,11 @@ export class Player {
   // saving the project on this device: whether what was saved has been opened yet (nothing's saved
   // before, so it isn't written over), whether there are changes to save, and when it last was
   private store = new IndexedDbFilmStore();
+  // the effects library, its videos by id, and the film's effect clips drawn (a paused one's video
+  // getting to its frame draws the frame again)
+  private library = new IndexedDbPackLibrary();
+  private packFiles = new Map<string, Blob>();
+  private effectPainter = new EffectClipPainter(() => this.paused() && this.redraw());
   private opened = false;
   private unsaved = false;
   private saveTimer = 0;
@@ -360,8 +377,10 @@ export class Player {
   // the selected cutout being dragged about the preview: where the press started (preview pixels)
   // and its move then
   private grab: { id: number; x: number; y: number; from: Transform; moved: boolean } | null = null;
-  // a text being dragged about the preview: where the press started (stage px) and where it was
-  private textGrab: {
+  // a text or effect clip being dragged about the preview: where the press started (stage px) and
+  // where it was
+  private placeGrab: {
+    kind: 'text' | 'effect';
     id: number;
     x: number;
     y: number;
@@ -397,6 +416,7 @@ export class Player {
     this.listen();
     if (filmId) void this.openSaved();
     else this.opened = true;
+    void this.loadPacks();
     void loadFonts().then(fonts => {
       if (this.destroyed) return;
       this.fonts = fonts;
@@ -569,7 +589,8 @@ export class Player {
 
   // puts the clip on another timeline row
   moveToRow(id: number, row: number) {
-    if (this.project.look(id)) this.project.moveLookRow(id, row);
+    if (this.project.effectClip(id)) this.project.moveEffectRow(id, row);
+    else if (this.project.look(id)) this.project.moveLookRow(id, row);
     else if (this.project.musicClip(id)) this.project.moveMusicRow(id, row);
     else if (this.project.overlay(id)) this.project.moveOverlayRow(id, row);
     else this.clip(id)?.ed.moveToRow(id, row);
@@ -577,11 +598,13 @@ export class Player {
 
   // a copy of the clip, selected
   duplicate(id: number) {
-    const d = this.project.look(id)
-      ? this.project.duplicateLook(id)
-      : this.project.overlay(id)
-        ? this.project.duplicateOverlay(id)
-        : (this.clip(id)?.ed.duplicate(id) ?? null);
+    const d = this.project.effectClip(id)
+      ? this.project.duplicateEffect(id)
+      : this.project.look(id)
+        ? this.project.duplicateLook(id)
+        : this.project.overlay(id)
+          ? this.project.duplicateOverlay(id)
+          : (this.clip(id)?.ed.duplicate(id) ?? null);
     if (d !== null) this.select(d);
   }
 
@@ -871,7 +894,8 @@ export class Player {
   }
 
   deleteTrack(id: number) {
-    if (this.project.look(id)) this.project.deleteLook(id);
+    if (this.project.effectClip(id)) this.project.deleteEffect(id);
+    else if (this.project.look(id)) this.project.deleteLook(id);
     else if (this.project.musicClip(id)) this.project.deleteMusic(id);
     else if (this.project.overlay(id)) this.project.deleteOverlay(id);
     else this.clip(id)?.ed.deleteTrack(id);
@@ -953,6 +977,66 @@ export class Player {
 
   setBodyControl(id: number, control: string, v: ParamValue) {
     this.clip(id)?.ed.setBodyControl(id, control, v);
+  }
+
+  // ---------- effect clips ----------
+
+  // the effects library, with a picture of each
+  private async loadPacks() {
+    const all = await this.library.list();
+    if (this.destroyed) return;
+    for (const p of this.ui.packs) if (p.picture) URL.revokeObjectURL(p.picture);
+    for (const { item, file } of all) this.packFiles.set(item.id, file);
+    this.set({
+      packs: all.map(({ item, picture }) => ({
+        ...item,
+        picture: picture ? URL.createObjectURL(picture) : null,
+      })),
+    });
+  }
+
+  // a video added to the effects library (how it's blended guessed from its first frame)
+  async addPack(f: File) {
+    this.say('Adding it to your effects…');
+    const probe = await probeVideo(f);
+    if (this.destroyed) return;
+    if (!probe) return this.say('This video can’t be played in this browser. Try an MP4 (H.264).');
+    const item: PackItem = {
+      id: crypto.randomUUID(),
+      name: f.name.replace(/\.[^.]+$/, '') || 'Effect',
+      length: probe.length,
+      blend: guessBlend(probe.corners),
+    };
+    await this.library.add(item, f, probe.picture);
+    await this.loadPacks();
+    this.say(`Added “${item.name}”.`);
+  }
+
+  // a video taken out of the library (clips already made from it keep it)
+  async removePack(id: string) {
+    await this.library.remove(id);
+    await this.loadPacks();
+  }
+
+  // a clip of library video `packId` at the playhead, in the middle of the frame, selected
+  addEffectClip(packId: string) {
+    const item = this.ui.packs.find(p => p.id === packId),
+      file = this.packFiles.get(packId);
+    if (!item || !file) return;
+    this.effectPainter.setFiles([{ id: packId, file }]);
+    const { picture, ...pack } = item;
+    void picture;
+    const id = this.project.addEffectClip(pack, file, this.time());
+    this.select(id);
+  }
+
+  setEffectLook(id: number, p: Parameters<Project['setEffectLook']>[1]) {
+    this.project.setEffectLook(id, p);
+  }
+
+  // an effect clip starts at time t (the playhead, or where it was dragged on the timeline)
+  placeEffect(id: number, t = this.time()) {
+    this.project.placeEffect(id, t);
   }
 
   // ---------- burst impacts ----------
@@ -1150,6 +1234,7 @@ export class Player {
 
   // live while dragging a clip's ends; commitRange when the drag ends tracks what it uncovered
   setRange(id: number, r: { s?: number; e?: number }) {
+    if (this.project.effectClip(id)) return this.project.setEffectRange(id, r);
     if (this.project.look(id)) return this.project.setLookRange(id, r);
     if (this.project.musicClip(id)) return this.project.setMusicRange(id, r);
     if (this.project.overlay(id)) return this.project.setOverlayRange(id, r);
@@ -1162,7 +1247,7 @@ export class Player {
   }
 
   commitRange(id: number) {
-    if (this.project.musicClip(id) || this.project.look(id)) return; // (nothing to track)
+    if (this.project.musicClip(id) || this.project.look(id) || this.project.effectClip(id)) return; // (nothing to track)
     if (this.project.overlay(id)) return this.project.commitOverlayRange(id);
     this.clip(id)?.ed.commitRange(id);
   }
@@ -1273,6 +1358,8 @@ export class Player {
       if (rv.url) URL.revokeObjectURL(rv.url);
     }
     this.saveNow();
+    this.effectPainter.destroy();
+    for (const p of this.ui.packs) if (p.picture) URL.revokeObjectURL(p.picture);
     this.camera?.cancel();
     clearTimeout(this.previewTimer);
     this.recorder?.stop();
@@ -1292,6 +1379,7 @@ export class Player {
     const saved = await this.store.load(id);
     if (this.destroyed) return;
     if (saved && this.project.open(saved)) {
+      this.effectPainter.setFiles(this.project.packsInUse);
       const { reels, music } = this.project.files;
       for (const r of reels) this.playVideo(r.id, r.file);
       for (const m of music) {
@@ -1664,7 +1752,13 @@ export class Player {
       ready: s.reels.some(r => this.views.get(r.id)?.ready),
       canRecord: s.length > 0 && canRecord(this.view), // (a film just cut, sped up or cropped is worth exporting too)
     });
-    this.set({ looks: s.looks, lookRows: s.lookRows, transitions: s.transitions });
+    this.set({
+      looks: s.looks,
+      lookRows: s.lookRows,
+      transitions: s.transitions,
+      effectClips: s.effectClips,
+      effectRows: s.effectRows,
+    });
     this.refreshReels();
     this.refreshMusic();
     // the frame's crop changed (or came back with an undo)
@@ -1851,6 +1945,13 @@ export class Player {
         isolate: this.recorder ? null : this.ui.isolated,
       });
       // the looks over everything (not over a cutout shown on its own)
+      // effect clips over the footage and cutouts, under the looks
+      if (this.recorder || this.ui.isolated === null)
+        this.effectPainter.draw(ctx, this.project.effectsAt(now), {
+          playing: !paused,
+          selected: this.ui.selected,
+          outline: outline && paused,
+        });
       if (!this.plain && (this.recorder || this.ui.isolated === null)) {
         this.looks.apply(ctx, this.project.looksAt(now));
         this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
@@ -2063,12 +2164,27 @@ export class Player {
       this.view.setPointerCapture?.(e.pointerId);
       return;
     }
-    // a text: a drag moves it (a tap selects it: see pointerUp)
-    this.textGrab = null;
-    const onText = this.paused() && !this.ui.adding ? this.textClips.hit(x, y) : null;
-    const place = onText !== null ? this.project.look(onText)?.text : null;
-    if (onText !== null && place) {
-      this.textGrab = { id: onText, x, y, from: { x: place.x, y: place.y }, moved: false };
+    // a text or an effect clip: a drag moves it (a tap selects it: see pointerUp)
+    this.placeGrab = null;
+    const free = this.paused() && !this.ui.adding;
+    const onText = free ? this.textClips.hit(x, y) : null;
+    const onClip = free && onText === null ? this.effectPainter.hit(x, y) : null;
+    const place =
+      onText !== null
+        ? this.project.look(onText)?.text
+        : onClip !== null
+          ? this.project.effectClip(onClip)
+          : null;
+    if (place) {
+      const id = (onText ?? onClip)!;
+      this.placeGrab = {
+        kind: onText !== null ? 'text' : 'effect',
+        id,
+        x,
+        y,
+        from: { x: place.x, y: place.y },
+        moved: false,
+      };
       e.stopPropagation();
       this.view.setPointerCapture?.(e.pointerId);
       return;
@@ -2123,15 +2239,14 @@ export class Player {
       }
       return;
     }
-    const tg = this.textGrab;
+    const tg = this.placeGrab;
     if (tg && (tg.moved || (p && Math.hypot(e.clientX - p.cx, e.clientY - p.cy) > TAP_SLOP))) {
       tg.moved = true;
       this.press = null;
       const [x, y] = this.canvasPt(e);
-      this.project.setLookText(tg.id, {
-        x: tg.from.x + (x - tg.x) / this.CW,
-        y: tg.from.y + (y - tg.y) / this.CH,
-      });
+      const at = { x: tg.from.x + (x - tg.x) / this.CW, y: tg.from.y + (y - tg.y) / this.CH };
+      if (tg.kind === 'text') this.project.setLookText(tg.id, at);
+      else this.project.setEffectLook(tg.id, at);
       if (this.ui.selected !== tg.id) this.select(tg.id);
       this.redraw();
       return;
@@ -2195,11 +2310,13 @@ export class Player {
       return;
     }
 
-    // a text tapped: selected (a tap anywhere else lets a selected text go)
-    const tg = this.textGrab;
-    this.textGrab = null;
+    // a text or effect clip tapped: selected (a tap anywhere else lets a selected one go)
+    const tg = this.placeGrab;
+    this.placeGrab = null;
     if (tg && !this.ui.adding) return this.select(tg.id);
-    if (this.ui.selected !== null && this.project.look(this.ui.selected)?.text) return this.select(null);
+    const placed = this.ui.selected;
+    if (placed !== null && (this.project.look(placed)?.text || this.project.effectClip(placed)))
+      return this.select(null);
 
     // adding a clip (the first tap on a new video adds an effect)
     const add = this.ui.adding;
