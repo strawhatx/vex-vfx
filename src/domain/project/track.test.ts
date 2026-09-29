@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ClipFrame, Shape } from '../tracking/types';
+import { encodeRle, paintRle, type ClipFrame, type Shape } from '../tracking/types';
 import {
   hitFrame,
   impactSpeed,
@@ -188,6 +188,46 @@ describe('toLane', () => {
       [0.9, 1, false],
     ]);
   });
+  it('marks as weak a frame whose outline suddenly changes shape, and steadies the edge', () => {
+    // a 10 x 40 outline; in frame 5 it's caught something else (40 x 10), and in frame 7 a piece of
+    // it drops out for just that frame
+    const W = 100;
+    const outline = (on: (x: number, y: number) => boolean): Shape => {
+      const m = new Uint8Array(W * 100);
+      let x0 = W,
+        y0 = 100,
+        x1 = -1,
+        y1 = -1;
+      for (let y = 0; y < 100; y++)
+        for (let x = 0; x < W; x++)
+          if (on(x, y)) {
+            m[y * W + x] = 1;
+            [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+          }
+      return {
+        id: 0,
+        cx: (x0 + x1) / 2,
+        cy: (y0 + y1) / 2,
+        w: x1 - x0 + 1,
+        h: y1 - y0 + 1,
+        mask: encodeRle(m, W, x0, y0, x1, y1),
+      };
+    };
+    const tall = outline((x, y) => x >= 40 && x < 50 && y >= 20 && y < 60);
+    const t = tracked(1, 10);
+    t.shapes = t.shapes.map(() => tall);
+    t.shapes[5] = outline((x, y) => x >= 25 && x < 65 && y >= 35 && y < 45);
+    t.shapes[7] = outline((x, y) => x >= 40 && x < 50 && y >= 20 && y < 60 && !(y >= 40 && y < 46));
+    refreshFrames(t, clip);
+    const weak = toLane(t, clip, 0).spans.filter(s => s.weak);
+    expect(weak.map(s => [+s.s.toFixed(2), +s.e.toFixed(2)])).toEqual([[0.5, 0.7]]);
+    // (the frame after the odd one out jumps back, so it's weak too); frame 7's gap is filled in
+    // from the frames either side
+    const at7 = new Uint8Array(W * 100);
+    paintRle(t.frames[7].shapes[0].mask!, at7, W, 100);
+    expect(at7[43 * W + 45]).toBe(1);
+  });
+
   it('shows only what is inside the range', () => {
     const t = tracked(1, 10, { s: 0.2, e: 0.5 });
     t.keys = [

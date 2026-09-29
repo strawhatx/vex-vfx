@@ -30,6 +30,35 @@ describe('the frames of a cutout to check', () => {
     expect(reviewFlags(shapes, 1, 2)).toEqual(['ok']);
   });
 
+  it('flags an outline that changes shape though not size, but not one that just moves', () => {
+    const W = 100;
+    const shape = (on: (x: number, y: number) => boolean): Shape => {
+      const m = new Uint8Array(W * 100);
+      let x0 = W,
+        y0 = 100,
+        x1 = -1,
+        y1 = -1;
+      for (let y = 0; y < 100; y++)
+        for (let x = 0; x < W; x++)
+          if (on(x, y)) {
+            m[y * W + x] = 1;
+            [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+          }
+      return {
+        id: 1,
+        cx: (x0 + x1) / 2,
+        cy: (y0 + y1) / 2,
+        w: x1 - x0 + 1,
+        h: y1 - y0 + 1,
+        mask: encodeRle(m, W, x0, y0, x1, y1),
+      };
+    };
+    const tall = shape((x, y) => x >= 40 && x < 50 && y >= 20 && y < 60), // 10 x 40
+      moved = shape((x, y) => x >= 60 && x < 70 && y >= 25 && y < 65),
+      wide = shape((x, y) => x >= 30 && x < 70 && y >= 35 && y < 45); // 40 x 10: the same size
+    expect(reviewFlags([tall, moved, wide], 0, 3)).toEqual(['ok', 'ok', 'jump']);
+  });
+
   it('finds the next and previous doubtful frame', () => {
     const flags = reviewFlags([block(10, 10), null, block(10, 10), block(10, 10), null], 0, 5);
     expect(nextFlagged(flags, 0, 1)).toBe(1);

@@ -39,6 +39,9 @@ const rect = (x0: number, y0: number, x1: number, y1: number) => [
   { x: x0, y: y1 },
 ];
 
+// what tracking found, frame by frame
+const of = (shapes: (Shape | null)[]) => (k: number) => shapes[k] ?? null;
+
 let nextId = 1;
 const tapped = (op: Part['op'], shapes: (Shape | null)[]): Part => ({
   id: nextId++,
@@ -61,12 +64,12 @@ describe('pieces added to and taken out of an outline', () => {
   const body = outline([20, 20, 50, 80]);
 
   it('without any, is what tracking found', () => {
-    expect(withParts([body], [], 0)).toBe(body);
+    expect(withParts(of([body]), [], 0)).toBe(body);
   });
 
   it('keeps what was found and adds a tapped piece to it', () => {
     const bag = outline([51, 40, 65, 60]);
-    const s = withParts([body], [tapped('add', [bag])], 0);
+    const s = withParts(of([body]), [tapped('add', [bag])], 0);
     expect(on(s)(30, 30)).toBe(true);
     expect(on(s)(60, 50)).toBe(true);
     expect(s).toMatchObject({ w: 46, id: 3 });
@@ -74,7 +77,7 @@ describe('pieces added to and taken out of an outline', () => {
 
   it('takes a tapped piece out', () => {
     const wall = outline([20, 20, 50, 30]);
-    const s = withParts([body], [tapped('remove', [wall])], 0);
+    const s = withParts(of([body]), [tapped('remove', [wall])], 0);
     expect(on(s)(30, 25)).toBe(false);
     expect(on(s)(30, 50)).toBe(true);
   });
@@ -83,8 +86,8 @@ describe('pieces added to and taken out of an outline', () => {
     // drawn on frame 0; by frame 1 the object has moved 10 px right
     const moved = outline([30, 20, 60, 80]);
     const loop = drawn('add', 0, rect(52, 40, 70, 60));
-    expect(on(withParts([body, moved], [loop], 0))(55, 50)).toBe(true);
-    const s = withParts([body, moved], [loop], 1);
+    expect(on(withParts(of([body, moved]), [loop], 0))(55, 50)).toBe(true);
+    const s = withParts(of([body, moved]), [loop], 1);
     expect(on(s)(75, 50)).toBe(true);
     expect(on(s)(53, 50)).toBe(true); // (the object's own body is there now)
   });
@@ -92,14 +95,14 @@ describe('pieces added to and taken out of an outline', () => {
   it('a later piece wins where they overlap', () => {
     const cut = drawn('remove', 0, rect(20, 20, 50, 50));
     const back = drawn('add', 0, rect(20, 20, 35, 35));
-    const s = withParts([body], [cut, back], 0);
+    const s = withParts(of([body]), [cut, back], 0);
     expect(on(s)(25, 25)).toBe(true);
     expect(on(s)(45, 45)).toBe(false);
     expect(on(s)(30, 70)).toBe(true);
   });
 
   it('adds a piece where tracking found nothing, and is nothing when all is taken out', () => {
-    expect(on(withParts([null], [drawn('add', 0, rect(10, 10, 30, 30))], 0))(20, 20)).toBe(true);
-    expect(withParts([body], [drawn('remove', 0, rect(0, 0, 99, 99))], 0)).toBeNull();
+    expect(on(withParts(of([null]), [drawn('add', 0, rect(10, 10, 30, 30))], 0))(20, 20)).toBe(true);
+    expect(withParts(of([body]), [drawn('remove', 0, rect(0, 0, 99, 99))], 0)).toBeNull();
   });
 });

@@ -20,9 +20,13 @@ export interface Part {
   shapes: (Shape | null)[]; // a tapped piece's outline in each frame, as tracked
 }
 
-// the outline at frame i: `found` (what tracking found in each frame) with the parts
-export function withParts(found: readonly (Shape | null)[], parts: readonly Part[], i: number): Shape | null {
-  const base = found[i];
+// the outline at frame i: found(k) (what tracking found in frame k) with the parts
+export function withParts(
+  found: (k: number) => Shape | null,
+  parts: readonly Part[],
+  i: number,
+): Shape | null {
+  const base = found(i);
   if (!parts.length) return base;
 
   // what each part covers on this frame
@@ -108,9 +112,9 @@ export function loopAt(loop: readonly Pt[], from: Shape | null, here: Shape | nu
 type Box = { x0: number; y0: number; x1: number; y1: number };
 
 // what part p covers at frame i: its tracked outline, or its loop there
-function partAt(p: Part, found: readonly (Shape | null)[], i: number) {
+function partAt(p: Part, found: (k: number) => Shape | null, i: number) {
   if (p.loop) {
-    const loop = loopAt(p.loop, found[p.i], found[i]);
+    const loop = loopAt(p.loop, found(p.i), found(i));
     const xs = loop.map(q => q.x),
       ys = loop.map(q => q.y);
     const box = { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };

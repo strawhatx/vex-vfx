@@ -1,7 +1,10 @@
 // Tap-an-object tracking, run once per frame by the analysis worker, on analysis-size frames.
 //   1. Motion: Median Flow (pyramidal Lucas-Kanade on corners in the box, keeping the points that
-//      track well both ways) moves and scales a box with the object. If it loses it, the box is
-//      searched for by how the object looked when tapped.
+//      track well both ways) moves and scales a box with the object. When the camera moves, the
+//      camera's own move is measured over the rest of the frame (see camera.ts), and the points in
+//      the box that only moved with it (background showing through) are left out, so the box
+//      follows the object rather than the scene. If it loses the object, the box moves with the
+//      camera and is searched for by how the object looked when tapped.
 //   2. Outline: the AI segmenter outlines the object where the box went. A new outline is only
 //      believed if it overlaps the last one (moved with the motion) and is about the same size;
 //      it then nudges the box. Otherwise the last outline moves along with the box.
@@ -9,6 +12,8 @@
 // of a few points in it gives the outline that best fills it; from then on it's only outlined
 // within a box as much bigger than it, so the outline can't spill onto what's around it.
 import { encodeRle, type Rle, type Selection, type Shape } from '@/domain/tracking/types';
+import type { Cam } from '@/domain/effects/laser';
+import { FrameMove, ownMotion } from './camera';
 import { boxVec, cornersIn, dot, patchNcc } from './features';
 import { LucasKanade, loadPyr, makePyr, median, type Img, type Pyr } from './flow';
 import { deepestPoint, maskArea, overlapShare, pieceAt, type Bounds } from './maskOps';
@@ -36,12 +41,27 @@ const MIN_OVERLAP = 0.3;
 const MAX_GROWTH = 2.5;
 // how long the last outline is kept, moved along, while new ones aren't believable
 const MAX_MISSES = 12;
+// the camera counts as moving from this much movement a frame (px, or zoom); a point in the box has
+// moved on its own if it's this far (px) from where the camera took it, more for a fast camera
+const CAM_MOVING = 0.75,
+  CAM_ZOOMING = 0.004,
+  OWN_TOL = 1,
+  OWN_TOL_PER_PX = 0.2;
+// with the camera moving, what's left of the box's points once those that only moved with it are
+// left out is used if it's at least this many, and this share of them
+const MIN_OWN = 4,
+  MIN_OWN_SHARE = 0.25;
+// the area left out when measuring the camera's move: the box, this much bigger
+const CAM_SKIP = 1.3;
 
 export class ObjectTracker {
   // this frame and the next, as image pyramids
   private prevPyr: Pyr;
   private nextPyr: Pyr;
   private flow = new LucasKanade();
+  // the camera's move this frame, when it's moving (see CAM_MOVING)
+  private camMove: FrameMove;
+  private cam: Cam | null = null;
 
   // motion: the box, how fast it's moving, and how the object looked when tapped
   private box = { cx: 0, cy: 0, w: 0, h: 0 };
@@ -68,6 +88,7 @@ export class ObjectTracker {
   ) {
     this.prevPyr = makePyr(W, H);
     this.nextPyr = makePyr(W, H);
+    this.camMove = new FrameMove(W, H);
     const n = W * H;
     this.mask = new Uint8Array(n);
     this.prevMask = new Uint8Array(n);
@@ -101,6 +122,7 @@ export class ObjectTracker {
     loadPyr(rgba, this.nextPyr, this.W, this.H);
     const pcx = this.box.cx;
     const pcy = this.box.cy;
+    this.cam = this.cameraMove();
     this.trackStep();
     this.segmentStep(pcx, pcy);
     [this.prevPyr, this.nextPyr] = [this.nextPyr, this.prevPyr];
@@ -139,6 +161,15 @@ export class ObjectTracker {
 
   // ---------- motion ----------
 
+  // how the camera moved since the last frame, measured away from the object; null if it held
+  // still (or too little could be followed to tell)
+  private cameraMove(): Cam | null {
+    const b = this.box;
+    const skip = { cx: b.cx, cy: b.cy, w: b.w * CAM_SKIP, h: b.h * CAM_SKIP };
+    const cam = this.camMove.fit(this.prevPyr, this.nextPyr, skip);
+    return cam && (Math.hypot(cam.tx, cam.ty) > CAM_MOVING || Math.abs(cam.s - 1) > CAM_ZOOMING) ? cam : null;
+  }
+
   private trackStep() {
     const { box, trk } = this;
     const img = this.nextPyr[0];
@@ -159,7 +190,15 @@ export class ObjectTracker {
         }
       }
     } else {
-      // lost it: slow down, and look for it nearby
+      // lost it: carried along with the camera, slowed down, and looked for nearby
+      const cam = this.cam;
+      if (cam) {
+        box.cx = cam.s * box.cx + cam.tx;
+        box.cy = cam.s * box.cy + cam.ty;
+        box.w *= cam.s;
+        box.h *= cam.s;
+        this.clampBox();
+      }
       trk.lostFrames++;
       trk.vx *= 0.5;
       trk.vy *= 0.5;
@@ -213,6 +252,17 @@ export class ObjectTracker {
       for (let i = 0; i < fbs.length; i++) if (fbs[i] <= mFB) keep.push(i);
     }
     if (keep.length < 4) return false;
+
+    // with the camera moving, only the points that moved on their own: those that just moved with
+    // it are background showing in the box. (If nearly all did, the object is moving along with the
+    // camera, and they all count.)
+    const cam = this.cam;
+    if (cam) {
+      const tol = OWN_TOL + OWN_TOL_PER_PX * Math.hypot(cam.tx, cam.ty);
+      const own = new Set(ownMotion(olds, news, cam, tol));
+      const mine = keep.filter(i => own.has(i));
+      if (mine.length >= Math.max(MIN_OWN, MIN_OWN_SHARE * keep.length)) keep = mine;
+    }
 
     // the move: the median shift, and the median change in distance between pairs of points
     const dx = median(keep.map(i => dxs[i]));

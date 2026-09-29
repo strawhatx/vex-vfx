@@ -18,8 +18,10 @@ import { partLabel, type BodyPart } from '../tracking/bodyParts';
 import { type ClipFrame, type Shape, type TrackFrame } from '../tracking/types';
 import type { Background } from './cutout';
 import { inSpan, type FrameSpan, type Key } from './keyframes';
-import { PLAIN_EDGE, reshapes, withEdge, type EdgeSettings } from './edge';
-import { withParts, type Part } from './parts';
+import type { EdgeSettings } from './edge';
+import { DEFAULT_EDGE, outlinesOf } from './outlines';
+import type { Part } from './parts';
+import { reviewFlags } from './review';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
@@ -157,7 +159,7 @@ export function newCutoutTrack(
   bg: Background,
 ) {
   const t = make(id, 'cutout', clip, fx, range, null, null);
-  t.cutout = { bg, reviewed: false, edge: PLAIN_EDGE };
+  t.cutout = { bg, reviewed: false, edge: DEFAULT_EDGE };
   return t;
 }
 
@@ -181,29 +183,19 @@ export const trackSpan = (t: Track, clip: ClipFrame[]): FrameSpan => rangeFrames
 // the frame an impact hits on
 export const hitFrame = (t: Track, clip: ClipFrame[]) => rangeFrames(t, clip).s;
 
-// rebuilds what gets drawn at frames [from, to) from the shapes (with a cutout's parts and edge
-// settings) and the tracked frames
+// rebuilds what gets drawn at frames [from, to) from the shapes and the tracked frames (see
+// outlines.ts)
 export function refreshFrames(t: Track, clip: ClipFrame[], from = 0, to = clip.length) {
   if (t.frames.length !== clip.length) t.frames = clip.map(f => ({ t: f.t, dur: f.dur, shapes: [] }));
-  const span = trackSpan(t, clip);
-  const outline = (i: number) =>
-    inSpan(span, i) ? (t.parts.length ? withParts(t.shapes, t.parts, i) : t.shapes[i]) : null;
-  const edge = t.cutout?.edge;
-  let at = outline;
-  if (edge && reshapes(edge)) {
-    // (a steadied frame is made from its neighbours too: they change with it)
-    const r = Math.round(edge.steady);
-    from = Math.max(0, from - r);
-    to = Math.min(clip.length, to + r);
-    const seen = new Map<number, Shape | null>();
-    const once = (i: number) => {
-      if (!seen.has(i)) seen.set(i, outline(i));
-      return seen.get(i)!;
-    };
-    at = i => (inSpan(span, i) ? withEdge(once, i, edge) : null);
-  }
+  const span = trackSpan(t, clip),
+    edge = t.cutout?.edge ?? (isPinned(t) ? null : DEFAULT_EDGE);
+  // (a steadied frame is made from its neighbours too: they change with it)
+  const r = Math.round(edge?.steady ?? 0);
+  from = Math.max(0, from - r);
+  to = Math.min(clip.length, to + r);
+  const shapes = outlinesOf({ shapes: t.shapes, parts: t.parts, edge }, from, to, k => inSpan(span, k));
   for (let i = from; i < to; i++) {
-    const sh = at(i);
+    const sh = shapes[i - from];
     t.frames[i].shapes = sh ? [sh.id === t.id ? sh : { ...sh, id: t.id }] : [];
   }
 }
@@ -299,7 +291,7 @@ export const trackAt = (tracks: readonly Track[], clip: ClipFrame[], i: number, 
   }) ?? null;
 
 // ---------- timeline view ----------
-// a stretch where the object was found; weak = the tracker was searching
+// a stretch where the object was found; weak = it looks wrong there (see review.ts), to check and fix
 export interface Span {
   s: number;
   e: number;
@@ -375,12 +367,14 @@ export function assignRows(ranges: readonly { s: number; e: number }[], wanted: 
 
 export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
   const range = rangeFrames(t, clip),
-    spans: Span[] = [];
+    spans: Span[] = [],
+    // (a clip pinned to a spot follows nothing: nothing to doubt)
+    flags = isPinned(t) ? null : reviewFlags(drawnShapes(t), range.s, range.e);
   for (let i = range.s; i < range.e; i++) {
     const sh = t.frames[i].shapes[0];
     if (!sh) continue;
     const f = clip[i],
-      weak = !!sh.lost,
+      weak = flags ? flags[i - range.s] !== 'ok' : false,
       last = spans[spans.length - 1];
     if (last && last.weak === weak && f.t - last.e < f.dur * 1.5) last.e = Math.min(t.range.e, f.t + f.dur);
     else spans.push({ s: f.t, e: Math.min(t.range.e, f.t + f.dur), weak });
