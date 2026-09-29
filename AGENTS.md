@@ -27,7 +27,7 @@ src/
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root
 ├── components/home/    # the start page's list of saved projects; homeStore.ts is its root
-├── components/lab/     # the Preset Lab (/lab/<engine>): builds presets on a test clip; labPlayer.ts is its root
+├── components/lab/     # the Preset Lab (/lab): one page; pick what a preset is for, stack layers on a test clip; labPlayer.ts is its root
 └── app/             # Next.js routes
 ```
 

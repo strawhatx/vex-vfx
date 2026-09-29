@@ -1,15 +1,15 @@
 'use client';
 
-// The Preset Lab, one page at a time (an engine, or transitions): build an effect from the page's
-// passes on a test clip, pick the
-// sliders users get, and download it as a preset file for domain/effects/library/. The preview uses
-// the editor's own GPU painter (see labPlayer.ts), so what's made here looks the same there.
+// The Preset Lab: pick what a preset is for (the frame, an object, text, a clip's motion, the join
+// between clips, an impact), stack layers on a test clip, pick the sliders users get, and download
+// it as a preset file for domain/effects/library/. The preview uses the editor's own painters (see
+// labPlayer.ts), so what's made here looks the same there.
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import {
-  LAB_PAGES,
+  LAB_TARGETS,
+  TARGETS,
   previewLength,
-  type LabPage,
   addPass,
   draftOf,
   expose,
@@ -28,7 +28,8 @@ import {
   withStrength,
 } from '@/domain/effects/draft';
 import { presets } from '@/domain/effects/library';
-import { parsePreset, type Preset } from '@/domain/effects/presets';
+import { parsePreset, type Preset, type PresetGroup } from '@/domain/effects/presets';
+import { AddLayer } from './AddLayer';
 import { LabPlayer, type LabState } from './labPlayer';
 import { PassCard } from './PassCard';
 
@@ -50,7 +51,7 @@ const undone = (h: History): History =>
 const redone = (h: History): History =>
   h.future.length ? { past: [...h.past, h.now], now: h.future[0], future: h.future.slice(1), last: null } : h;
 
-export default function EngineLab({ page }: { page: LabPage }) {
+export default function PresetLab() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const clipRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -58,12 +59,13 @@ export default function EngineLab({ page }: { page: LabPage }) {
   const [lab, setLab] = useState<LabState>({ t: 0, playing: true, clip: null, gpu: true });
   const [compare, setCompare] = useState(false);
   const [problem, setProblem] = useState('');
-  const [h, setH] = useState<History>(() => ({ past: [], now: newDraft(page), future: [], last: null }));
+  const [h, setH] = useState<History>(() => ({ past: [], now: newDraft('screen'), future: [], last: null }));
   const p = h.now;
-  const group = LAB_PAGES[page].group;
+  // what it's for: the group of the preset being made
+  const target = p.group;
   // how long a round of the preview is (a transition's has a moment either side of it)
   const loop = previewLength(p);
-  const shipped = presets().filter(x => x.group === group);
+  const shipped = presets();
 
   useEffect(() => {
     const player = new LabPlayer(canvasRef.current!, setLab);
@@ -102,17 +104,16 @@ export default function EngineLab({ page }: { page: LabPage }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // a shipped preset to carry on from, or a new one for the target
   function startFrom(id: string) {
     const from = shipped.find(x => x.id === id);
-    change(from ? draftOf(from) : newDraft(page));
+    change(from ? draftOf(from) : newDraft(target));
   }
 
   // a preset file picked to carry on with
   async function loadFile(f: File) {
     try {
-      const loaded = parsePreset(JSON.parse(await f.text()));
-      if (loaded.group !== group) throw new Error(`it's a ${loaded.group} preset, not a ${group} one`);
-      change(draftOf(loaded));
+      change(draftOf(parsePreset(JSON.parse(await f.text()))));
     } catch (e) {
       setProblem(`Couldn't load ${f.name}: ${(e as Error).message}`);
     }
@@ -143,10 +144,10 @@ export default function EngineLab({ page }: { page: LabPage }) {
     <div className="lab">
       <div className="lab-stage">
         <header className="lab-top">
-          <Link href="/lab" className="lab-home" aria-label="Back to the lab">
+          <Link href="/" className="lab-home" aria-label="Home">
             ←
           </Link>
-          <strong>{LAB_PAGES[page].name}</strong>
+          <strong>Preset Lab</strong>
           <span className="lab-top-tools">
             <button type="button" disabled={!h.past.length} onClick={undo}>
               Undo
@@ -206,16 +207,32 @@ export default function EngineLab({ page }: { page: LabPage }) {
         <section className="lab-card">
           <div className="lab-params">
             <label className="lab-param">
+              <span>Made for</span>
+              <select value={target} onChange={e => change(newDraft(e.target.value as PresetGroup))}>
+                {TARGETS.map(g => (
+                  <option key={g} value={g}>
+                    {LAB_TARGETS[g].name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="lab-param">
               <span>Start from</span>
               <select value="" onChange={e => startFrom(e.target.value)}>
                 <option value="" disabled>
                   Pick one…
                 </option>
                 <option value="new">A new one</option>
-                {shipped.map(x => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
+                {TARGETS.map(g => (
+                  <optgroup key={g} label={LAB_TARGETS[g].name}>
+                    {shipped
+                      .filter(x => x.group === g)
+                      .map(x => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -228,7 +245,7 @@ export default function EngineLab({ page }: { page: LabPage }) {
               />
               <output className="lab-id">{p.id}</output>
             </label>
-            {group === 'screen' && (
+            {target === 'screen' && (
               <label className="lab-param">
                 <span>Category</span>
                 <input
@@ -276,25 +293,7 @@ export default function EngineLab({ page }: { page: LabPage }) {
             }}
           />
         ))}
-        <label className="lab-add">
-          <span>Add a pass</span>
-          <select
-            value=""
-            onChange={e => {
-              const k = kindsOf(page)[+e.target.value];
-              if (k) change(addPass(p, k.engine, k.kind));
-            }}
-          >
-            <option value="" disabled>
-              Pick one…
-            </option>
-            {kindsOf(page).map((k, n) => (
-              <option key={`${k.engine}:${k.kind}`} value={n}>
-                {LAB_PAGES[page].offers.length > 1 ? `${k.label} (${k.engine})` : k.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <AddLayer kinds={kindsOf(target)} onAdd={k => change(addPass(p, k.engine, k.kind))} />
 
         <section className="lab-card" aria-label="Sliders users get">
           <header className="lab-card-head">
@@ -307,7 +306,7 @@ export default function EngineLab({ page }: { page: LabPage }) {
                 checked={strength}
                 onChange={e => change(withStrength(p, e.target.checked))}
               />
-              Strength (every pass, from off to as set)
+              Strength (every layer, from off to as set)
             </label>
             {others.map(c => (
               <div key={c.id} className="lab-row">

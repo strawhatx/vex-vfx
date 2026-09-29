@@ -1764,11 +1764,36 @@ input[type='range']::-moz-range-thumb {
 .lab-check input {
   accent-color: var(--brand);
 }
-.lab-add {
+.lab-add-open {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: none;
+  font-size: 0.9rem;
+}
+.lab-add input {
+  width: 100%;
+}
+.lab-add-list {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.lab-add-list button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
   font-size: 0.85rem;
+}
+.lab-add-list small {
+  color: var(--muted);
+  font-size: 0.7rem;
 }
 .lab-save {
   display: flex;

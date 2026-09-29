@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   TRANSITION_HOLD,
   addPass,
-  isLabPage,
   kindsOf,
-  pageOf,
+  TARGETS,
   previewLength,
   draftOf,
   expose,
@@ -38,7 +37,7 @@ const drawsAsEdited = (p: Preset) =>
 
 describe('a new draft', () => {
   it('has one pass of its engine and a Strength slider', () => {
-    const c = newDraft('color');
+    const c = newDraft('filter');
     expect(c).toMatchObject({ group: 'filter', passes: [{ engine: 'color', kind: 'grade' }] });
     expect(hasStrength(c)).toBe(true);
     expect(newDraft('screen')).toMatchObject({ group: 'screen', passes: [{ engine: 'screen' }] });
@@ -49,7 +48,7 @@ describe('a new draft', () => {
     expect(slug('Golden  Hour!')).toBe('golden-hour');
     expect(slug('Ümlaut Café')).toBe('umlaut-cafe');
     expect(slug('***')).toBe('preset');
-    expect(setMeta(newDraft('color'), { name: 'Blue Steel' }).id).toBe('blue-steel');
+    expect(setMeta(newDraft('filter'), { name: 'Blue Steel' }).id).toBe('blue-steel');
   });
 
   it('keeps its length and fades in range', () => {
@@ -62,7 +61,7 @@ describe('a new draft', () => {
 
 describe('editing passes', () => {
   it('fits settings to their ranges, and keeps drawing as edited', () => {
-    let p = setParam(newDraft('color'), 0, 'saturation', -5);
+    let p = setParam(newDraft('filter'), 0, 'saturation', -5);
     expect(p.passes[0].params.saturation).toBe(-1);
     p = setParam(p, 0, 'amount', 0.4);
     expect(p.controls[0].type === 'slider' && p.controls[0].drives[0].to).toBeCloseTo(0.4);
@@ -98,7 +97,7 @@ describe('editing passes', () => {
 
 describe('the sliders users get', () => {
   it('gives a setting a slider over its whole range, starting where it is', () => {
-    let p = setParam(newDraft('color'), 0, 'temperature', 0.5);
+    let p = setParam(newDraft('filter'), 0, 'temperature', 0.5);
     p = expose(p, 0, 'temperature', true);
     const c = exposedBy(p, 0, 'temperature')!;
     expect(c).toMatchObject({ type: 'slider', label: 'Warmth', def: 0.75, drives: [{ from: -1, to: 1 }] });
@@ -121,7 +120,7 @@ describe('the sliders users get', () => {
   });
 
   it('turns Strength off and on', () => {
-    const p = withStrength(newDraft('color'), false);
+    const p = withStrength(newDraft('filter'), false);
     expect(hasStrength(p)).toBe(false);
     expect(hasStrength(withStrength(p, true))).toBe(true);
   });
@@ -162,13 +161,15 @@ describe('lab pages', () => {
     expect(offered).toContain('screen:flash');
     expect(offered).not.toContain('motion:combo');
     expect(previewLength(t)).toBeCloseTo(0.6 + 2 * TRANSITION_HOLD);
-    expect(previewLength(newDraft('color'))).toBe(5);
+    expect(previewLength(newDraft('filter'))).toBe(5);
   });
 
-  it('know the page a preset is made on', () => {
-    expect(pageOf({ group: 'body' })).toBe('object');
-    expect(pageOf({ group: 'transition' })).toBe('transition');
-    expect(isLabPage('transition')).toBe(true);
-    expect(isLabPage('sticker')).toBe(false);
+  it('offer each target its layers, from any engine', () => {
+    const on = (g: Parameters<typeof kindsOf>[0]) => kindsOf(g).map(k => `${k.engine}:${k.kind}`);
+    expect(on('screen')).toContain('object:emitter');
+    expect(on('text')).toContain('object:emitter');
+    expect(on('text')).not.toContain('object:tint');
+    expect(on('body')).toContain('object:tint');
+    for (const g of TARGETS) expect(newDraft(g).group).toBe(g);
   });
 });

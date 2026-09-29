@@ -1,4 +1,4 @@
-// One pass in the Preset Lab: its settings (a slider, color or choice each, with a box to give it to
+// One layer (pass) in the Preset Lab: its settings (a slider, color or choice each, with a box to give it to
 // users as a slider of its own), how it moves over time, and buttons to move or remove it.
 import type { CSSProperties } from 'react';
 import { MOTIONS, type Motion, type MotionKind } from '@/domain/effects/curves';
@@ -37,7 +37,7 @@ export function PassCard({
   const specs = paramsOf(pass.engine, pass.kind);
   const m = pass.motion;
   return (
-    <section className="lab-card" aria-label={`Pass ${index + 1}`}>
+    <section className="lab-card" aria-label={`Layer ${index + 1}`}>
       <header className="lab-card-head">
         <strong>
           {index + 1}. {ENGINES[pass.engine][pass.kind].label}
