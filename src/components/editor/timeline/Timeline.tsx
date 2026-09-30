@@ -165,25 +165,41 @@ export function Timeline({
 
           {hasFilm && (
             <>
-              <Layer
+              <Layer<Lane | EffectClipUi>
                 layer="overlay"
-                rows={rowsOf('overlay', ui.cutRows)}
+                // (cutouts, and other videos put on top)
+                rows={rowsOf('overlay', ui.cutRows).map((lanes, r) => [
+                  ...lanes,
+                  ...ui.effectClips.filter(c => c.overlay && c.row === r),
+                ])}
                 add={{
                   label: adding('overlay') ?? 'Add overlay',
                   on: ui.adding?.kind === 'cutout',
                   run: on.addOverlay,
                 }}
                 busy={busy}
-                clip={l => (
-                  <CutoutClip
-                    key={l.id}
-                    lane={l}
-                    scale={scale}
-                    selected={l.id === ui.selected}
-                    duration={dur}
-                    on={clipActions}
-                  />
-                )}
+                clip={l =>
+                  'kind' in l ? (
+                    <CutoutClip
+                      key={l.id}
+                      lane={l}
+                      scale={scale}
+                      selected={l.id === ui.selected}
+                      duration={dur}
+                      on={clipActions}
+                    />
+                  ) : (
+                    <EffectClipBar
+                      key={l.id}
+                      clip={l}
+                      scale={scale}
+                      selected={l.id === ui.selected}
+                      duration={dur}
+                      on={clipActions}
+                      moveTo={t => on.moveEffect(l.id, t)}
+                    />
+                  )
+                }
               />
               <Layer
                 layer="audio"
@@ -206,7 +222,7 @@ export function Timeline({
               <Layer
                 layer="clips"
                 rows={Array.from({ length: ui.effectRows }, (_, r) =>
-                  ui.effectClips.filter(c => c.row === r),
+                  ui.effectClips.filter(c => !c.overlay && c.row === r),
                 )}
                 add={{ label: 'Add effect clip', on: false, run: on.addEffectClip }}
                 busy={busy}
@@ -261,6 +277,7 @@ export function Timeline({
   );
 }
 
+type EffectClipUi = UiState['effectClips'][number];
 const ADD_LOOK: Record<LookGroup, string> = {
   text: 'Add text',
   screen: 'Add video effect',

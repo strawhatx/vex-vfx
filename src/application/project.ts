@@ -57,6 +57,7 @@ import {
   effectRange,
   effectsAt,
   newEffectClip,
+  newOverlayVideo,
   placeEffect,
   trimEffect,
   withLook,
@@ -838,6 +839,24 @@ export class Project {
     });
   }
 
+  // another video on top of the film, at `at` (file: the video, id: its id among the film's files)
+  addOverlayVideo(file: Blob, info: { id: string; name: string; length: number }, at: number) {
+    return this.step(undefined, () => {
+      const c = newOverlayVideo(
+        this.nextEffect++,
+        info.id,
+        info.name,
+        info.length,
+        Math.max(0, at),
+        this.length,
+      );
+      this.packFiles.set(info.id, file);
+      this.effectClips.push(c);
+      this.publish(true);
+      return c.id;
+    });
+  }
+
   effectClip(id: number | null) {
     return this.effectClips.find(c => c.id === id) ?? null;
   }
@@ -1173,11 +1192,15 @@ export class Project {
       lanes.map(l => ({ range: l.range, layer: layerOf(l), row: l.row })),
     );
     lanes.forEach((l, k) => (l.row = rows[k]));
+    // (the Overlay layer holds cutouts and overlay videos; the Effect clips layer, the rest)
+    const videos = this.effectClips.filter(c => c.overlay),
+      clips = this.effectClips.filter(c => !c.overlay);
     const cutRows = assignRows(
-      this.overlays.map(shownRange),
-      this.overlays.map(o => o.row),
+      [...this.overlays.map(shownRange), ...videos.map(effectRange)],
+      [...this.overlays.map(o => o.row), ...videos.map(c => c.row)],
     );
     this.overlays.forEach((o, k) => (o.row = cutRows[k]));
+    const clipRow = new Map(videos.map((c, k) => [c.id, cutRows[this.overlays.length + k]]));
     const overlayLanes = this.overlays.map((o, k) => this.overlayLane(o, cutRows[k]));
     const audioRows = assignRows(
       this.music.map(musicRange),
@@ -1198,9 +1221,10 @@ export class Project {
     }
     this.looks.forEach(c => (c.row = lookRow.get(c.id) ?? 0));
     const effectRows = assignRows(
-      this.effectClips.map(effectRange),
-      this.effectClips.map(c => c.row),
+      clips.map(effectRange),
+      clips.map(c => c.row),
     );
+    clips.forEach((c, k) => clipRow.set(c.id, effectRows[k]));
     const reels = this.reels.map((r, k) => ({
       id: r.id,
       at: spans[k].at,
@@ -1216,7 +1240,7 @@ export class Project {
       music: this.music.map((m, k) => ({ ...m, row: audioRows[k] })),
       audioRows: count(audioRows),
       transitions: this.transitions,
-      effectClips: this.effectClips.map((c, k) => ({ ...c, row: effectRows[k] })),
+      effectClips: this.effectClips.map(c => ({ ...c, row: clipRow.get(c.id) ?? 0 })),
       effectRows: count(effectRows),
       looks: this.looks.map(c => ({ ...c, row: lookRow.get(c.id) ?? 0 })),
       lookRows,

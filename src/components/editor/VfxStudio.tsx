@@ -50,6 +50,7 @@ export default function VfxStudio({ id }: { id: string }) {
   const viewRef = useRef<HTMLCanvasElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLInputElement>(null);
+  const overlayRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [ui, setUi] = useState<UiState>(INITIAL_UI);
 
@@ -247,13 +248,23 @@ export default function VfxStudio({ id }: { id: string }) {
     else setCatalog('effects');
   }
 
-  // Overlay: an object cut out of the footage, on a layer of its own
-  function addOverlay() {
+  // Cut out: an object cut out of the footage, onto the Overlay layer
+  function cutOut() {
     setScene(null);
     setCatalog(null);
     setTool(null);
     if (ui.adding) return player()?.cancelAdding();
     player()?.startAdding({ kind: 'cutout' });
+  }
+
+  // Overlay: another video on top of the film (an object cut out of the footage is Cut out, in the
+  // footage's own tools)
+  function addOverlay() {
+    setScene(null);
+    setCatalog(null);
+    setTool(null);
+    if (ui.adding) return player()?.cancelAdding();
+    overlayRef.current?.click();
   }
 
   // Filters, Video effects, Text or Body effects: the group's presets; picking one adds it at the
@@ -405,9 +416,11 @@ export default function VfxStudio({ id }: { id: string }) {
       case 'deletescene':
         if (scene !== null) pl?.deleteScene(scene);
         return setScene(null);
+      case 'overlay':
+        return addOverlay();
       case 'cutout':
         if (lane) break; // (a cutout's own tools don't have this)
-        return addOverlay();
+        return cutOut();
       case 'catalog':
         return addEffect();
       case 'filters':
@@ -850,6 +863,20 @@ export default function VfxStudio({ id }: { id: string }) {
         onChange={e => {
           const f = e.target.files?.[0];
           if (f) fileChosen(f);
+          e.target.value = '';
+        }}
+      />
+      {/* another video, for the Overlay layer */}
+      <input
+        ref={overlayRef}
+        className="file-input"
+        type="file"
+        accept="video/*"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={e => {
+          const f = e.target.files?.[0];
+          if (f) void player()?.addOverlayVideo(f);
           e.target.value = '';
         }}
       />

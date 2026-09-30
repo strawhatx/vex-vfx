@@ -1035,6 +1035,21 @@ export class Player {
     this.say(`Added “${item.name}”.`);
   }
 
+  // another video on top of the film, at the playhead, selected
+  async addOverlayVideo(f: File) {
+    const probe = await probeVideo(f);
+    if (this.destroyed) return;
+    if (!probe) return this.say('This video can’t be played in this browser. Try an MP4 (H.264).');
+    const info = {
+      id: crypto.randomUUID(),
+      name: f.name.replace(/\.[^.]+$/, '') || 'Overlay',
+      length: probe.length,
+    };
+    this.effectPainter.setFiles([{ id: info.id, file: f }]);
+    const id = this.project.addOverlayVideo(f, info, this.time());
+    this.select(id);
+  }
+
   // a video taken out of the library (clips already made from it keep it)
   async removePack(id: string) {
     await this.library.remove(id);
