@@ -64,7 +64,14 @@ import {
   type PackItem,
 } from '@/domain/project/effectClips';
 import { transitionAt, withTransition, type Played, type Transition } from '@/domain/project/transitions';
-import { assignLayerRows, assignRows, layerOf, type Lane } from '@/domain/project/track';
+import {
+  assignLayerRows,
+  assignRows,
+  copiedInto,
+  layerOf,
+  type Lane,
+  type Track,
+} from '@/domain/project/track';
 import type { Selection, TrackMeta } from '@/domain/tracking/types';
 import type { JobStatus } from './jobs';
 import type { Analysis, CutFrame, EffectLayers, OverlayPictures } from './ports';
@@ -142,6 +149,7 @@ interface Reel {
   state: EditorState;
   srcLength: number; // its own length, as the player plays it
   file: Blob; // the video
+  source: string; // its file's fingerprint ('': not known yet): uses of the same file share their tracing
 }
 
 // the film as it's kept to open again later: its videos (the files and each one's edits and
@@ -149,7 +157,7 @@ interface Reel {
 // isn't kept.
 export interface SavedFilm {
   version: typeof SAVE_VERSION;
-  reels: { id: number; file: Blob; editor: EditorSave }[];
+  reels: { id: number; file: Blob; editor: EditorSave; source?: string }[];
   overlays: Overlay[];
   music: { clip: MusicClip; file: Blob }[];
   looks: LookClip[];
@@ -222,6 +230,9 @@ export class Project {
   private nextMusic = MUSIC_IDS;
   private nextLook = LOOK_IDS;
   private nextReel = 1;
+  // what was traced in videos taken out of the film, by file, for a use of the same file to reuse
+  // (kept until the film is closed: see docs/timeline-rules.md, rule 10)
+  private tracedOut = new Map<string, readonly Track[]>();
   private nextOverlay = 1;
   private undos: Step[] = [];
   private redos: Step[] = [];
@@ -252,11 +263,19 @@ export class Project {
     this.publish(true);
   }
 
+  // the fingerprint of video `id`'s file, once it's worked out: from then on, it shares what's traced
+  // with every other use of the same file (see Editor.addTrack)
+  identify(id: number, source: string) {
+    const r = this.reel(id);
+    if (r) r.source = source;
+  }
+
   // takes a video out of the film. What was cut out of it stays, as it was cut.
   removeVideo(id: number) {
     const k = this.reels.findIndex(r => r.id === id);
     if (k < 0) return false;
     this.step(undefined, () => {
+      this.keepTraced(this.reels[k]);
       this.reels.splice(k, 1);
       this.publish(true);
     });
@@ -277,9 +296,9 @@ export class Project {
   }
 
   // a copy of film k (of state.films) straight after its video: the same video again, with just
-  // that stretch of it kept, at the same speed and moving the same way (a copy of its own: the
-  // effects on it stay with the original). The copy's id, to load its video into; null if there's
-  // no such film
+  // that stretch of it kept, at the same speed and moving the same way, and a copy of the effects
+  // and impacts on it, tracked as they were (cutouts stay with the original). The copy's id, to
+  // load its video into; null if there's no such film
   duplicateFilm(k: number) {
     const f = this.state.films[k];
     const at = this.reels.findIndex(r => r.id === f?.reel);
@@ -287,12 +306,23 @@ export class Project {
     const from = this.reels[at];
     const edits = from.editor.saved();
     return this.step(undefined, () => {
-      const id = this.insertReel(from.file, at + 1);
+      const id = this.insertReel(from.file, at + 1, undefined, from.source);
       const ed = this.reel(id)!.editor;
+      const first = ed.saved().nextId;
+      const copies = copiedInto(edits.tracks, f, first);
+      const tracks = copies.map(c => c.track);
+      // (each copy's tracked frames are its original's)
+      const spans = new Map(edits.tracked);
       // (every scene but this one taken out)
       const starts = [0, ...edits.cuts];
       ed.restoreSaved({
         ...ed.saved(),
+        tracks,
+        nextId: first + tracks.length,
+        tracked: copies.flatMap(c => {
+          const span = spans.get(c.from);
+          return span ? [[c.track.id, span] as const] : [];
+        }),
         cuts: edits.cuts,
         gone: starts.filter(s => Math.abs(s - f.s) > 1e-6),
         speeds: edits.speeds.filter(x => Math.abs(x.s - f.s) < 1e-6),
@@ -339,6 +369,7 @@ export class Project {
     const k = this.reels.findIndex(r => r.id === id);
     if (k < 0) return this.addVideo(file);
     return this.step(undefined, () => {
+      this.keepTraced(this.reels[k]);
       this.reels.splice(k, 1);
       return this.insertReel(file, k);
     });
@@ -959,7 +990,7 @@ export class Project {
   saved(): SavedFilm {
     return {
       version: SAVE_VERSION,
-      reels: this.reels.map(r => ({ id: r.id, file: r.file, editor: r.editor.saved() })),
+      reels: this.reels.map(r => ({ id: r.id, file: r.file, editor: r.editor.saved(), source: r.source })),
       overlays: this.overlays.slice(),
       music: this.music.flatMap(clip => {
         const file = this.musicFiles.get(clip.id);
@@ -986,8 +1017,9 @@ export class Project {
   open(s: SavedFilm) {
     if (s?.version !== SAVE_VERSION) return false;
     this.reels = [];
+    this.tracedOut = new Map();
     s.reels.forEach((r, k) => {
-      this.insertReel(r.file, k, r.id);
+      this.insertReel(r.file, k, r.id, r.source ?? '');
       this.reel(r.id)!.editor.restoreSaved(r.editor);
     });
     this.overlays = s.overlays.slice();
@@ -1013,7 +1045,7 @@ export class Project {
   // the videos' files, and the music's, by id (to play them)
   get files() {
     return {
-      reels: this.reels.map(r => ({ id: r.id, file: r.file })),
+      reels: this.reels.map(r => ({ id: r.id, file: r.file, source: r.source })),
       music: this.music.flatMap(m => {
         const file = this.musicFiles.get(m.id);
         return file ? [{ id: m.id, file }] : [];
@@ -1110,9 +1142,9 @@ export class Project {
 
   // ---------- internals ----------
 
-  private insertReel(file: Blob, index: number, id = this.nextReel++) {
+  private insertReel(file: Blob, index: number, id = this.nextReel++, source = '') {
     const { analysis, layers } = this.ports(id);
-    const reel = { id, srcLength: 0, file } as Reel;
+    const reel = { id, srcLength: 0, file, source } as Reel;
     reel.editor = new Editor(
       analysis,
       layers,
@@ -1126,6 +1158,7 @@ export class Project {
         recorded: () => this.recorded(reel.editor),
         cutoutFrames: (track, frames) => this.cutFrames(reel, track, frames),
         cutoutTrimmed: (track, span) => this.cutTrimmed(reel, track, span),
+        traced: () => this.tracedElsewhere(reel),
       },
       id * REEL_IDS,
     );
@@ -1137,6 +1170,20 @@ export class Project {
 
   private reel(id: number) {
     return this.reels.find(r => r.id === id) ?? null;
+  }
+
+  // what's been traced in reel r's file by its other uses in the film, and ones taken out of it
+  private tracedElsewhere(r: Reel): readonly Track[] {
+    if (!r.source) return [];
+    const others = this.reels.filter(o => o !== r && o.source === r.source).flatMap(o => o.editor.traced);
+    return [...others, ...(this.tracedOut.get(r.source) ?? [])];
+  }
+
+  // what reel r traced, kept for a use of the same file to reuse, when it's taken out of the film
+  private keepTraced(r: Reel) {
+    if (!r.source || !r.editor.traced.length) return;
+    const kept = this.tracedOut.get(r.source) ?? [];
+    this.tracedOut.set(r.source, [...r.editor.traced, ...kept]);
   }
 
   private spans() {

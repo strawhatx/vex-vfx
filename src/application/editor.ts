@@ -71,6 +71,7 @@ import { controlDefaults, fitControl, upToDate, type Preset } from '@/domain/eff
 import { ownCopy } from '@/domain/effects/custom';
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
+import { reuseTraced, tracedAt } from '@/domain/project/sources';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { clampEdge, type EdgeSettings } from '@/domain/project/edge';
 import type { Part, PartOp } from '@/domain/project/parts';
@@ -189,6 +190,9 @@ export interface EditorEvents {
   // a cutout's pictures, as they're cut (i: clip frame), and the frames it's being cut from now
   cutoutFrames?(id: number, frames: CutFrame[]): void;
   cutoutTrimmed?(id: number, span: { s: number; e: number }): void;
+  // what's been traced in the same video elsewhere: other uses of it in the film, and ones taken out
+  // (a new effect on an object traced there reuses its tracking: see sources.ts)
+  traced?(): readonly Track[];
 }
 
 export const DEFAULT_FX: FxSettings = {
@@ -318,6 +322,10 @@ export class Editor {
   }
   lostAt(i: number) {
     return this.tracks.some(t => t.frames[i]?.shapes.some(s => s.lost));
+  }
+  // the objects traced in the clip, for its other uses in the film to reuse (see sources.ts)
+  get traced(): readonly Track[] {
+    return this.tracks;
   }
   // the effect whose object was tapped at frame i
   trackAt(i: number, p: Selection) {
@@ -734,12 +742,19 @@ export class Editor {
     const key: Key = { i, x: sel.x, y: sel.y };
     t.aim = defaultAim(sel, this.W);
     t.keys = [key];
+    // (an effect on an object traced before takes its tracking, for as long as it was traced)
+    const found =
+      t.kind === 'effect' && !t.spot
+        ? tracedAt([...this.tracks, ...(this.events.traced?.() ?? [])], this.clip.length, i, sel, t.part)
+        : null;
+    const reused = !!found && reuseTraced(t, found, key, this.clip);
+    if (reused) refreshFrames(t, this.clip);
     this.tracks.push(t);
     this.tracked.set(t.id, trackSpan(t, this.clip));
     this.place(t);
     this.syncLayers();
-    this.publish();
-    if (!isPinned(t)) this.jobs.add({ id: t.id, key });
+    this.publish(reused);
+    if (!isPinned(t) && !reused) this.jobs.add({ id: t.id, key });
     return t.id;
   }
 

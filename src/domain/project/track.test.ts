@@ -11,6 +11,7 @@ import {
   objectPasses,
   newTrack,
   assignRows,
+  copiedInto,
   rangeFrames,
   refreshFrames,
   setHit,
@@ -316,5 +317,25 @@ describe('objectPasses', () => {
     });
     const t = { kind: 'effect', spot: false, fx: {} as FxSettings, body: { preset, values: {} } } as const;
     expect(objectPasses(t)?.map(p => `${p.engine}:${p.kind}`)).toEqual(['object:edge', 'object:emitter']);
+  });
+});
+
+describe('copying the effects on a stretch of the video', () => {
+  it('copies those on it, cut to it, numbered anew, with their tracking; not cutouts', () => {
+    const a = tracked(1, 10, { s: 0.1, e: 0.5 }),
+      b = tracked(2, 30, { s: 0.6, e: 0.9 }),
+      hit = newImpact(3, clip, FX, 'punch', 3, 1),
+      cut = { ...tracked(4, 50, { s: 0.2, e: 0.4 }), kind: 'cutout' as const };
+    const copies = copiedInto([a, b, hit, cut], { s: 0.3, e: 0.7 }, 11);
+    expect(copies.map(c => [c.from, c.track.id])).toEqual([
+      [1, 11],
+      [2, 12],
+      [3, 13],
+    ]);
+    expect(copies.map(c => c.track.range)).toEqual([{ s: 0.3, e: 0.5 }, { s: 0.6, e: 0.7 }, hit.range]);
+    expect(copies[0].track.shapes[4]).toMatchObject({ id: 11, cx: 10 });
+    // (the originals are as they were)
+    expect(a.range).toEqual({ s: 0.1, e: 0.5 });
+    expect(a.shapes[4]?.id).toBe(0);
   });
 });

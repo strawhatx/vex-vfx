@@ -163,6 +163,81 @@ describe('duplicating a film', () => {
   });
 });
 
+describe('tracing each file once', () => {
+  // an effect on the object at frame i of video `reel`
+  const tap = (reel: number, i: number, x = 50) => project.editorOf(reel)!.addTrack(i, { x, y: 25 })!;
+  const lanesOn = (reel: number) => state.lanes.filter(l => l.reel === reel);
+
+  it('a duplicated film comes with a copy of its effects, tracked as they were', () => {
+    const a = addVideo(6);
+    project.split(2);
+    project.split(4);
+    tap(a, 25); // (2.5..5.5)
+    finishTrack(a);
+    const b = project.duplicateFilm(1)!;
+    scanVideo(b, 6);
+    const [copy] = lanesOn(b);
+    // (the copy plays 2..4 of the video, from 6 in the film: the effect cut to it)
+    expect(copy.range.s).toBeCloseTo(6.5);
+    expect(copy.range.e).toBeCloseTo(8);
+    expect(copy.spans.length).toBeGreaterThan(0);
+    expect(analyses.get(b)!.tracks).toBe(0);
+    expect(lanesOn(a)).toHaveLength(1);
+  });
+
+  it('a second use of the same file reuses what was traced in it', () => {
+    const a = addVideo(6),
+      b = addVideo(6);
+    project.identify(a, 'same');
+    project.identify(b, 'same');
+    tap(a, 10); // (1..4)
+    finishTrack(a);
+    tap(b, 20);
+    expect(analyses.get(b)!.tracks).toBe(0);
+    // (for as long as it was traced: 2..4 of b, which starts at 6)
+    const [l] = lanesOn(b);
+    expect(l.range.s).toBeCloseTo(8);
+    expect(l.range.e).toBeCloseTo(10);
+    expect(l.spans.length).toBeGreaterThan(0);
+    // (a tap on nothing traced is tracked)
+    tap(b, 20, 5);
+    expect(analyses.get(b)!.tracks).toBe(1);
+  });
+
+  it('another file is tracked afresh', () => {
+    const a = addVideo(6),
+      b = addVideo(6);
+    project.identify(a, 'one');
+    project.identify(b, 'other');
+    tap(a, 10);
+    finishTrack(a);
+    tap(b, 20);
+    expect(analyses.get(b)!.tracks).toBe(1);
+  });
+
+  it('a file added again after its video was taken out reuses what was traced in it', () => {
+    const a = addVideo(6);
+    project.identify(a, 'same');
+    tap(a, 10);
+    finishTrack(a);
+    project.removeVideo(a);
+    const c = addVideo(6);
+    project.identify(c, 'same');
+    tap(c, 20);
+    expect(analyses.get(c)!.tracks).toBe(0);
+  });
+
+  it("keeps each video's fingerprint with the film", () => {
+    const a = addVideo(6);
+    project.identify(a, 'same');
+    const saved = project.saved();
+    expect(saved.reels[0].source).toBe('same');
+    project = newProject();
+    project.open(saved);
+    expect(project.files.reels[0].source).toBe('same');
+  });
+});
+
 describe('reversing a film', () => {
   it('puts it backwards in its place, as a video of its own, and takes the film out', () => {
     const a = addVideo(6);

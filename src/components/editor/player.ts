@@ -69,6 +69,7 @@ import { IndexedDbPackLibrary } from '@/infrastructure/storage/packLibrary';
 import { EffectClipPainter } from '@/infrastructure/rendering/effectClips';
 import { probeVideo } from '@/infrastructure/video/probe';
 import { reverseVideo } from '@/infrastructure/video/reverse';
+import { fingerprint } from '@/infrastructure/video/fingerprint';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
@@ -458,11 +459,16 @@ export class Player {
     this.playVideo(id, f);
   }
 
-  // video `id`'s file into its element, and its sound's waveform read
+  // video `id`'s file into its element, its sound's waveform read, and its fingerprint worked out (so
+  // it shares what's traced with other uses of the same file)
   private playVideo(id: number, f: Blob) {
     const rv = this.views.get(id);
     if (!rv) return;
     this.mixer.setOriginal(this.ui.muted ? 0 : 1);
+    void fingerprint(f).then(
+      fp => this.project.identify(id, fp),
+      () => {}, // (no fingerprint: it just doesn't share)
+    );
     void clipPeaks(f).then(wave => {
       rv.wave = wave;
       this.refreshReels();
