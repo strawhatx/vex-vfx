@@ -9,7 +9,7 @@
 // Ctrl/⌘ + scroll) zooms it, keeping the playhead where it is on screen.
 import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
-import type { StackLayer } from '@/domain/project/stack';
+import { DRAW_ORDER, type DrawStep } from '@/domain/project/drawOrder';
 import { layerOf, type LayerKind } from '@/domain/project/track';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
@@ -68,8 +68,6 @@ export function Timeline({
     moveCutout(id: number, t: number): void;
     // a clip dragged onto another row (-1: a new one on top)
     moveRow(id: number, row: number): void;
-    // one of the film's layers moved in front (+1) or behind (-1)
-    moveLayer(layer: StackLayer, by: 1 | -1): void;
   };
 }) {
   const dur = ui.duration || 0;
@@ -111,11 +109,10 @@ export function Timeline({
     return a.kind === 'cutout' ? 'Drag a box round the object' : 'Tap the object in the preview';
   };
   // a layer of looks: text, video effects or filters
-  const lookLayer = (group: LookGroup, move?: LayerMoves) => (
+  const lookLayer = (group: LookGroup) => (
     <Layer
       key={group}
       layer={group}
-      move={move}
       rows={Array.from({ length: ui.lookRows[group] }, (_, r) =>
         ui.looks.filter(c => c.preset.group === group && c.row === r),
       )}
@@ -134,23 +131,15 @@ export function Timeline({
       )}
     />
   );
-  // moving a stacked layer: in front (up the stack) or behind (down it), where it can go
-  const moves = (l: StackLayer) => {
-    const k = ui.stack.indexOf(l);
-    return {
-      front: k < ui.stack.length - 1 ? () => on.moveLayer(l, 1) : undefined,
-      back: k > 0 ? () => on.moveLayer(l, -1) : undefined,
-    };
-  };
-  // one of the film's stacked layers
-  const stackLayer = (l: StackLayer) => {
-    if (l === 'filter' || l === 'screen' || l === 'text') return lookLayer(l, moves(l));
+  // the layer drawn at one step of the draw order (transitions: on the film itself)
+  const stackLayer = (l: DrawStep) => {
+    if (l === 'transition') return null;
+    if (l === 'filter' || l === 'screen' || l === 'text') return lookLayer(l);
     if (l === 'clips')
       return (
         <Layer
           key={l}
           layer="clips"
-          move={moves(l)}
           rows={Array.from({ length: ui.effectRows }, (_, r) => ui.effectClips.filter(c => c.row === r))}
           add={{ label: 'Add effect clip', on: false, run: on.addEffectClip }}
           busy={busy}
@@ -171,7 +160,6 @@ export function Timeline({
       <Layer
         key={l}
         layer="overlay"
-        move={moves(l)}
         rows={rowsOf('overlay', ui.cutRows)}
         add={{
           label: adding('overlay') ?? 'Add cutout',
@@ -213,8 +201,8 @@ export function Timeline({
 
           {hasFilm && (
             <>
-              {/* the film's layers as they're stacked, like CapCut or After Effects: higher is in front */}
-              {[...ui.stack].reverse().map(l => stackLayer(l))}
+              {/* the film's layers in the order they're drawn, like CapCut: higher is in front */}
+              {[...DRAW_ORDER].reverse().map(l => stackLayer(l))}
               {/* (effects on objects and impacts are drawn on the video itself: just above it) */}
               <Layer
                 layer="effects"
@@ -312,19 +300,15 @@ const LAYERS: Record<LayerName, { name: string; icon: string }> = {
 };
 
 // one layer: its rows of clips, marked with its icon on the left; empty, a button to add one
-// moving a layer in front or behind (none: it can't go that way, or it doesn't move)
-type LayerMoves = { front?: () => void; back?: () => void };
 
 function Layer<C>({
   layer,
-  move,
   rows,
   add,
   busy,
   clip,
 }: {
   layer: LayerName;
-  move?: LayerMoves;
   rows: C[][];
   add: { label: string; on: boolean; run(): void };
   busy: boolean;
@@ -334,32 +318,6 @@ function Layer<C>({
   const tag = (
     <span className="layer-tag" title={name} aria-label={`${name} layer`}>
       <Icon d={icon} size={16} />
-      {move && (
-        <span className="layer-moves">
-          <button
-            type="button"
-            aria-label={`${name} in front`}
-            disabled={!move.front}
-            onClick={e => {
-              e.stopPropagation();
-              move.front?.();
-            }}
-          >
-            ▲
-          </button>
-          <button
-            type="button"
-            aria-label={`${name} behind`}
-            disabled={!move.back}
-            onClick={e => {
-              e.stopPropagation();
-              move.back?.();
-            }}
-          >
-            ▼
-          </button>
-        </span>
-      )}
     </span>
   );
   if (!rows.length || add.on)

@@ -38,6 +38,7 @@ src/
 5. New editing behaviour goes in `Editor` (application) with its rules in `domain/`; `player.ts` only turns taps, playback and export into calls on it.
 6. Rules and use cases get tests (`npm test`, Vitest) with in-memory fakes for the ports, like `application/editor.test.ts`. Don't mock the browser to test a rule.
 7. Don't add a port or layer without a real outside dependency behind it; pure helpers are just functions.
+8. The timeline follows `docs/timeline-rules.md` (sources, clips, objects, draw order, what travels with a clip). Check a timeline change against it.
 
 ## Before you finish
 - `npm test`, `npx tsc --noEmit` and `npx eslint .` pass, and `npm run format` has been run (Prettier).

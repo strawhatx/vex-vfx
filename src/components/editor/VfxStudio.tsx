@@ -621,7 +621,6 @@ export default function VfxStudio({ id }: { id: string }) {
             moveEffect: (id, t) => player()?.placeEffect(id, t),
             moveMusic: (id, t) => player()?.placeMusic(id, t),
             moveLook: (id, t) => player()?.placeLook(id, t),
-            moveLayer: (l, by) => player()?.moveLayer(l, by),
             setRange: (id, r) => player()?.setRange(id, r),
             commitRange: id => player()?.commitRange(id),
             moveImpact: (id, t) => player()?.moveImpact(id, t),
