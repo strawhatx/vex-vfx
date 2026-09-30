@@ -1,7 +1,5 @@
 // Effect clips: the user's own effect videos (fire, an explosion, sparks, filmed on black or on a
-// green screen), kept in a library on the device and placed on the film. An overlay video is one
-// too: another video put on top of the film (picked for it, not kept in the library), drawn as it
-// is, on the Overlay layer. An effect clip plays a
+// green screen), kept in a library on the device and placed on the film. An effect clip plays a
 // stretch of its video from where it's placed, where it's put in the frame (moved, sized, turned
 // and faded), blended in: added onto the picture where it's bright (for black backgrounds), or with
 // its green keyed out. Like music, trimming an end keeps what plays where it is.
@@ -38,7 +36,6 @@ export interface EffectClip {
   opacity: number;
   blend: Blend;
   tolerance: number; // green screen: how far from the green is keyed out, 0..1
-  overlay?: boolean; // another video on top of the film (on the Overlay layer), not an effect
 }
 
 export const MIN_EFFECT_S = 0.1,
@@ -66,21 +63,6 @@ export function newEffectClip(id: number, item: PackItem, at: number, filmLength
     tolerance: 0.35,
   };
 }
-
-// another video (`file`: its id among the film's files, `length` long) on top of the film at film
-// time `at`: drawn as it is, most of the frame's width, in the middle
-export function newOverlayVideo(
-  id: number,
-  file: string,
-  name: string,
-  length: number,
-  at: number,
-  filmLength: number,
-): EffectClip {
-  const c = newEffectClip(id, { id: file, name, length, blend: 'normal' }, at, filmLength);
-  return { ...c, scale: OVERLAY_SCALE, overlay: true };
-}
-const OVERLAY_SCALE = 1.6;
 
 // when it plays, in the film's time
 export const effectRange = (c: Pick<EffectClip, 'at' | 'src'>) => ({

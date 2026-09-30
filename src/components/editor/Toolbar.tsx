@@ -14,7 +14,6 @@ export type ToolKey =
   | 'packs'
   | 'objects'
   | 'custom'
-  | 'overlay'
   | 'cancel'
   | 'edit'
   | 'replace'
@@ -278,7 +277,7 @@ export function toolsFor(
     { key: 'addtext', label: 'Text', icon: I.text, disabled: s.busy || !s.ready },
     { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
     { key: 'filters', label: 'Filters', icon: I.color, disabled: s.busy || !s.ready },
-    { key: 'overlay', label: 'Overlay', icon: I.film, disabled: s.busy || !s.ready },
+    { key: 'cutout', label: 'Overlay', icon: I.cutout, disabled: s.busy || !s.ready },
   ];
 }
 

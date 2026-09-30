@@ -509,27 +509,6 @@ describe('saving the film', () => {
   });
 });
 
-describe('overlay videos', () => {
-  it('go on top of the film on the Overlay layer, as they are, and are saved with their video', () => {
-    addVideo(10);
-    const file = new Blob(['clip']);
-    const id = project.addOverlayVideo(file, { id: 'v1', name: 'Skate', length: 4 }, 3)!;
-    expect(project.effectClip(id)).toMatchObject({
-      overlay: true,
-      blend: 'normal',
-      at: 3,
-      src: { s: 0, e: 4 },
-    });
-    // (on the Overlay layer's first row, not the Effect clips layer)
-    expect(state.cutRows).toBe(1);
-    expect(state.effectRows).toBe(0);
-    expect(project.effectsAt(4).map(c => c.clip.id)).toEqual([id]);
-    expect(project.saved().packs).toEqual([{ id: 'v1', file }]);
-    project.undo();
-    expect(state.effectClips).toEqual([]);
-  });
-});
-
 describe('effect clips', () => {
   const boom = { id: 'p1', name: 'Boom', length: 3, blend: 'screen' as const };
 
