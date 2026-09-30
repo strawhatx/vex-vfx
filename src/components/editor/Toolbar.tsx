@@ -119,9 +119,7 @@ export function toolsFor(
       { ...sheet('speed', 'Speed', I.speed), disabled: s.busy || s.films < 1 },
       { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
       { ...sheet('animation', 'Animation', I.move), disabled: s.busy || s.films < 1 },
-      ...(SHOW_OVERLAYS
-        ? [{ key: 'cutout' as const, label: 'Cut out', icon: I.cutout, disabled: s.busy }]
-        : []),
+      { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       ...(s.video && s.video.of > 1
         ? [
