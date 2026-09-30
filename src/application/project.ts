@@ -26,7 +26,7 @@ import {
   type Overlay,
 } from '@/domain/project/overlay';
 import { filmLength, layoutReels, nextReel, reelAt } from '@/domain/project/sequence';
-import { NO_ANIM, type AnimKind, type AnimSlot, type ClipAnim } from '@/domain/effects/animation';
+import { NO_ANIM, hasAnim, type AnimKind, type AnimSlot, type ClipAnim } from '@/domain/effects/animation';
 import { FULL, type Crop } from '@/domain/project/crop';
 import {
   musicRange,
@@ -280,6 +280,59 @@ export class Project {
       this.publish(true);
     });
     return true;
+  }
+
+  // a copy of film k (of state.films) straight after its video: the same video again, with just
+  // that stretch of it kept, at the same speed and moving the same way (a copy of its own: the
+  // effects on it stay with the original). The copy's id, to load its video into; null if there's
+  // no such film
+  duplicateFilm(k: number) {
+    const f = this.state.films[k];
+    const at = this.reels.findIndex(r => r.id === f?.reel);
+    if (!f || at < 0) return null;
+    const from = this.reels[at];
+    const edits = from.editor.saved();
+    return this.step(undefined, () => {
+      const id = this.insertReel(from.file, at + 1);
+      const ed = this.reel(id)!.editor;
+      // (every scene but this one taken out)
+      const starts = [0, ...edits.cuts];
+      ed.restoreSaved({
+        ...ed.saved(),
+        cuts: edits.cuts,
+        gone: starts.filter(s => Math.abs(s - f.s) > 1e-6),
+        speeds: edits.speeds.filter(x => Math.abs(x.s - f.s) < 1e-6),
+        anims: edits.anims.filter(x => Math.abs(x.s - f.s) < 1e-6),
+      });
+      return id;
+    });
+  }
+
+  // film k (of state.films) played backwards: `reversed` (its stretch of video made backwards) in
+  // its place, as a video of its own straight after its video, at the same speed and moving the
+  // same way; the film itself is taken out (the effects on it stay with that video). The new
+  // video's id, to load it into; null if there's no such film
+  reverseFilm(k: number, reversed: Blob) {
+    const f = this.state.films[k];
+    const at = this.reels.findIndex(r => r.id === f?.reel);
+    if (!f || at < 0) return null;
+    return this.step(undefined, () => {
+      const id = this.insertReel(reversed, at + 1);
+      const ed = this.reel(id)!.editor;
+      const moves = hasAnim(f.anim);
+      ed.restoreSaved({
+        ...ed.saved(),
+        speeds: f.speed !== 1 || f.pitch ? [{ s: 0, speed: f.speed, pitch: f.pitch }] : [],
+        anims: moves ? [{ s: 0, anim: f.anim }] : [],
+      });
+      this.reels[at].editor.deleteScene(f.k);
+      return id;
+    });
+  }
+
+  // video `id`'s file
+  videoFile(id: number) {
+    return this.reel(id)?.file ?? null;
   }
 
   // where a video is in the film (-1: not in it)

@@ -374,6 +374,12 @@ export default function VfxStudio({ id }: { id: string }) {
       case 'split':
         pl?.splitHere();
         return setScene(pl?.sceneNow() ?? null);
+      case 'duplicatescene':
+        if (scene !== null) pl?.duplicateScene(scene);
+        return;
+      case 'reverse':
+        if (scene !== null) void pl?.reverseScene(scene);
+        return;
       case 'removevideo':
         if (filmVideo !== null) pl?.removeVideo(filmVideo);
         return setScene(null);

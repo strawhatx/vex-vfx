@@ -68,6 +68,7 @@ import { IndexedDbFilmStore } from '@/infrastructure/storage/filmStore';
 import { IndexedDbPackLibrary } from '@/infrastructure/storage/packLibrary';
 import { EffectClipPainter } from '@/infrastructure/rendering/effectClips';
 import { probeVideo } from '@/infrastructure/video/probe';
+import { reverseVideo } from '@/infrastructure/video/reverse';
 import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
@@ -345,7 +346,8 @@ export class Player {
   // a group whose presets' pictures are wanted, made once a frame is drawn
   private thumbsFor: LookGroup | null = null;
   private objectThumbs = false; // the object effects' pictures made (or being made)
-  private photoThumbs = new Set<LookGroup>(); // the groups whose pictures on the photo are made
+  private photoThumbs = new Set<LookGroup>();
+  private reversing = false; // a film being reversed (one at a time) // the groups whose pictures on the photo are made
   // stops an animation's preview (see previewAnim)
   private previewTimer = 0;
   // saving the project on this device: whether what was saved has been opened yet (nothing's saved
@@ -678,6 +680,38 @@ export class Player {
   splitHere() {
     this.pause();
     if (this.project.split(this.time())) this.say('Split into two films.');
+  }
+
+  // a copy of film k straight after its video (see Project.duplicateFilm), its video loaded
+  duplicateScene(k: number) {
+    this.pause();
+    const f = this.state?.films[k];
+    const file = f && this.project.videoFile(f.reel);
+    const id = file ? this.project.duplicateFilm(k) : null;
+    if (id === null || !file) return;
+    this.playVideo(id, file);
+    this.say('Duplicated.');
+  }
+
+  // film k played backwards (see Project.reverseFilm): its stretch of video made backwards on the
+  // device first, which takes a while
+  async reverseScene(k: number) {
+    const f = this.state?.films[k];
+    const file = f && this.project.videoFile(f.reel);
+    if (!f || !file || this.reversing) return;
+    this.pause();
+    this.reversing = true;
+    this.say('Reversing…');
+    const reversed = await reverseVideo(file, f.s, f.e, done =>
+      this.say(`Reversing… ${Math.round(done * 100)}%`),
+    );
+    this.reversing = false;
+    if (this.destroyed) return;
+    if (!reversed) return this.say('This video can’t be reversed in this browser.');
+    const id = this.project.reverseFilm(k, reversed);
+    if (id === null) return;
+    this.playVideo(id, reversed);
+    this.say('Reversed.');
   }
 
   // deletes film k: the playhead moves on to what plays there now

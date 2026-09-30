@@ -142,6 +142,48 @@ describe('several videos', () => {
   });
 });
 
+describe('duplicating a film', () => {
+  it('puts a copy of it straight after its video, just that stretch, as its own video', () => {
+    const a = addVideo(6);
+    project.split(2);
+    project.split(4);
+    project.setSpeed(1, 2, false);
+    const b = project.duplicateFilm(1)!;
+    expect(state.reels.map(r => r.id)).toEqual([a, b]);
+    scanVideo(b, 6);
+    // (the original's three films, then the copy: 2..4 at double speed)
+    expect(state.films.map(f => [f.reel, f.s, f.e, f.speed])).toEqual([
+      [a, 0, 2, 1],
+      [a, 2, 4, 2],
+      [a, 4, 6, 1],
+      [b, 2, 4, 2],
+    ]);
+    project.undo();
+    expect(state.reels.map(r => r.id)).toEqual([a]);
+  });
+});
+
+describe('reversing a film', () => {
+  it('puts it backwards in its place, as a video of its own, and takes the film out', () => {
+    const a = addVideo(6);
+    project.split(2);
+    project.split(4);
+    project.setSpeed(1, 2, false);
+    const b = project.reverseFilm(1, new Blob(['reversed']))!;
+    expect(state.reels.map(r => r.id)).toEqual([a, b]);
+    scanVideo(b, 2);
+    expect(state.films.map(f => [f.reel, f.s, f.e, f.speed])).toEqual([
+      [a, 0, 2, 1],
+      [a, 4, 6, 1],
+      [b, 0, 2, 2],
+    ]);
+    // (one step: both put back)
+    project.undo();
+    expect(state.reels.map(r => r.id)).toEqual([a]);
+    expect(state.films).toHaveLength(3);
+  });
+});
+
 describe('cutouts as layers of the film', () => {
   function cutOut() {
     const a = addVideo(6);

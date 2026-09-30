@@ -26,6 +26,8 @@ export type ToolKey =
   | 'hithere'
   | 'mute'
   | 'split'
+  | 'duplicatescene'
+  | 'reverse'
   | 'cutout'
   | 'movekey'
   | 'place'
@@ -116,6 +118,8 @@ export function toolsFor(
   if (mode === 'clip')
     return [
       { key: 'split', label: 'Split', icon: I.edit, disabled: s.busy },
+      { key: 'duplicatescene', label: 'Duplicate', icon: I.copy, disabled: s.busy || s.films < 1 },
+      { key: 'reverse', label: 'Reverse', icon: I.undo, disabled: s.busy || s.films < 1 },
       { ...sheet('speed', 'Speed', I.speed), disabled: s.busy || s.films < 1 },
       { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
       { ...sheet('animation', 'Animation', I.move), disabled: s.busy || s.films < 1 },
