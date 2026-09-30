@@ -71,7 +71,7 @@ import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
 import { FrameParticles } from '@/infrastructure/rendering/frameParticles';
-import { EffectPreviews } from '@/infrastructure/rendering/effectPreviews';
+import { EffectPreviews, personSquare } from '@/infrastructure/rendering/effectPreviews';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { loadFonts } from './fonts';
@@ -340,6 +340,7 @@ export class Player {
   // a group whose presets' pictures are wanted, made once a frame is drawn
   private thumbsFor: LookGroup | null = null;
   private objectThumbs = false; // the object effects' pictures made (or being made)
+  private filterThumbs = false; // the filters' pictures made (or being made)
   // stops an animation's preview (see previewAnim)
   private previewTimer = 0;
   // saving the project on this device: whether what was saved has been opened yet (nothing's saved
@@ -1224,12 +1225,18 @@ export class Player {
 
   private async drawThumbs(group: LookGroup) {
     if (!this.rv() || !this.CW || this.camera) return;
-    // filters and effects on the frame without any looks, small; text on a dark square
+    // filters on a photo of a person (made once: they don't depend on the video); effects on the
+    // frame without any looks, small; text on a dark square
+    if (group === 'filter' && this.filterThumbs) return;
     const w = LOOK_THUMB_W,
-      h = group === 'text' ? w : Math.min(Math.round((w * this.CH) / this.CW), 2 * w);
+      h = group === 'screen' ? Math.min(Math.round((w * this.CH) / this.CW), 2 * w) : w;
+    const photo = group === 'filter' ? await personSquare(w).catch(() => null) : null;
+    if (this.destroyed) return;
+    if (group === 'filter') this.filterThumbs = !!photo;
     const frame = new OffscreenCanvas(w, h);
     const fg = frame.getContext('2d')!;
-    if (group === 'text') {
+    if (photo) fg.drawImage(photo, 0, 0);
+    else if (group === 'text') {
       fg.fillStyle = '#26262a';
       fg.fillRect(0, 0, w, h);
     } else {

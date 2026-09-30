@@ -56,6 +56,15 @@ export class EffectPreviews {
   }
 }
 
+// the photo of the person as a size x size square, framed as the object effects' pictures are (what
+// filters are shown on)
+export async function personSquare(size: number) {
+  const photo = await bitmap(PHOTO);
+  const c = new OffscreenCanvas(size, size);
+  c.getContext('2d')!.drawImage(photo, 0, photo.height * TOP, photo.width, photo.width, 0, 0, size, size);
+  return c;
+}
+
 async function bitmap(url: string) {
   return createImageBitmap(await (await fetch(url)).blob());
 }
