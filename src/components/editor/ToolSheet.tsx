@@ -1,6 +1,5 @@
-// The panel for one tool: a category's styles (to add an effect or impact), or the selected
-// clip's effect, impact style, color or size. On phones it takes over the dock; on desktop it
-// floats beside the preview.
+// The panel for one tool: the selected clip's effect, impact style, color or size. On phones it
+// takes over the dock; on desktop it floats beside the preview.
 import type { CSSProperties } from 'react';
 import { IMPACTS, IMPACT_STYLES, stylesLike, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Aim } from '@/domain/effects/laser';
@@ -20,7 +19,6 @@ import type { Source } from './player';
 import { Icon, I } from './icons';
 
 export type Tool =
-  | 'styles'
   | 'effects'
   | 'color'
   | 'adjust'
@@ -41,8 +39,6 @@ export type Tool =
   | 'customize'
   // how a film or an overlay moves (see AnimSheet.tsx)
   | 'animation';
-// the effect categories: the object effects with styles of their own (see Toolbar.tsx)
-export type Category = Effect;
 
 // lasers are hidden for now: set this to true to bring them back into the menus
 export const SHOW_LASERS = false;
@@ -62,10 +58,8 @@ export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'text', label: 'Text' },
 ];
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
-export const categoryName = (c: Category) => effectName(c);
 
 export const TOOL_TITLES: Record<Tool, string> = {
-  styles: 'Styles',
   effects: 'Effect',
   color: 'Color',
   adjust: 'Adjust',
@@ -224,17 +218,12 @@ const swatchBg = (i: number) => {
 const pct = (v: number, min: number, max: number) =>
   ({ '--p': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
 
-// what picking a style in a category adds
-export type Pick = { kind: 'effect'; effect: Effect; pal: number; fx?: Partial<FxSettings> };
-
 export function ToolSheet({
   tool,
   title,
   fx,
   onChange,
   onClose,
-  category,
-  onPick,
   impact,
   onImpact,
   suggested,
@@ -260,8 +249,6 @@ export function ToolSheet({
   fx: FxSettings;
   onChange(p: Partial<FxSettings>): void;
   onClose(): void;
-  category?: Category | null;
-  onPick?(p: Pick): void;
   impact?: ImpactStyle | null;
   onImpact?(style: ImpactStyle): void;
   // parts: the one nearest the tap, and what to do with the one picked
@@ -317,28 +304,6 @@ export function ToolSheet({
           ))}
         </div>
       )}
-      {tool === 'styles' && category && LOOKS[category] && (
-        <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-          {LOOKS[category].map(l => (
-            <button
-              key={l.id}
-              type="button"
-              className="tile"
-              onClick={() =>
-                onPick?.({
-                  kind: 'effect',
-                  effect: category,
-                  pal: DEFAULT_PAL[category],
-                  fx: { ...l.fx, ...l.start },
-                })
-              }
-            >
-              <span className="tile-art" style={{ background: l.art }} />
-              {l.label}
-            </button>
-          ))}
-        </div>
-      )}
       {tool === 'look' && LOOKS[fx.effect] && (
         <div className="tiles" role="group" aria-label="Style">
           {LOOKS[fx.effect]!.map(l => (
@@ -351,21 +316,6 @@ export function ToolSheet({
             >
               <span className="tile-art" style={{ background: l.art }} />
               {l.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {tool === 'styles' && category && !LOOKS[category] && (
-        <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-          {PALETTES.map((p, i) => (
-            <button
-              key={p.name}
-              type="button"
-              className="tile"
-              onClick={() => onPick?.({ kind: 'effect', effect: category, pal: i })}
-            >
-              <span className="tile-art" style={{ background: swatchBg(i) }} />
-              {i === DEFAULT_PAL[category] ? `${p.name} ★` : p.name}
             </button>
           ))}
         </div>

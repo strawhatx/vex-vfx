@@ -27,16 +27,8 @@ import { Preview } from './Preview';
 import { RotoDock, RotoHeader, type RotoActions } from './roto/RotoScreen';
 import { CropDock, CropHeader, type CropActions } from './CropScreen';
 import { Timeline } from './timeline/Timeline';
-import { CUSTOM_EXTRAS, OBJECT_CATEGORIES, Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
-import {
-  TOOL_TITLES,
-  ToolSheet,
-  categoryName,
-  hasLooks,
-  type Category,
-  type Pick,
-  type Tool,
-} from './ToolSheet';
+import { CUSTOM_EXTRAS, Toolbar, toolsFor, type Mode, type ToolKey } from './Toolbar';
+import { TOOL_TITLES, ToolSheet, hasLooks, type Tool } from './ToolSheet';
 import { Transport } from './Transport';
 
 // the tools whose panels aren't ToolSheet's
@@ -60,7 +52,6 @@ export default function VfxStudio({ id }: { id: string }) {
   const [catalog, setCatalog] = useState<Catalog>(null);
   // an effect made from nothing is being placed: once it's there, straight on to making it
   const [customizeNext, setCustomizeNext] = useState(false);
-  const [category, setCategory] = useState<Category | null>(null); // the category whose styles are open
   // a group's presets open to add a look from (filters, or video effects)
   const [lookMenu, setLookMenu] = useState<MenuGroup | null>(null);
   // the join (into this film) whose transition is being picked
@@ -316,13 +307,6 @@ export default function VfxStudio({ id }: { id: string }) {
     }
   }
 
-  // a style picked in a category: the next tap on the preview adds it there
-  function pick(p: Pick) {
-    setTool(null);
-    setCatalog(null);
-    player()?.startAdding({ kind: 'effect', fx: { effect: p.effect, pal: p.pal, ...p.fx } });
-  }
-
   // the film selected, and its video
   const film = scene !== null ? (ui.films[scene] ?? null) : null;
   // the join being picked for: the film it goes into, and its transition
@@ -381,11 +365,6 @@ export default function VfxStudio({ id }: { id: string }) {
   // a toolbar button pressed
   function runTool(key: ToolKey) {
     const pl = player();
-    if (key.startsWith('cat-')) {
-      setCategory(key.slice(4) as Category);
-      setTool('styles');
-      return;
-    }
     switch (key) {
       case 'edit':
         if (!ui.ready) return chooseFile();
@@ -692,17 +671,10 @@ export default function VfxStudio({ id }: { id: string }) {
             }
             thumbs={ui.lookThumbs}
             // (adding an object effect: the ones with styles of their own too)
-            extras={
-              menuGroup === 'body' && !bodyLane
-                ? OBJECT_CATEGORIES
-                : menuGroup === 'impact' && !burstLane
-                  ? CUSTOM_EXTRAS
-                  : []
-            }
-            onExtra={id => {
+            extras={menuGroup === 'impact' && !burstLane ? CUSTOM_EXTRAS : []}
+            onExtra={() => {
               setLookMenu(null);
-              if (id === 'packs') openPacks();
-              else runTool(`cat-${id as Category}`);
+              openPacks();
             }}
             onPick={id => pickLook(menuGroup, id)}
             onClose={() => {
@@ -710,7 +682,9 @@ export default function VfxStudio({ id }: { id: string }) {
               setTool(null);
             }}
             onShown={() =>
-              menuGroup !== 'body' && menuGroup !== 'impact' && player()?.makeLookThumbs(menuGroup)
+              menuGroup === 'body'
+                ? void player()?.makeObjectThumbs()
+                : menuGroup !== 'impact' && player()?.makeLookThumbs(menuGroup)
             }
           />
         )}
@@ -795,16 +769,10 @@ export default function VfxStudio({ id }: { id: string }) {
         {tool && !SHEETS_OF_THEIR_OWN.has(tool) && !ui.choosing && !ui.cutting && (
           <ToolSheet
             tool={tool}
-            title={
-              tool === 'styles' && category
-                ? categoryName(category)
-                : TOOL_TITLES[tool] + (fxLane && ui.lanes.length > 1 ? ` · ${fxLane.name}` : '')
-            }
+            title={TOOL_TITLES[tool] + (fxLane && ui.lanes.length > 1 ? ` · ${fxLane.name}` : '')}
             fx={fx}
             onChange={changeFx}
             onClose={() => setTool(null)}
-            category={category}
-            onPick={pick}
             impact={lane?.impact}
             onImpact={st => lane && player()?.setImpactStyle(lane.id, st)}
             aim={lane?.aim}

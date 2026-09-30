@@ -2,11 +2,10 @@
 // behind a back button, like CapCut.
 import { Icon, I } from './icons';
 import type { ImpactFamily } from '@/domain/effects/impacts';
-import { SHOW_LASERS, SHOW_OVERLAYS, type Category, type Tool } from './ToolSheet';
+import { SHOW_OVERLAYS, type Tool } from './ToolSheet';
 
 export type ToolKey =
   | Tool
-  | `cat-${Category}`
   | 'catalog'
   | 'filters'
   | 'screenfx'
@@ -63,19 +62,9 @@ export type Mode =
 
 // Effects come in three groups:
 //   - video effects: over the whole picture (templates)
-//   - object effects: on a person or object, following it: templates, all in one list, then the
-//     effects below, which have styles of their own (text on the film has a menu of its own, beside
-//     Effects: Tracked text follows an object)
+//   - object effects: on a person or object, following it: templates, all in one list
 //   - custom effects: going off wherever you point (hits, explosions, shockwaves…): templates, all in
 //     one list, then the user's own effect clips
-export const OBJECT_CATEGORIES: { id: Category; label: string; icon: string }[] = [
-  { id: 'outline', label: 'Outline', icon: I.outline },
-  { id: 'glitch', label: 'Glitch', icon: I.glitch },
-  { id: 'water', label: 'Water', icon: I.water },
-  { id: 'text', label: 'Tracked text', icon: I.text },
-  { id: 'laser', label: 'Laser', icon: I.laser },
-].filter(c => SHOW_LASERS || c.id !== 'laser') as { id: Category; label: string; icon: string }[];
-
 export const CUSTOM_EXTRAS = [{ id: 'packs', label: 'My clips', icon: I.film }];
 
 // which buttons show for what's selected

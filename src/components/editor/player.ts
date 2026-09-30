@@ -71,6 +71,7 @@ import { applyPose } from '@/infrastructure/rendering/pose';
 import { LookPainter } from '@/infrastructure/rendering/gpu/looks';
 import { TextClipPainter } from '@/infrastructure/rendering/textClips';
 import { FrameParticles } from '@/infrastructure/rendering/frameParticles';
+import { EffectPreviews } from '@/infrastructure/rendering/effectPreviews';
 import { Renderer } from '@/infrastructure/rendering/renderer';
 import { FALLBACK_FONTS, type Fonts } from '@/infrastructure/rendering/fonts';
 import { loadFonts } from './fonts';
@@ -338,6 +339,7 @@ export class Player {
   private plain = false;
   // a group whose presets' pictures are wanted, made once a frame is drawn
   private thumbsFor: LookGroup | null = null;
+  private objectThumbs = false; // the object effects' pictures made (or being made)
   // stops an animation's preview (see previewAnim)
   private previewTimer = 0;
   // saving the project on this device: whether what was saved has been opened yet (nothing's saved
@@ -1196,6 +1198,28 @@ export class Player {
   makeLookThumbs(group: LookGroup) {
     this.thumbsFor = group;
     this.redraw();
+  }
+
+  // a picture of each object effect, drawn on a photo of a person (made once: they don't depend on
+  // the video)
+  async makeObjectThumbs() {
+    if (this.objectThumbs) return;
+    this.objectThumbs = true;
+    const previews = await EffectPreviews.load().catch(() => null);
+    if (!previews || this.destroyed) {
+      this.objectThumbs = false;
+      return;
+    }
+    const made: Record<string, string> = {};
+    for (const p of presets()) {
+      if (p.group !== 'body') continue;
+      const blob = await previews.picture(p, LOOK_THUMB_W);
+      if (this.destroyed) return;
+      made[p.id] = URL.createObjectURL(blob);
+      // (shown as they come)
+      if (Object.keys(made).length % 4 === 0) this.set({ lookThumbs: { ...this.ui.lookThumbs, ...made } });
+    }
+    this.set({ lookThumbs: { ...this.ui.lookThumbs, ...made } });
   }
 
   private async drawThumbs(group: LookGroup) {
