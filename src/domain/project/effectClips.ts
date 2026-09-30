@@ -2,7 +2,9 @@
 // green screen), kept in a library on the device and placed on the film. An effect clip plays a
 // stretch of its video from where it's placed, where it's put in the frame (moved, sized, turned
 // and faded), blended in: added onto the picture where it's bright (for black backgrounds), or with
-// its green keyed out. Like music, trimming an end keeps what plays where it is.
+// its green keyed out. Like music, trimming an end keeps what plays where it is. It's drawn in
+// front of what's cut out of the clip, or set behind it.
+import { placeOf, type Place } from './drawOrder';
 
 export type Blend = 'screen' | 'add' | 'key' | 'normal';
 
@@ -36,6 +38,7 @@ export interface EffectClip {
   opacity: number;
   blend: Blend;
   tolerance: number; // green screen: how far from the green is keyed out, 0..1
+  place?: Place; // behind the subject or in front (none: in front)
 }
 
 export const MIN_EFFECT_S = 0.1,
@@ -112,13 +115,13 @@ export function withLook(
   };
 }
 
-// the clips playing at film time t, each with the time in its video then; lower rows first (so
-// the top row ends up on top)
-export function effectsAt(clips: readonly EffectClip[], t: number) {
+// the clips playing at film time t (place: just those behind the subject, or in front), each with
+// the time in its video then; lower rows first (so the top row ends up on top)
+export function effectsAt(clips: readonly EffectClip[], t: number, place?: Place) {
   return clips
     .filter(c => {
       const r = effectRange(c);
-      return t >= r.s - 1e-6 && t < r.e - 1e-6;
+      return t >= r.s - 1e-6 && t < r.e - 1e-6 && (!place || placeOf(c) === place);
     })
     .sort((a, b) => (b.row ?? 0) - (a.row ?? 0))
     .map(clip => ({ clip, time: clip.src.s + (t - clip.at) }));

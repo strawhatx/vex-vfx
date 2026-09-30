@@ -30,6 +30,8 @@ export type ToolKey =
   | 'reverse'
   | 'cutout'
   | 'hidebg'
+  | 'scope'
+  | 'behind'
   | 'movekey'
   | 'place'
   | 'deletescene'
@@ -98,6 +100,8 @@ export function toolsFor(
     isolated: boolean; // the selected cutout is shown on its own
     films: number; // how many films the clip is split into (kept)
     noBackground: boolean; // the selected film's background is hidden
+    scope: string | null; // what the selected filter applies to, as its button says (null: not a filter)
+    behind: boolean; // the selected text or effect clip is drawn behind the subject
     // the selected film's video: where it is among the film's videos, and how many there are
     video: { at: number; of: number } | null;
   },
@@ -200,6 +204,7 @@ export function toolsFor(
   if (mode === 'effectclip')
     return [
       sheet('controls', 'Adjust', I.adjust),
+      { key: 'behind', label: 'Behind subject', icon: I.person, on: s.behind, disabled: s.busy },
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
@@ -213,6 +218,29 @@ export function toolsFor(
       s.text ? sheet('controls', 'Edit', I.text) : sheet('controls', 'Adjust', I.adjust),
       sheet('customize', 'Customize', I.edit),
       ...(s.text ? [sheet('animation', 'Animation', I.wave)] : []),
+      // (a filter on the whole clip, its background or what's cut out of it; a text behind that)
+      ...(s.scope
+        ? [
+            {
+              key: 'scope' as const,
+              label: s.scope,
+              icon: I.person,
+              on: s.scope !== 'Whole clip',
+              disabled: s.busy,
+            },
+          ]
+        : []),
+      ...(s.text
+        ? [
+            {
+              key: 'behind' as const,
+              label: 'Behind subject',
+              icon: I.person,
+              on: s.behind,
+              disabled: s.busy,
+            },
+          ]
+        : []),
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },

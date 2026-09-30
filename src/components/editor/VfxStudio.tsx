@@ -20,7 +20,7 @@ import { TransitionSheet } from './TransitionSheet';
 import { EffectClipControls, PackSheet } from './PackSheet';
 import { playTime } from '@/application/project';
 import { fitDuration } from '@/domain/project/transitions';
-import { lookGroup } from '@/domain/project/looks';
+import { SCOPES, lookGroup } from '@/domain/project/looks';
 import { Icon, I } from './icons';
 import { INITIAL_UI, Player, type AnimTarget, type Lane, type MakeThumbs, type UiState } from './player';
 import { Preview } from './Preview';
@@ -359,6 +359,11 @@ export default function VfxStudio({ id }: { id: string }) {
     isolated: !!cutout && ui.isolated === cutout.id,
     films: ui.films.length,
     noBackground: scene !== null && !!ui.films[scene]?.noBackground,
+    scope:
+      look?.preset.group === 'filter'
+        ? (SCOPES.find(x => x.id === (look.scope ?? 'clip'))?.label ?? null)
+        : null,
+    behind: (look?.text ? look.place : effectClip?.place) === 'behind',
     video:
       filmVideo !== null ? { at: ui.reels.findIndex(r => r.id === filmVideo), of: ui.reels.length } : null,
   });
@@ -458,6 +463,8 @@ export default function VfxStudio({ id }: { id: string }) {
           return pl?.rangeHere(effectClip.id, 'e');
         case 'place':
           return pl?.placeEffect(effectClip.id);
+        case 'behind':
+          return pl?.setEffectPlace(effectClip.id, effectClip.place === 'behind' ? 'front' : 'behind');
         case 'duplicate':
           setTool(null);
           return pl?.duplicate(effectClip.id);
@@ -475,6 +482,13 @@ export default function VfxStudio({ id }: { id: string }) {
           return pl?.rangeHere(look.id, 'e');
         case 'place':
           return pl?.placeLook(look.id);
+        case 'scope': {
+          // (on to the next: whole clip, background, subject)
+          const k = SCOPES.findIndex(x => x.id === (look.scope ?? 'clip'));
+          return pl?.setLookScope(look.id, SCOPES[(k + 1) % SCOPES.length].id);
+        }
+        case 'behind':
+          return pl?.setLookPlace(look.id, look.place === 'behind' ? 'front' : 'behind');
         case 'duplicate':
           setTool(null);
           return pl?.duplicate(look.id);

@@ -9,7 +9,6 @@
 // Ctrl/⌘ + scroll) zooms it, keeping the playhead where it is on screen.
 import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
-import { DRAW_ORDER, type DrawStep } from '@/domain/project/drawOrder';
 import { layerOf, type LayerKind } from '@/domain/project/track';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
@@ -129,9 +128,8 @@ export function Timeline({
       )}
     />
   );
-  // the layer drawn at one step of the draw order (transitions: on the film itself)
-  const stackLayer = (l: DrawStep) => {
-    if (l === 'transition') return null;
+  // one of the layers over the film
+  const stackLayer = (l: StackedLayer) => {
     if (l === 'filter' || l === 'screen' || l === 'text') return lookLayer(l);
     if (l === 'clips')
       return (
@@ -198,8 +196,9 @@ export function Timeline({
 
           {hasFilm && (
             <>
-              {/* the film's layers in the order they're drawn, like CapCut: higher is in front */}
-              {[...DRAW_ORDER].reverse().map(l => stackLayer(l))}
+              {/* the film's layers, like CapCut: roughly as they're drawn, higher in front (see
+                  domain/project/drawOrder.ts for exactly how) */}
+              {STACKED.map(l => stackLayer(l))}
               {/* (effects on objects and impacts are drawn on the video itself: just above it) */}
               <Layer
                 layer="effects"
@@ -277,6 +276,10 @@ export function Timeline({
     </div>
   );
 }
+
+// the layers over the film, top first
+type StackedLayer = 'screen' | 'clips' | 'text' | 'filter' | 'cutouts';
+const STACKED: readonly StackedLayer[] = ['screen', 'clips', 'text', 'filter', 'cutouts'];
 
 const ADD_LOOK: Record<LookGroup, string> = {
   text: 'Add text',

@@ -32,6 +32,17 @@ import {
   type Preset,
 } from '../effects/presets';
 import type { ParamValue, Params } from '../effects/params';
+import { placeOf, type Place } from './drawOrder';
+
+// what a filter applies to: the whole clip under it, just its background, or just what's cut out of
+// it (docs/timeline-rules.md, rule 7)
+export type Scope = 'clip' | 'background' | 'subject';
+
+export const SCOPES: readonly { id: Scope; label: string }[] = [
+  { id: 'clip', label: 'Whole clip' },
+  { id: 'background', label: 'Background' },
+  { id: 'subject', label: 'Subject' },
+];
 
 export interface LookClip {
   id: number;
@@ -43,7 +54,25 @@ export interface LookClip {
   len: number; // how long it lasts
   text: TextPlace | null; // a text's words and placement
   anim: ClipAnim; // how a text moves as a whole (in, out, combo), on top of its letters' own
+  scope?: Scope; // a filter's (none: the whole clip)
+  place?: Place; // a text's, behind the subject or in front (none: in front)
 }
+
+export const scopeOf = (c: Pick<LookClip, 'scope'>): Scope => c.scope ?? 'clip';
+
+// a filter applying to something else, or a text drawn behind the subject or in front
+export const withScope = (c: LookClip, scope: Scope): LookClip => ({ ...c, scope });
+export const withPlace = (c: LookClip, place: Place): LookClip => ({ ...c, place });
+
+// how many of the filters on during [s, e) (film time) apply to just the background
+export const backgroundOnly = (clips: readonly LookClip[], r: { s: number; e: number }) =>
+  clips.filter(
+    c =>
+      c.preset.group === 'filter' &&
+      scopeOf(c) === 'background' &&
+      c.at < r.e - 1e-6 &&
+      c.at + c.len > r.s + 1e-6,
+  ).length;
 
 // a text starts in the middle, as big as its type says
 const startPlace = (preset: Preset): TextPlace | null =>
@@ -118,16 +147,24 @@ export function withControl(c: LookClip, id: string, v: ParamValue): LookClip {
 }
 
 // what the looks on at film time t draw, in order: filters first, then screen effects over them
-// (group: just that group's); in each layer, lower rows first (so the top row ends up on top)
-export function looksAt(clips: readonly LookClip[], t: number, group?: LookGroup): DrawnPass[] {
-  const on = onAt(clips, t)
-    .filter(c => c.preset.group !== 'text' && (!group || c.preset.group === group))
+// (group: just that group's; on: just the filters that apply to the clip's background, or to what's
+// cut out of it); in each layer, lower rows first (so the top row ends up on top)
+export function looksAt(
+  clips: readonly LookClip[],
+  t: number,
+  group?: LookGroup,
+  on?: 'background' | 'subject',
+): DrawnPass[] {
+  const applies = (c: LookClip) =>
+    !on || c.preset.group !== 'filter' || scopeOf(c) === 'clip' || scopeOf(c) === on;
+  const drawn = onAt(clips, t)
+    .filter(c => c.preset.group !== 'text' && (!group || c.preset.group === group) && applies(c))
     .sort(
       (a, b) =>
         Number(a.preset.group === 'screen') - Number(b.preset.group === 'screen') ||
         (b.row ?? 0) - (a.row ?? 0),
     );
-  return on.flatMap(c => {
+  return drawn.flatMap(c => {
     const local = t - c.at,
       strength = envelope(local, c.len, c.preset.fade.in, c.preset.fade.out);
     return passesWith(c.preset, c.values)
@@ -174,10 +211,11 @@ export function particlesAt(clips: readonly LookClip[], t: number): DrawnEmitter
 const onAt = (clips: readonly LookClip[], t: number) =>
   clips.filter(c => t >= c.at - 1e-6 && t < c.at + c.len - 1e-6);
 
-// the texts on at film time t, lower rows first (so the top row ends up on top)
-export function textsAt(clips: readonly LookClip[], t: number): DrawnText[] {
+// the texts on at film time t (place: just those behind the subject, or in front), lower rows first
+// (so the top row ends up on top)
+export function textsAt(clips: readonly LookClip[], t: number, place?: Place): DrawnText[] {
   return onAt(clips, t)
-    .filter(c => c.text)
+    .filter(c => c.text && (!place || placeOf(c) === place))
     .sort((a, b) => (b.row ?? 0) - (a.row ?? 0))
     .map(c => {
       const local = t - c.at;

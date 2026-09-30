@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePreset } from '../effects/presets';
 import {
+  backgroundOnly,
   looksAt,
   lookRange,
   newLook,
@@ -12,6 +13,8 @@ import {
   trimLook,
   withControl,
   withPreset,
+  withPlace,
+  withScope,
   withText,
 } from './looks';
 
@@ -108,6 +111,24 @@ describe('what the looks draw', () => {
     const drawn = looksAt([a, b], 1);
     expect(drawn.map(d => d.engine === 'screen' && d.values.color)).toEqual(['#ff0000', '#ffffff']);
   });
+
+  it('applies each filter to the whole clip, just its background, or just what’s cut out of it', () => {
+    const clip = newLook(1, filter, 0, 20),
+      bg = withScope(newLook(2, filter, 0, 20), 'background'),
+      subject = withScope(newLook(3, filter, 0, 20), 'subject'),
+      s = newLook(4, flash, 0, 20);
+    const ids = (on?: 'background' | 'subject') => looksAt([clip, bg, subject, s], 2, undefined, on).length;
+    expect(ids()).toBe(4);
+    expect(ids('background')).toBe(3); // (the whole clip's, the background's, and the screen effect)
+    expect(ids('subject')).toBe(3);
+    expect(looksAt([bg], 2, 'filter', 'subject')).toEqual([]);
+  });
+
+  it('counts the filters on just the background over a stretch', () => {
+    const bg = withScope(newLook(2, filter, 1, 20), 'background');
+    expect(backgroundOnly([bg, newLook(1, filter, 0, 20)], { s: 0, e: 3 })).toBe(1);
+    expect(backgroundOnly([bg], { s: 7, e: 9 })).toBe(0);
+  });
 });
 
 describe("a preset's button", () => {
@@ -156,6 +177,13 @@ describe('text on the film', () => {
     expect(textsAt([c], 1).map(d => d.letters.join(''))).toEqual(['Mine']);
     expect(textsAt([c], 3)).toEqual([]);
     expect(withPreset(c, title).text!.words).toBe('Mine');
+  });
+
+  it('is drawn in front of the subject unless it’s set behind', () => {
+    const c = newLook(1, title, 0, 20);
+    expect(textsAt([c], 1, 'front')).toHaveLength(1);
+    expect(textsAt([c], 1, 'behind')).toEqual([]);
+    expect(textsAt([withPlace(c, 'behind')], 1, 'behind')).toHaveLength(1);
   });
 
   it('moves as a whole as its animation says', () => {

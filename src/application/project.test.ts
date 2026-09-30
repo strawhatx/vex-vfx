@@ -568,6 +568,20 @@ describe('looks over the film', () => {
 });
 
 describe("the film's layers", () => {
+  it('a filter applies to the whole clip, its background or its subject; a text goes behind', () => {
+    addVideo(10);
+    const f = project.addLook(presetById('noir')!, 0)!,
+      s = project.addLook(presetById('strobe')!, 0)!;
+    project.setLookScope(f, 'background');
+    project.setLookScope(s, 'background'); // (not a filter: no scope)
+    expect(project.look(f)?.scope).toBe('background');
+    expect(project.look(s)?.scope).toBeUndefined();
+    expect(project.looksAt(0.01, 'filter', 'subject')).toEqual([]);
+    expect(project.backgroundOnlyOn(0)).toBe(1);
+    project.undo();
+    expect(project.look(f)?.scope).toBeUndefined();
+  });
+
   it('draw their own looks: filters apart from video effects', () => {
     addVideo(10);
     project.addLook(presetById('strobe')!, 0);

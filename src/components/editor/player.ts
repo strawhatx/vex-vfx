@@ -21,7 +21,7 @@ import type { Transition } from '@/domain/project/transitions';
 import { guessBlend, type EffectClip, type PackItem } from '@/domain/project/effectClips';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
-import { fitRect } from '@/domain/project/overlay';
+import { fitRect, type Overlay } from '@/domain/project/overlay';
 import type { EdgeSettings } from '@/domain/project/edge';
 import {
   FULL,
@@ -41,7 +41,8 @@ import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import type { LookGroup, Preset, PresetGroup } from '@/domain/effects/presets';
 import { MY_OWN, blankEffect } from '@/domain/effects/custom';
-import { DRAW_ORDER } from '@/domain/project/drawOrder';
+import { DRAW_ORDER, type Place } from '@/domain/project/drawOrder';
+import type { DrawnPass } from '@/domain/effects/passes';
 import {
   lookGroup,
   newLook,
@@ -49,6 +50,7 @@ import {
   previewOf,
   textPreviewOf,
   type LookClip,
+  type Scope,
 } from '@/domain/project/looks';
 import type { TextPlace } from '@/domain/effects/typeset';
 import type { PartOp } from '@/domain/project/parts';
@@ -62,7 +64,7 @@ import { AnalysisClient } from '@/infrastructure/analysis/client';
 import { Mixer } from '@/infrastructure/audio/mixer';
 import { soundLength } from '@/infrastructure/audio/soundFile';
 import { clipPeaks, laneSound, WAVE_PER_S, type ClipWave } from '@/infrastructure/audio/waveform';
-import { OverlayPainter } from '@/infrastructure/rendering/overlays';
+import { OverlayPainter, type OverlayDrawOptions } from '@/infrastructure/rendering/overlays';
 import { IndexedDbFilmStore } from '@/infrastructure/storage/filmStore';
 import { IndexedDbPackLibrary } from '@/infrastructure/storage/packLibrary';
 import { EffectClipPainter } from '@/infrastructure/rendering/effectClips';
@@ -337,6 +339,9 @@ export class Player {
   private overlays = new OverlayPainter();
   // the looks, drawn over the whole frame on the GPU, then the film's text over them
   private looks = new LookPainter();
+  // the subject layers, drawn apart when filters apply to just them, and what they covered
+  private subjectLayer = new OffscreenCanvas(1, 1);
+  private subjectShape = new OffscreenCanvas(1, 1);
   private textClips = new TextClipPainter();
   private frameParticles = new FrameParticles();
   // drawing the frame without them (for the presets' pictures)
@@ -717,12 +722,34 @@ export class Player {
     this.say('Reversed.');
   }
 
-  // film k's background hidden (on), leaving what's cut out of it over black, or shown again
+  // film k's background hidden (on), leaving what's cut out of it over black, or shown again. Filters
+  // on just the background go with it, which it says (rule 7).
   setNoBackground(k: number, on: boolean) {
     if (!this.project.setNoBackground(k, on)) return;
     this.redraw();
-    if (on && !this.project.overlayList.some(o => o.source.reel === this.state?.films[k]?.reel))
+    if (!on) return;
+    const n = this.project.backgroundOnlyOn(k);
+    if (n) this.say(`${n} filter${n > 1 ? 's apply' : ' applies'} to the hidden background.`);
+    else if (!this.project.overlayList.some(o => o.source.reel === this.state?.films[k]?.reel))
       this.say('Background hidden. Cut something out to show it on its own.');
+  }
+
+  // what a filter applies to: the whole clip, its background, or what's cut out of it
+  setLookScope(id: number, scope: Scope) {
+    this.project.setLookScope(id, scope);
+    this.redraw();
+  }
+
+  // a text drawn behind what's cut out of the clip, or in front
+  setLookPlace(id: number, place: Place) {
+    this.project.setLookPlace(id, place);
+    this.redraw();
+  }
+
+  // an effect clip drawn behind what's cut out of the clip, or in front
+  setEffectPlace(id: number, place: Place) {
+    this.project.setEffectPlace(id, place);
+    this.redraw();
   }
 
   // deletes film k: the playhead moves on to what plays there now
@@ -2045,36 +2072,37 @@ export class Player {
       // domain/project/drawOrder.ts); a cutout shown on its own, just the cutouts; the plain frame
       // (for pictures of looks), no looks or text
       const all = this.recorder || this.ui.isolated === null;
-      for (const layer of DRAW_ORDER) {
-        if (layer === 'cutouts') {
-          // (the subject layers of the video playing, at the time in it, moved with the footage)
+      const looks = all && !this.plain;
+      const marks = { selected: this.ui.selected, outline: outline && paused };
+      const clips = (place: Place) =>
+        this.effectPainter.draw(ctx, this.project.effectsAt(now, place), { playing: !paused, ...marks });
+      const texts = (place: Place) =>
+        this.textClips.draw(ctx, this.project.textsAt(now, place), this.fonts ?? FALLBACK_FONTS, marks);
+      for (const step of DRAW_ORDER) {
+        if (step === 'subjects') {
+          // (the subject layers of the video playing, at the time in it, moved with the footage, with
+          // the filters on them)
           const subjects = this.project.subjectsAt(now);
           if (subjects)
-            this.overlays.draw(ctx, this.CW, this.CH, subjects.overlays, subjects.time, {
+            this.drawSubjects(ctx, subjects, looks ? this.project.looksAt(now, 'filter', 'subject') : [], {
               selected: this.ui.selected,
               outline,
               isolate: this.recorder ? null : this.ui.isolated,
               clipPose: pose,
             });
         } else if (!all) continue;
-        else if (layer === 'clips')
-          this.effectPainter.draw(ctx, this.project.effectsAt(now), {
-            playing: !paused,
-            selected: this.ui.selected,
-            outline: outline && paused,
-          });
-        else if (this.plain) continue;
-        else if (layer === 'filter') this.looks.apply(ctx, this.project.looksAt(now, 'filter'));
-        else if (layer === 'screen') this.looks.apply(ctx, this.project.looksAt(now, 'screen'));
-        else if (layer === 'transition') {
-          if (cut?.passes.length) this.looks.apply(ctx, cut.passes);
-        } else {
-          this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
-            selected: this.ui.selected,
-            outline: outline && paused,
-          });
+        else if (step === 'behind') {
+          clips('behind');
+          if (looks) texts('behind');
+        } else if (step === 'clips') clips('front');
+        else if (!looks) continue;
+        else if (step === 'background')
+          this.looks.apply(ctx, this.project.looksAt(now, 'filter', 'background'));
+        else if (step === 'front') {
+          texts('front');
           this.frameParticles.draw(ctx, this.project.particlesAt(now));
-        }
+        } else if (step === 'screen') this.looks.apply(ctx, this.project.looksAt(now, 'screen'));
+        else if (cut?.passes.length) this.looks.apply(ctx, cut.passes);
       }
     }
     if (this.plain) return;
@@ -2107,6 +2135,33 @@ export class Player {
     const at = review && rv.id === review.reel ? idx : -1;
     if (review && review.at !== at) this.set({ review: { ...review, at, now: ed.frameTime(at) } });
     this.showCutoutNow(now);
+  }
+
+  // the subject layers onto ctx, with `filters` on just them: drawn on a layer of their own, filtered
+  // there, and kept to where they were drawn (the filters may fill in what's see-through)
+  private drawSubjects(
+    ctx: CanvasRenderingContext2D,
+    subjects: { overlays: Overlay[]; time: number },
+    filters: DrawnPass[],
+    opts: OverlayDrawOptions,
+  ) {
+    if (!filters.length) {
+      this.overlays.draw(ctx, this.CW, this.CH, subjects.overlays, subjects.time, opts);
+      return;
+    }
+    const layer = sized(this.subjectLayer, this.CW, this.CH),
+      shape = sized(this.subjectShape, this.CW, this.CH);
+    const lc = layer.getContext('2d')!,
+      sc = shape.getContext('2d')!;
+    lc.clearRect(0, 0, this.CW, this.CH);
+    this.overlays.draw(lc, this.CW, this.CH, subjects.overlays, subjects.time, opts);
+    sc.globalCompositeOperation = 'copy';
+    sc.drawImage(layer, 0, 0);
+    this.looks.apply(lc, filters);
+    lc.globalCompositeOperation = 'destination-in';
+    lc.drawImage(shape, 0, 0);
+    lc.globalCompositeOperation = 'source-over';
+    ctx.drawImage(layer, 0, 0);
   }
 
   // what the hint needs to know, about the video showing (at film time now) and the film's overlays
@@ -2642,6 +2697,15 @@ export class Player {
 }
 
 // a video element the player plays a clip in (off the page: it's drawn onto the preview)
+// the canvas, made w x h if it isn't
+function sized(c: OffscreenCanvas, w: number, h: number) {
+  if (c.width !== w || c.height !== h) {
+    c.width = w;
+    c.height = h;
+  }
+  return c;
+}
+
 function makeVideo() {
   const v = document.createElement('video');
   v.playsInline = true;

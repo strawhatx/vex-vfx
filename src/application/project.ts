@@ -44,10 +44,15 @@ import {
   trimLook,
   textsAt,
   withControl,
+  withPlace,
   withPreset,
+  withScope,
   withText,
+  backgroundOnly,
   type LookClip,
+  type Scope,
 } from '@/domain/project/looks';
+import type { Place } from '@/domain/project/drawOrder';
 import type { ParamValue } from '@/domain/effects/params';
 import { controlDefaults, upToDate, type LookGroup, type Preset } from '@/domain/effects/presets';
 import { ownCopy } from '@/domain/effects/custom';
@@ -794,8 +799,8 @@ export class Project {
   }
 
   // what the looks draw at film time t, in order
-  looksAt(t: number, group?: LookGroup) {
-    return looksAt(this.looks, t, group);
+  looksAt(t: number, group?: LookGroup, on?: 'background' | 'subject') {
+    return looksAt(this.looks, t, group, on);
   }
 
   // the particle emitters the looks draw over the frame at film time t
@@ -803,9 +808,25 @@ export class Project {
     return particlesAt(this.looks, t);
   }
 
-  // the texts on at film time t, as they're drawn
-  textsAt(t: number) {
-    return textsAt(this.looks, t);
+  // the texts on at film time t, as they're drawn (place: just those behind the subject, or in front)
+  textsAt(t: number, place?: Place) {
+    return textsAt(this.looks, t, place);
+  }
+
+  // what a filter applies to: the whole clip, just its background, or just what's cut out of it
+  setLookScope(id: number, scope: Scope) {
+    if (this.look(id)?.preset.group === 'filter') this.changeLook(id, c => withScope(c, scope));
+  }
+
+  // a text drawn behind what's cut out of the clip, or in front
+  setLookPlace(id: number, place: Place) {
+    if (this.look(id)?.text) this.changeLook(id, c => withPlace(c, place));
+  }
+
+  // how many filters on film k apply to just its background (which it hides: see setNoBackground)
+  backgroundOnlyOn(k: number) {
+    const f = this.state.films[k];
+    return f ? backgroundOnly(this.looks, { s: f.at, e: f.at + playTime(f) }) : 0;
   }
 
   // a text's words, or where it's placed (live while dragging it)
@@ -953,8 +974,13 @@ export class Project {
   }
 
   // the clips playing at film time t, each with the time in its video then
-  effectsAt(t: number) {
-    return effectsAt(this.effectClips, t);
+  effectsAt(t: number, place?: Place) {
+    return effectsAt(this.effectClips, t, place);
+  }
+
+  // an effect clip drawn behind what's cut out of the clip, or in front
+  setEffectPlace(id: number, place: Place) {
+    this.changeEffect(id, c => ({ ...c, place }));
   }
 
   setEffectRange(id: number, r: { s?: number; e?: number }) {

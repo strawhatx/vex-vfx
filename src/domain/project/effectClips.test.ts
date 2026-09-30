@@ -48,6 +48,13 @@ describe('an effect clip on the film', () => {
     ]);
     expect(effectsAt([a], 5)).toEqual([]);
   });
+
+  it('is drawn in front of the subject unless it’s set behind', () => {
+    const c = newEffectClip(1, boom, 2, 20);
+    expect(effectsAt([c], 3, 'front')).toHaveLength(1);
+    expect(effectsAt([{ ...c, place: 'behind' }], 3, 'front')).toEqual([]);
+    expect(effectsAt([{ ...c, place: 'behind' }], 3, 'behind')).toHaveLength(1);
+  });
 });
 
 describe('guessing how to blend a video', () => {
