@@ -340,7 +340,7 @@ export class Player {
   // a group whose presets' pictures are wanted, made once a frame is drawn
   private thumbsFor: LookGroup | null = null;
   private objectThumbs = false; // the object effects' pictures made (or being made)
-  private filterThumbs = false; // the filters' pictures made (or being made)
+  private photoThumbs = new Set<LookGroup>(); // the groups whose pictures on the photo are made
   // stops an animation's preview (see previewAnim)
   private previewTimer = 0;
   // saving the project on this device: whether what was saved has been opened yet (nothing's saved
@@ -1225,14 +1225,15 @@ export class Player {
 
   private async drawThumbs(group: LookGroup) {
     if (!this.rv() || !this.CW || this.camera) return;
-    // filters on a photo of a person (made once: they don't depend on the video); effects on the
-    // frame without any looks, small; text on a dark square
-    if (group === 'filter' && this.filterThumbs) return;
+    // filters and video effects on a photo of a person (made once: they don't depend on the video;
+    // if it can't be had, on the frame without any looks); text on a dark square
+    const onPhoto = group !== 'text';
+    if (onPhoto && this.photoThumbs.has(group)) return;
     const w = LOOK_THUMB_W,
-      h = group === 'screen' ? Math.min(Math.round((w * this.CH) / this.CW), 2 * w) : w;
-    const photo = group === 'filter' ? await personSquare(w).catch(() => null) : null;
+      h = w;
+    const photo = onPhoto ? await personSquare(w).catch(() => null) : null;
     if (this.destroyed) return;
-    if (group === 'filter') this.filterThumbs = !!photo;
+    if (photo) this.photoThumbs.add(group);
     const frame = new OffscreenCanvas(w, h);
     const fg = frame.getContext('2d')!;
     if (photo) fg.drawImage(photo, 0, 0);
