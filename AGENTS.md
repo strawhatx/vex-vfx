@@ -26,7 +26,8 @@ src/
 │   ├── storage/     #   films and the effects library, kept on this device in IndexedDB (implements FilmStore, PackLibrary)
 │   └── video/       #   recording and camera capture
 ├── components/editor/  # React UI; player.ts is the controller and composition root; custom/: customizing an effect, layer by layer
-├── components/home/    # the start page's list of saved projects; homeStore.ts is its root
+├── components/home/    # the editor's start page (/editor): its list of saved projects; homeStore.ts is its root
+├── components/landing/ # the landing (/) and contact pages: marketing only, links into the editor
 └── app/             # Next.js routes
 ```
 

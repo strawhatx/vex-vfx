@@ -1,19 +1,18 @@
-import Link from 'next/link';
-import { RecentProjects } from '@/components/home/RecentProjects';
+import type { Metadata } from 'next';
+import Landing from '@/components/landing/Landing';
 
-// the start page: a new project, or one kept on this device
+export const metadata: Metadata = {
+  title: 'FlareCut: put fire on anything',
+  description:
+    'Tap a hand, a body, a car. Pick fire, lightning, rain, glitches, explosions or text behind you. It follows the whole clip. Free, in your browser.',
+  openGraph: {
+    title: 'FlareCut: put fire on anything',
+    description:
+      'Fire, lightning, water, glitches, impacts and text for your videos, in one tap. Free, in your browser.',
+  },
+};
+
+// the landing page; the editor's start page is /editor
 export default function Home() {
-  return (
-    <main className="home">
-      <strong className="wordmark" aria-label="FlareCut">
-        FLARE<em>CUT</em>
-      </strong>
-      <nav className="home-links" aria-label="Start">
-        <Link className="home-link primary" href="/editor/new">
-          New project
-        </Link>
-      </nav>
-      <RecentProjects />
-    </main>
-  );
+  return <Landing />;
 }
