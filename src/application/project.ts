@@ -51,6 +51,7 @@ import {
 } from '@/domain/project/looks';
 import type { ParamValue } from '@/domain/effects/params';
 import { controlDefaults, upToDate, type LookGroup, type Preset } from '@/domain/effects/presets';
+import { DEFAULT_STACK, fitStack, moveLayer, type StackLayer } from '@/domain/project/stack';
 import { ownCopy } from '@/domain/effects/custom';
 import type { TextPlace } from '@/domain/effects/typeset';
 import {
@@ -121,6 +122,7 @@ export interface ProjectState {
   looks: (LookClip & { row: number })[]; // filters and screen effects, each on its group's layer
   lookRows: Record<LookGroup, number>;
   crop: Crop; // the film's frame, cropped (see crop.ts)
+  stack: StackLayer[]; // its layers, bottom to top (see stack.ts)
   length: number;
   scan: number | null; // a video's frames being listed: how far
   job: JobStatus | null; // analysis work in progress
@@ -157,6 +159,7 @@ export interface SavedFilm {
   effectClips: EffectClip[];
   packs: { id: string; file: Blob }[]; // the library videos the effect clips play
   crop: Crop;
+  stack?: StackLayer[]; // (films saved before the stack could be changed: the default)
   next: { reel: number; overlay: number; music: number; look: number; effect: number };
 }
 
@@ -172,6 +175,7 @@ interface Snap {
   transitions: Transition[];
   effectClips: EffectClip[];
   crop: Crop;
+  stack: StackLayer[];
 }
 
 // one step to undo: the editors that kept a step of their own for it, in order, and the film as it
@@ -198,6 +202,7 @@ const EMPTY: ProjectState = {
   looks: [],
   lookRows: { filter: 0, screen: 0, text: 0 },
   crop: FULL,
+  stack: [...DEFAULT_STACK],
   length: 0,
   scan: null,
   job: null,
@@ -219,6 +224,7 @@ export class Project {
   private packFiles = new Map<string, Blob>();
   private nextEffect = EFFECT_IDS;
   private crop: Crop = FULL;
+  private stack: StackLayer[] = [...DEFAULT_STACK];
   private nextMusic = MUSIC_IDS;
   private nextLook = LOOK_IDS;
   private nextReel = 1;
@@ -604,6 +610,16 @@ export class Project {
     });
   }
 
+  // ---------- the layers' stacking ----------
+
+  // one of the film's layers moved one place up (in front, +1) or down (behind, -1)
+  moveLayer(layer: StackLayer, by: 1 | -1) {
+    this.step(undefined, () => {
+      this.stack = moveLayer(this.stack, layer, by);
+      this.publish(true);
+    });
+  }
+
   // ---------- music ----------
 
   // a sound file `length` seconds long, placed at film time `at` on the Audio layer (file: the sound,
@@ -684,8 +700,8 @@ export class Project {
   }
 
   // what the looks draw at film time t, in order
-  looksAt(t: number) {
-    return looksAt(this.looks, t);
+  looksAt(t: number, group?: LookGroup) {
+    return looksAt(this.looks, t, group);
   }
 
   // the particle emitters the looks draw over the frame at film time t
@@ -917,6 +933,7 @@ export class Project {
       effectClips: this.effectClips.slice(),
       packs: this.packsInUse,
       crop: this.crop,
+      stack: this.stack,
       next: {
         reel: this.nextReel,
         overlay: this.nextOverlay,
@@ -946,6 +963,7 @@ export class Project {
     this.packFiles = new Map((s.packs ?? []).map(p => [p.id, p.file]));
     this.nextEffect = s.next.effect ?? EFFECT_IDS;
     this.crop = s.crop;
+    this.stack = fitStack(s.stack);
     this.nextReel = s.next.reel;
     this.nextOverlay = s.next.overlay;
     this.nextMusic = s.next.music;
@@ -1041,6 +1059,7 @@ export class Project {
       transitions: this.transitions.slice(),
       effectClips: this.effectClips.slice(),
       crop: this.crop,
+      stack: this.stack,
     };
   }
 
@@ -1053,6 +1072,7 @@ export class Project {
     this.transitions = s.transitions.slice();
     this.effectClips = s.effectClips.slice();
     this.crop = s.crop;
+    this.stack = s.stack;
   }
 
   // ---------- internals ----------
@@ -1221,6 +1241,7 @@ export class Project {
       looks: this.looks.map(c => ({ ...c, row: lookRow.get(c.id) ?? 0 })),
       lookRows,
       crop: this.crop,
+      stack: this.stack,
       length: filmLength(spans),
       scan: this.reels.find(r => r.state?.scan != null)?.state.scan ?? null,
       job: this.reels.find(r => r.state?.job)?.state.job ?? null,

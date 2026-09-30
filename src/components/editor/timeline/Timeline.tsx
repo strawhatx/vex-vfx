@@ -9,6 +9,7 @@
 // Ctrl/⌘ + scroll) zooms it, keeping the playhead where it is on screen.
 import { useEffect, useRef } from 'react';
 import { Icon, I } from '../icons';
+import type { StackLayer } from '@/domain/project/stack';
 import { layerOf, type LayerKind } from '@/domain/project/track';
 import type { Lane, MakeThumbs, UiState } from '../player';
 import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
@@ -67,6 +68,8 @@ export function Timeline({
     moveCutout(id: number, t: number): void;
     // a clip dragged onto another row (-1: a new one on top)
     moveRow(id: number, row: number): void;
+    // one of the film's layers moved in front (+1) or behind (-1)
+    moveLayer(layer: StackLayer, by: 1 | -1): void;
   };
 }) {
   const dur = ui.duration || 0;
@@ -103,10 +106,11 @@ export function Timeline({
     return a.kind === 'cutout' ? 'Drag a box round the object' : 'Tap the object in the preview';
   };
   // a layer of looks: text, video effects or filters
-  const lookLayer = (group: LookGroup) => (
+  const lookLayer = (group: LookGroup, move?: LayerMoves) => (
     <Layer
       key={group}
       layer={group}
+      move={move}
       rows={Array.from({ length: ui.lookRows[group] }, (_, r) =>
         ui.looks.filter(c => c.preset.group === group && c.row === r),
       )}
@@ -125,6 +129,64 @@ export function Timeline({
       )}
     />
   );
+  // moving a stacked layer: in front (up the stack) or behind (down it), where it can go
+  const moves = (l: StackLayer) => {
+    const k = ui.stack.indexOf(l);
+    return {
+      front: k < ui.stack.length - 1 ? () => on.moveLayer(l, 1) : undefined,
+      back: k > 0 ? () => on.moveLayer(l, -1) : undefined,
+    };
+  };
+  // one of the film's stacked layers
+  const stackLayer = (l: StackLayer) => {
+    if (l === 'filter' || l === 'screen' || l === 'text') return lookLayer(l, moves(l));
+    if (l === 'clips')
+      return (
+        <Layer
+          key={l}
+          layer="clips"
+          move={moves(l)}
+          rows={Array.from({ length: ui.effectRows }, (_, r) => ui.effectClips.filter(c => c.row === r))}
+          add={{ label: 'Add effect clip', on: false, run: on.addEffectClip }}
+          busy={busy}
+          clip={c => (
+            <EffectClipBar
+              key={c.id}
+              clip={c}
+              scale={scale}
+              selected={c.id === ui.selected}
+              duration={dur}
+              on={clipActions}
+              moveTo={t => on.moveEffect(c.id, t)}
+            />
+          )}
+        />
+      );
+    return (
+      <Layer
+        key={l}
+        layer="overlay"
+        move={moves(l)}
+        rows={rowsOf('overlay', ui.cutRows)}
+        add={{
+          label: adding('overlay') ?? 'Add cutout',
+          on: ui.adding?.kind === 'cutout',
+          run: on.addOverlay,
+        }}
+        busy={busy}
+        clip={x => (
+          <CutoutClip
+            key={x.id}
+            lane={x}
+            scale={scale}
+            selected={x.id === ui.selected}
+            duration={dur}
+            on={clipActions}
+          />
+        )}
+      />
+    );
+  };
   const clipActions = {
     select: on.selectLane,
     setRange: on.setRange,
@@ -166,26 +228,6 @@ export function Timeline({
           {hasFilm && (
             <>
               <Layer
-                layer="overlay"
-                rows={rowsOf('overlay', ui.cutRows)}
-                add={{
-                  label: adding('overlay') ?? 'Add cutout',
-                  on: ui.adding?.kind === 'cutout',
-                  run: on.addOverlay,
-                }}
-                busy={busy}
-                clip={l => (
-                  <CutoutClip
-                    key={l.id}
-                    lane={l}
-                    scale={scale}
-                    selected={l.id === ui.selected}
-                    duration={dur}
-                    on={clipActions}
-                  />
-                )}
-              />
-              <Layer
                 layer="audio"
                 rows={Array.from({ length: ui.audioRows }, (_, r) => ui.music.filter(m => m.row === r))}
                 add={{ label: 'Add audio', on: false, run: on.addAudio }}
@@ -202,26 +244,9 @@ export function Timeline({
                   />
                 )}
               />
-              {lookLayer('text')}
-              <Layer
-                layer="clips"
-                rows={Array.from({ length: ui.effectRows }, (_, r) =>
-                  ui.effectClips.filter(c => c.row === r),
-                )}
-                add={{ label: 'Add effect clip', on: false, run: on.addEffectClip }}
-                busy={busy}
-                clip={c => (
-                  <EffectClipBar
-                    key={c.id}
-                    clip={c}
-                    scale={scale}
-                    selected={c.id === ui.selected}
-                    duration={dur}
-                    on={clipActions}
-                    moveTo={t => on.moveEffect(c.id, t)}
-                  />
-                )}
-              />
+              {/* the film's layers as they're stacked, the one in front first */}
+              {[...ui.stack].reverse().map(l => stackLayer(l))}
+              {/* (effects on objects and impacts are drawn on the video itself: under all of them) */}
               <Layer
                 layer="effects"
                 rows={rowsOf('effects', ui.rows)}
@@ -246,8 +271,6 @@ export function Timeline({
                   );
                 }}
               />
-              {lookLayer('screen')}
-              {lookLayer('filter')}
             </>
           )}
 
@@ -280,14 +303,19 @@ const LAYERS: Record<LayerName, { name: string; icon: string }> = {
 };
 
 // one layer: its rows of clips, marked with its icon on the left; empty, a button to add one
+// moving a layer in front or behind (none: it can't go that way, or it doesn't move)
+type LayerMoves = { front?: () => void; back?: () => void };
+
 function Layer<C>({
   layer,
+  move,
   rows,
   add,
   busy,
   clip,
 }: {
   layer: LayerName;
+  move?: LayerMoves;
   rows: C[][];
   add: { label: string; on: boolean; run(): void };
   busy: boolean;
@@ -297,6 +325,32 @@ function Layer<C>({
   const tag = (
     <span className="layer-tag" title={name} aria-label={`${name} layer`}>
       <Icon d={icon} size={16} />
+      {move && (
+        <span className="layer-moves">
+          <button
+            type="button"
+            aria-label={`${name} in front`}
+            disabled={!move.front}
+            onClick={e => {
+              e.stopPropagation();
+              move.front?.();
+            }}
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            aria-label={`${name} behind`}
+            disabled={!move.back}
+            onClick={e => {
+              e.stopPropagation();
+              move.back?.();
+            }}
+          >
+            ▼
+          </button>
+        </span>
+      )}
     </span>
   );
   if (!rows.length || add.on)

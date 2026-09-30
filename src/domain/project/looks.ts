@@ -117,11 +117,11 @@ export function withControl(c: LookClip, id: string, v: ParamValue): LookClip {
   return control ? { ...c, values: { ...c.values, [id]: fitControl(control, v) } } : c;
 }
 
-// what the looks on at film time t draw, in order: filters first, then screen effects over them;
-// in each layer, lower rows first (so the top row ends up on top)
-export function looksAt(clips: readonly LookClip[], t: number): DrawnPass[] {
+// what the looks on at film time t draw, in order: filters first, then screen effects over them
+// (group: just that group's); in each layer, lower rows first (so the top row ends up on top)
+export function looksAt(clips: readonly LookClip[], t: number, group?: LookGroup): DrawnPass[] {
   const on = onAt(clips, t)
-    .filter(c => c.preset.group !== 'text')
+    .filter(c => c.preset.group !== 'text' && (!group || c.preset.group === group))
     .sort(
       (a, b) =>
         Number(a.preset.group === 'screen') - Number(b.preset.group === 'screen') ||

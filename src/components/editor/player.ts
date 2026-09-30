@@ -42,6 +42,7 @@ import { presetById, presets } from '@/domain/effects/library';
 import type { ParamValue } from '@/domain/effects/params';
 import type { LookGroup, Preset, PresetGroup } from '@/domain/effects/presets';
 import { MY_OWN, blankEffect } from '@/domain/effects/custom';
+import { DEFAULT_STACK, type StackLayer } from '@/domain/project/stack';
 import {
   lookGroup,
   newLook,
@@ -143,6 +144,7 @@ export interface UiState {
   // preset on the frame showing (by preset id; missing until made, or where the GPU can't)
   looks: LookUi[];
   lookRows: Record<LookGroup, number>;
+  stack: StackLayer[]; // the film's layers, bottom to top (see domain/project/stack.ts)
   lookThumbs: Record<string, string>;
   transitions: Transition[]; // at the joins between films
   // effect clips on the film, on `effectRows`, and the library of effect videos they're from (each
@@ -253,6 +255,7 @@ export const INITIAL_UI: UiState = {
   audioRows: 0,
   looks: [],
   lookRows: { filter: 0, screen: 0, text: 0 },
+  stack: [...DEFAULT_STACK],
   lookThumbs: {},
   transitions: [],
   effectClips: [],
@@ -1191,6 +1194,11 @@ export class Player {
     this.project.setLookText(id, p);
   }
 
+  // one of the film's layers moved up (in front, +1) or down (behind, -1)
+  moveLayer(layer: StackLayer, by: 1 | -1) {
+    this.project.moveLayer(layer, by);
+  }
+
   // a look starts at time t (the playhead, or where it was dragged on the timeline)
   placeLook(id: number, t = this.time()) {
     this.project.placeLook(id, t);
@@ -1816,6 +1824,7 @@ export class Player {
     this.set({
       looks: s.looks,
       lookRows: s.lookRows,
+      stack: s.stack,
       transitions: s.transitions,
       effectClips: s.effectClips,
       effectRows: s.effectRows,
@@ -2000,26 +2009,34 @@ export class Player {
     if (cut?.passes.length && !review) this.looks.apply(ctx, cut.passes);
     // (checking a cutout, just the footage and its outlines)
     if (!review) {
-      this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
-        selected: this.ui.selected,
-        outline,
-        isolate: this.recorder ? null : this.ui.isolated,
-      });
-      // the looks over everything (not over a cutout shown on its own)
-      // effect clips over the footage and cutouts, under the looks
-      if (this.recorder || this.ui.isolated === null)
-        this.effectPainter.draw(ctx, this.project.effectsAt(now), {
-          playing: !paused,
-          selected: this.ui.selected,
-          outline: outline && paused,
-        });
-      if (!this.plain && (this.recorder || this.ui.isolated === null)) {
-        this.looks.apply(ctx, this.project.looksAt(now));
-        this.frameParticles.draw(ctx, this.project.particlesAt(now));
-        this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
-          selected: this.ui.selected,
-          outline: outline && paused,
-        });
+      // the film's layers, bottom to top, as they're stacked (see domain/project/stack.ts); a
+      // cutout shown on its own, just the cutouts; the plain frame (for pictures of looks), no
+      // looks or text
+      const all = this.recorder || this.ui.isolated === null;
+      for (const layer of this.ui.stack) {
+        if (layer === 'cutouts')
+          this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
+            selected: this.ui.selected,
+            outline,
+            isolate: this.recorder ? null : this.ui.isolated,
+          });
+        else if (!all) continue;
+        else if (layer === 'clips')
+          this.effectPainter.draw(ctx, this.project.effectsAt(now), {
+            playing: !paused,
+            selected: this.ui.selected,
+            outline: outline && paused,
+          });
+        else if (this.plain) continue;
+        else if (layer === 'filter') this.looks.apply(ctx, this.project.looksAt(now, 'filter'));
+        else if (layer === 'screen') {
+          this.looks.apply(ctx, this.project.looksAt(now, 'screen'));
+          this.frameParticles.draw(ctx, this.project.particlesAt(now));
+        } else
+          this.textClips.draw(ctx, this.project.textsAt(now), this.fonts ?? FALLBACK_FONTS, {
+            selected: this.ui.selected,
+            outline: outline && paused,
+          });
       }
     }
     if (this.plain) return;

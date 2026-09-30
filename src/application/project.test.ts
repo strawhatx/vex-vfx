@@ -373,6 +373,33 @@ describe('looks over the film', () => {
   });
 });
 
+describe("the film's layers", () => {
+  it('are restacked, each move a step to undo, and saved with the film', () => {
+    addVideo(10);
+    expect(state.stack).toEqual(['cutouts', 'clips', 'filter', 'screen', 'text']);
+    // (text behind the cutouts)
+    for (let k = 0; k < 4; k++) project.moveLayer('text', -1);
+    expect(state.stack).toEqual(['text', 'cutouts', 'clips', 'filter', 'screen']);
+    project.undo();
+    expect(state.stack).toEqual(['cutouts', 'text', 'clips', 'filter', 'screen']);
+    const saved = project.saved();
+    project = newProject();
+    project.open(saved);
+    expect(state.stack).toEqual(['cutouts', 'text', 'clips', 'filter', 'screen']);
+    // (a film saved before: the default)
+    project.open({ ...saved, stack: undefined });
+    expect(state.stack).toEqual(['cutouts', 'clips', 'filter', 'screen', 'text']);
+  });
+
+  it('draw their own looks: filters apart from video effects', () => {
+    addVideo(10);
+    project.addLook(presetById('strobe')!, 0);
+    project.addLook(presetById('noir')!, 0);
+    expect(project.looksAt(0.01, 'filter').map(d => d.engine)).toEqual(['color']);
+    expect(project.looksAt(0.01, 'screen').map(d => d.engine)).toEqual(['screen']);
+  });
+});
+
 describe('animations', () => {
   it('move a film of the film, and an overlay, each a step to undo', () => {
     const a = addVideo(6);
