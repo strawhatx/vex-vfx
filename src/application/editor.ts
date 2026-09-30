@@ -73,6 +73,7 @@ import { ownCopy } from '@/domain/effects/custom';
 import { sceneIndexAt, sceneStarts, scenesOf, splitAt } from '@/domain/project/scenes';
 import { canPin, placeAtSpot } from '@/domain/project/spot';
 import { reuseTraced, tracedAt } from '@/domain/project/sources';
+import type { Place } from '@/domain/project/drawOrder';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import { clampEdge, type EdgeSettings } from '@/domain/project/edge';
 import type { Part, PartOp } from '@/domain/project/parts';
@@ -651,6 +652,17 @@ export class Editor {
     const range = { s: f.t, e: this.defaultEnd(f.t) };
     const t = newTrack(this.nextId++, this.clip, this.lastFx, range, part);
     return this.start(body ? withBody(t, body) : t, i, sel);
+  }
+
+  // an effect drawn in front of what's cut out of the clip, or behind it
+  setPlace(id: number, place: Place) {
+    const t = this.track(id);
+    if (!t || t.kind !== 'effect' || (t.place ?? 'front') === place) return false;
+    this.record();
+    t.place = place;
+    this.syncLayers();
+    this.publish(true);
+    return true;
   }
 
   // an effect made from a body preset instead (another, or the first); its timing and tracking stay

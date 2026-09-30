@@ -363,7 +363,14 @@ export default function VfxStudio({ id }: { id: string }) {
       look?.preset.group === 'filter'
         ? (SCOPES.find(x => x.id === (look.scope ?? 'clip'))?.label ?? null)
         : null,
-    behind: (look?.text ? look.place : effectClip?.place) === 'behind',
+    behind:
+      (look?.text
+        ? look.place
+        : effectClip
+          ? effectClip.place
+          : lane?.kind === 'effect'
+            ? lane.place
+            : null) === 'behind',
     video:
       filmVideo !== null ? { at: ui.reels.findIndex(r => r.id === filmVideo), of: ui.reels.length } : null,
   });
@@ -514,6 +521,8 @@ export default function VfxStudio({ id }: { id: string }) {
         return pl?.openReview(lane.id);
       case 'movekey':
         return pl?.toggleMoveKey(lane.id);
+      case 'behind':
+        return pl?.setTrackPlace(lane.id, lane.place === 'behind' ? 'front' : 'behind');
       case 'hithere':
         return pl?.moveImpact(lane.id);
       case 'start':

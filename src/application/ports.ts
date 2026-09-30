@@ -8,6 +8,7 @@ import type { SavedFilm } from './project';
 import type { Aim, Cam } from '@/domain/effects/laser';
 import type { Background } from '@/domain/project/cutout';
 import type { EdgeSettings } from '@/domain/project/edge';
+import type { Place } from '@/domain/project/drawOrder';
 import type { BodyPart } from '@/domain/tracking/bodyParts';
 import type { ClipFrame, Rle, Selection, Shape, TrackFrame, TrackMeta } from '@/domain/tracking/types';
 
@@ -110,6 +111,9 @@ export interface LayerSpec {
     tap?: { i: number; x: number; y: number };
   }[];
   cutout: { bg: Background; edge: EdgeSettings } | null;
+  // an effect drawn in front of what's cut out of the clip (on the layer in front: see
+  // EffectLayers), or behind it (on the footage)
+  place: Place;
 }
 
 // Draws each effect over the video.

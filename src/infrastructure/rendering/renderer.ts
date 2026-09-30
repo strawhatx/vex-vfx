@@ -53,6 +53,9 @@ export interface RenderOptions {
   // the footage's background hidden: the effects drawn on nothing (what's cut out of it is drawn
   // over them by the film)
   noBackground?: boolean;
+  // something cut out of the footage shows over it: effects set in front of it are drawn on the layer
+  // in front (see front) instead of the footage, for the film to draw over what's cut out
+  split?: boolean;
 }
 
 // how dark the footage outside a cutout being checked is
@@ -81,9 +84,18 @@ export class Renderer implements EffectLayers {
   private fonts: Fonts = FALLBACK_FONTS;
   // a copy of the frame, redrawn shaken and zoomed while an impact jolts the camera
   private jolt = new OffscreenCanvas(1, 1);
+  // the layer in front: what effects set in front draw on top of the footage (particles, outlines,
+  // lasers, words), when something's cut out over it (see RenderOptions.split); drawn is whether
+  // anything went on it this frame
+  readonly front = new OffscreenCanvas(1, 1);
+  private frontCtx = this.front.getContext('2d') as Ctx2D;
+  frontDrawn = false;
+  // where the effect being drawn puts what it draws on top: the footage, or the layer in front
+  private target: Ctx2D;
 
   constructor(readonly canvas: HTMLCanvasElement | OffscreenCanvas) {
     this.ctx = canvas.getContext('2d') as Ctx2D;
+    this.target = this.ctx;
   }
 
   // output is the video scaled to maxWidth; W x H is the analysis size the track data uses
@@ -102,6 +114,8 @@ export class Renderer implements EffectLayers {
     this.clones = new ClonePainter(this.CW, this.CH);
     this.fire.resize(this.CW, this.CH);
     this.jolt = new OffscreenCanvas(this.CW, this.CH);
+    this.front.width = this.CW;
+    this.front.height = this.CH;
     for (const l of this.layers.values()) l.geo = this.newGeo();
     this.invalidate();
   }
@@ -158,6 +172,8 @@ export class Renderer implements EffectLayers {
     ctx.globalCompositeOperation = 'source-over';
     if (opts.noBackground && opts.roto === undefined) ctx.clearRect(0, 0, this.CW, this.CH);
     else ctx.drawImage(source, 0, 0, this.CW, this.CH);
+    if (this.frontDrawn) this.frontCtx.clearRect(0, 0, this.CW, this.CH);
+    this.frontDrawn = false;
     const idx = this.CW ? frameIndexAt(this.clip, t) : -1;
     if (idx < 0) return -1;
 
@@ -166,6 +182,14 @@ export class Renderer implements EffectLayers {
       return idx;
     }
     const v = this.view();
+    // (effects in front of what's cut out: on the layer in front, while something is)
+    const vFront = this.view(this.frontCtx);
+    const onFront = (l: Layer) => !!opts.split && l.spec.kind === 'effect' && l.spec.place === 'front';
+    const viewOf = (l: Layer) => {
+      if (!onFront(l)) return v;
+      this.frontDrawn = true;
+      return vFront;
+    };
     const frameT = this.clip[idx].t;
     const all = [...this.layers.values()];
     const cutouts = all.filter(l => l.spec.kind === 'cutout' && l.spec.frames.length === this.clip.length);
@@ -185,8 +209,10 @@ export class Renderer implements EffectLayers {
 
     for (const l of showing) {
       if (l.spec.kind === 'impact') continue; // just its burst, drawn below
+      this.target = viewOf(l).ctx;
       if (l.spec.passes) this.drawBody(l, idx, source, false);
-      else if (l.spec.settings.effect === 'laser') drawLaser(v, l, idx);
+      else if (l.spec.settings.effect === 'laser') drawLaser(viewOf(l), l, idx);
+      this.target = this.ctx;
     }
 
     // glitches over everything else, so it glitches too
@@ -200,17 +226,20 @@ export class Renderer implements EffectLayers {
     }
     // labels and titles on top
     for (const l of showing)
-      if (isText(l) && l.spec.settings.textStyle !== 'behind') this.text.draw(v, l, idx);
+      if (isText(l) && l.spec.settings.textStyle !== 'behind') this.text.draw(viewOf(l), l, idx);
 
     if (opts.outline) {
-      for (const l of showing) drawOutline(v, this.masks, l, idx, opts.selected === l.spec.id, opts.paused);
+      // (over what's cut out too, while something is, so they can be seen)
+      const vo = opts.split ? vFront : v;
+      if (opts.split) this.frontDrawn = true;
+      for (const l of showing) drawOutline(vo, this.masks, l, idx, opts.selected === l.spec.id, opts.paused);
       // the selected cutout's object where it's cut from
       for (const l of cutouts)
         if (opts.selected === l.spec.id && l.isOn(frameT, this.clip.length))
-          drawOutline(v, this.masks, l, idx, true, opts.paused);
+          drawOutline(vo, this.masks, l, idx, true, opts.paused);
       // the selected clip's spot in the scene, even outside its range, to show where it will be
       const sel = opts.selected !== null && this.layers.get(opts.selected);
-      if (sel && opts.paused) drawSceneSpot(v, sel, idx);
+      if (sel && opts.paused) drawSceneSpot(vo, sel, idx);
     }
 
     drawImpacts(v, this.layers.values(), idx, this.canvas, this.jolt, this.impactParticles);
@@ -250,8 +279,8 @@ export class Renderer implements EffectLayers {
         lightning: particles,
         aura: particles,
         sparks: particles,
-        emitter: () => l.system(k).draw(this.ctx, f, specOf(p.params), l.scale(f)),
-        outline: () => drawOutlineFx(this.ctx, this.masks, mask, f, s, l.spec.id),
+        emitter: () => l.system(k).draw(this.target, f, specOf(p.params), l.scale(f)),
+        outline: () => drawOutlineFx(this.target, this.masks, mask, f, s, l.spec.id),
         glitch: () => {
           if (!f.tgt.active) return;
           const area = { mask: f.hasShape ? mask : null, box: f.tgt };
@@ -267,7 +296,7 @@ export class Renderer implements EffectLayers {
   }
 
   private particles(l: Layer, k: number, f: FxFrame, s: FxSettings, mask: OffscreenCanvas) {
-    l.sim(k).draw(this.ctx, f, s, {
+    l.sim(k).draw(this.target, f, s, {
       maskGlow: (c, col, blur, alpha) => this.masks.glow(mask, c, col, blur, alpha),
       fire: (c, fr, u, intensity) => this.fire.draw(c, mask, fr, u, intensity, s.pal),
     });
@@ -282,14 +311,14 @@ export class Renderer implements EffectLayers {
       gap = (v.gap as number) * u * 1.5,
       a = v.amount as number;
     if ((v.glow as number) > 0)
-      this.masks.edge(mask, this.ctx, {
+      this.masks.edge(mask, this.target, {
         col: v.glowColor as string,
         width: w * 1.6,
         gap,
         blur: (v.glow as number) * u * 2.5,
         alpha: a * 0.9,
       });
-    this.masks.edge(mask, this.ctx, { col: v.color as string, width: w, gap, alpha: a, solid: true });
+    this.masks.edge(mask, this.target, { col: v.color as string, width: w, gap, alpha: a, solid: true });
   }
 
   // a grade on just the object, or on everything but it
@@ -356,9 +385,9 @@ export class Renderer implements EffectLayers {
     this.glitch.draw(this.ctx, this.canvas, area, l.spec.settings, t, l.spec.id);
   }
 
-  private view(): View {
+  private view(ctx = this.ctx): View {
     return {
-      ctx: this.ctx,
+      ctx,
       CW: this.CW,
       CH: this.CH,
       q: this.CW / (this.W || 1),

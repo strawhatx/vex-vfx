@@ -288,6 +288,7 @@ export function toolsFor(
             ...(s.colors ? [sheet('color', 'Color', I.color)] : []),
             sheet('adjust', 'Adjust', I.adjust),
           ]),
+      { key: 'behind', label: 'Behind subject', icon: I.person, on: s.behind, disabled: s.busy },
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       ...(s.pinned

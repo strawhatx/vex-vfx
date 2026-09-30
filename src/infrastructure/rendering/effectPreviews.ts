@@ -84,6 +84,7 @@ function layerOf(preset: Preset, frames: TrackFrame[]): LayerSpec {
     tap: null,
     impacts: [],
     cutout: null,
+    place: 'behind', // (all on the one picture)
   };
 }
 

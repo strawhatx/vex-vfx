@@ -29,6 +29,7 @@ import type { EdgeSettings } from './edge';
 import { DEFAULT_EDGE, outlinesOf } from './outlines';
 import type { Part } from './parts';
 import { reviewFlags } from './review';
+import { placeOf, type Place } from './drawOrder';
 
 export type TrackKind = 'effect' | 'impact' | 'cutout';
 
@@ -68,6 +69,10 @@ export interface Track {
   parts: Part[]; // a cutout's pieces added or taken out, in the order picked (replaced, never changed in place, but for their tracked shapes)
   frames: TrackFrame[]; // what gets drawn: the shapes in the tracked frames
   keys: Key[]; // in frame order
+  // an effect's: drawn in front of what's cut out of the clip, or behind it (none: in front). What
+  // it does to the footage's own pixels (tints, dissolves, glitches, clones, water) stays on the
+  // footage either way.
+  place?: Place;
 }
 
 export const TRACK_COLORS = ['#ff6a3d', '#3fb6ff', '#b6ff4a', '#d98bff', '#ffc640', '#ff5fa2'];
@@ -396,6 +401,7 @@ export interface Lane {
   aim: Aim;
   speed: number; // impacts: how fast the burst plays (1 = its style's own timing)
   range: { s: number; e: number }; // when it shows (a cutout: where it's placed)
+  place: Place; // an effect's: in front of what's cut out of the clip, or behind
   row: number; // which timeline row it sits on (cutouts have rows of their own)
   reel: number; // the video it's on (a cutout: the one it's cut from)
   spans: Span[]; // inside the range
@@ -531,6 +537,7 @@ export function toLane(t: Track, clip: ClipFrame[], row: number): Lane {
     aim: t.aim,
     speed: impactSpeed(t),
     range: t.range,
+    place: placeOf(t),
     row,
     reel: 0,
     spans,

@@ -21,7 +21,7 @@ import type { Transition } from '@/domain/project/transitions';
 import { guessBlend, type EffectClip, type PackItem } from '@/domain/project/effectClips';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Background, Transform } from '@/domain/project/cutout';
-import { fitRect, type Overlay } from '@/domain/project/overlay';
+import { fitRect, showingAt, type Overlay } from '@/domain/project/overlay';
 import type { EdgeSettings } from '@/domain/project/edge';
 import {
   FULL,
@@ -743,6 +743,12 @@ export class Player {
   // a text drawn behind what's cut out of the clip, or in front
   setLookPlace(id: number, place: Place) {
     this.project.setLookPlace(id, place);
+    this.redraw();
+  }
+
+  // an effect on an object drawn behind what's cut out of the clip, or in front
+  setTrackPlace(id: number, place: Place) {
+    this.clip(id)?.ed.setPlace(id, place);
     this.redraw();
   }
 
@@ -2038,12 +2044,16 @@ export class Player {
     const outline = (this.showOutline || !!review) && !this.recorder;
     const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
     const film = this.state?.films[this.project.filmAt(now)];
+    // (what's cut out of the video playing, showing now: effects set in front go over it)
+    const subjects = review ? null : this.project.subjectsAt(now);
+    const split = !!subjects?.overlays.some(o => showingAt(o, subjects.time));
     const idx = rv.renderer.render(rv.video, t - rv.start, {
       outline,
       paused,
       selected: review ? review.track : this.ui.selected,
       roto: review && review.reel === rv.id ? review.track : undefined,
       noBackground: !!film?.noBackground,
+      split,
     });
     // the video's picture, fitted into the preview, then the layers over it
     const ctx = this.ctx;
@@ -2079,30 +2089,52 @@ export class Player {
       const texts = (place: Place) =>
         this.textClips.draw(ctx, this.project.textsAt(now, place), this.fonts ?? FALLBACK_FONTS, marks);
       for (const step of DRAW_ORDER) {
-        if (step === 'subjects') {
-          // (the subject layers of the video playing, at the time in it, moved with the footage, with
-          // the filters on them)
-          const subjects = this.project.subjectsAt(now);
-          if (subjects)
-            this.drawSubjects(ctx, subjects, looks ? this.project.looksAt(now, 'filter', 'subject') : [], {
-              selected: this.ui.selected,
-              outline,
-              isolate: this.recorder ? null : this.ui.isolated,
-              clipPose: pose,
-            });
-        } else if (!all) continue;
-        else if (step === 'behind') {
-          clips('behind');
-          if (looks) texts('behind');
-        } else if (step === 'clips') clips('front');
-        else if (!looks) continue;
-        else if (step === 'background')
-          this.looks.apply(ctx, this.project.looksAt(now, 'filter', 'background'));
-        else if (step === 'front') {
-          texts('front');
-          this.frameParticles.draw(ctx, this.project.particlesAt(now));
-        } else if (step === 'screen') this.looks.apply(ctx, this.project.looksAt(now, 'screen'));
-        else if (cut?.passes.length) this.looks.apply(ctx, cut.passes);
+        // (a cutout shown on its own: just the subjects)
+        if (!all && step !== 'subjects') continue;
+        switch (step) {
+          case 'background':
+            if (looks) this.looks.apply(ctx, this.project.looksAt(now, 'filter', 'background'));
+            break;
+          case 'behind':
+            clips('behind');
+            if (looks) texts('behind');
+            break;
+          case 'subjects':
+            // (the subject layers of the video playing, at the time in it, moved with the footage,
+            // with the filters on them)
+            if (subjects)
+              this.drawSubjects(ctx, subjects, looks ? this.project.looksAt(now, 'filter', 'subject') : [], {
+                selected: this.ui.selected,
+                outline,
+                isolate: this.recorder ? null : this.ui.isolated,
+                clipPose: pose,
+              });
+            break;
+          case 'front':
+            // (effects on objects set in front, moved with the footage like it)
+            if (rv.renderer.frontDrawn) {
+              if (pose) {
+                ctx.save();
+                applyPose(ctx, pose, this.CW / 2, this.CH / 2, this.CW, this.CH);
+              }
+              ctx.drawImage(rv.renderer.front, r.x, r.y, r.w, r.h);
+              if (pose) ctx.restore();
+            }
+            if (looks) {
+              texts('front');
+              this.frameParticles.draw(ctx, this.project.particlesAt(now));
+            }
+            break;
+          case 'clips':
+            clips('front');
+            break;
+          case 'screen':
+            if (looks) this.looks.apply(ctx, this.project.looksAt(now, 'screen'));
+            break;
+          case 'transition':
+            if (looks && cut?.passes.length) this.looks.apply(ctx, cut.passes);
+            break;
+        }
       }
     }
     if (this.plain) return;

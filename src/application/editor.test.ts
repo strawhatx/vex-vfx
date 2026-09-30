@@ -73,6 +73,25 @@ describe('adding an effect', () => {
   });
 });
 
+describe('an effect in front of what’s cut out, or behind', () => {
+  it('is in front unless set behind, which the renderer is told, and undone', () => {
+    const id = editor.addTrack(14, { x: 50, y: 50 })!;
+    expect(layers.specs[0].place).toBe('front');
+    expect(state.lanes[0].place).toBe('front');
+    expect(editor.setPlace(id, 'behind')).toBe(true);
+    expect(layers.specs[0].place).toBe('behind');
+    expect(state.lanes[0].place).toBe('behind');
+    expect(editor.setPlace(id, 'behind')).toBe(false); // (already)
+    editor.undo();
+    expect(layers.specs[0].place).toBe('front');
+  });
+
+  it('is only for effects: an impact stays where it is', () => {
+    const hit = editor.addImpact(14, { x: 50, y: 50 })!;
+    expect(editor.setPlace(hit, 'behind')).toBe(false);
+  });
+});
+
 describe('stacking effects', () => {
   it('effects one after another share a row', () => {
     editor.addTrack(0, { x: 10, y: 10 }); // 0..3

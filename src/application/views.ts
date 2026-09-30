@@ -13,6 +13,7 @@ import {
   type Track,
 } from '@/domain/project/track';
 import type { ClipFrame } from '@/domain/tracking/types';
+import { placeOf } from '@/domain/project/drawOrder';
 import type { LayerSpec } from './ports';
 
 export interface Timeline {
@@ -72,5 +73,6 @@ export function layersOf(tracks: Track[], clip: ClipFrame[]): LayerSpec[] {
         ? [{ id: t.id, i: hitFrame(t, clip), style: t.impact, look: impactLook(t)!, tap: t.keys[0] }]
         : [],
     cutout: t.cutout,
+    place: placeOf(t),
   }));
 }

@@ -1423,6 +1423,7 @@ export class Project {
       aim: { h: 90, v: 0, target: null },
       speed: 1,
       range,
+      place: 'front',
       row,
       reel: o.source.reel,
       spans: [{ ...range, weak: false }],
