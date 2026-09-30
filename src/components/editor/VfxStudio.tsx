@@ -496,8 +496,6 @@ export default function VfxStudio({ id }: { id: string }) {
         return pl?.openReview(lane.id);
       case 'movekey':
         return pl?.toggleMoveKey(lane.id);
-      case 'place':
-        return pl?.placeCutout(lane.id);
       case 'hithere':
         return pl?.moveImpact(lane.id);
       case 'start':
@@ -624,7 +622,6 @@ export default function VfxStudio({ id }: { id: string }) {
             setRange: (id, r) => player()?.setRange(id, r),
             commitRange: id => player()?.commitRange(id),
             moveImpact: (id, t) => player()?.moveImpact(id, t),
-            moveCutout: (id, t) => player()?.placeCutout(id, t),
             moveRow: (id, row) => player()?.moveToRow(id, row),
           }}
         />

@@ -1,5 +1,5 @@
 // The film: the videos added to it, played one after another (see domain/project/sequence), each
-// edited by an Editor of its own, the overlays over them all (objects cut out of them: see
+// edited by an Editor of its own, with its subject layers (objects cut out of it: see
 // domain/project/overlay), music under them (see domain/project/music), and looks over everything
 // (filters and screen effects: see domain/project/looks). One history to undo covers all of it.
 //
@@ -18,11 +18,10 @@ import {
 } from '@/domain/project/cutout';
 import {
   overlayAt,
-  overlayLength,
   overlayTransform,
   showingAt,
-  shownRange,
-  trimmed,
+  trimSpan,
+  upgradeOverlay,
   type Overlay,
 } from '@/domain/project/overlay';
 import { filmLength, layoutReels, nextReel, reelAt } from '@/domain/project/sequence';
@@ -270,13 +269,14 @@ export class Project {
     if (r) r.source = source;
   }
 
-  // takes a video out of the film. What was cut out of it stays, as it was cut.
+  // takes a video out of the film, and the subject layers cut from it (undo brings them back)
   removeVideo(id: number) {
     const k = this.reels.findIndex(r => r.id === id);
     if (k < 0) return false;
     this.step(undefined, () => {
       this.keepTraced(this.reels[k]);
       this.reels.splice(k, 1);
+      this.overlays = this.overlays.filter(o => o.source.reel !== id);
       this.publish(true);
     });
     return true;
@@ -296,9 +296,9 @@ export class Project {
   }
 
   // a copy of film k (of state.films) straight after its video: the same video again, with just
-  // that stretch of it kept, at the same speed and moving the same way, and a copy of the effects
-  // and impacts on it, tracked as they were (cutouts stay with the original). The copy's id, to
-  // load its video into; null if there's no such film
+  // that stretch of it kept, at the same speed and moving the same way, and a copy of the effects,
+  // impacts and cutouts on it, tracked as they were (each cutout's subject layers copied too, cut
+  // out again for the copy). The copy's id, to load its video into; null if there's no such film
   duplicateFilm(k: number) {
     const f = this.state.films[k];
     const at = this.reels.findIndex(r => r.id === f?.reel);
@@ -328,6 +328,21 @@ export class Project {
         speeds: edits.speeds.filter(x => Math.abs(x.s - f.s) < 1e-6),
         anims: edits.anims.filter(x => Math.abs(x.s - f.s) < 1e-6),
       });
+      // each copied cutout's subject layers, placed and animated as they were (their frames and
+      // pictures come once the copy is listed and cut out: see sync)
+      for (const c of copies) {
+        if (c.track.kind !== 'cutout') continue;
+        for (const o of this.overlays.filter(x => x.source.reel === from.id && x.source.track === c.from))
+          this.overlays.push({
+            ...o,
+            id: o.id === c.from ? c.track.id : this.nextOverlay++,
+            source: { reel: id, track: c.track.id },
+            src: { ...c.track.range },
+            frames: [],
+            row: null,
+          });
+      }
+      this.publish(true);
       return id;
     });
   }
@@ -371,6 +386,8 @@ export class Project {
     return this.step(undefined, () => {
       this.keepTraced(this.reels[k]);
       this.reels.splice(k, 1);
+      // (what was cut out of the old footage goes with it)
+      this.overlays = this.overlays.filter(o => o.source.reel !== id);
       return this.insertReel(file, k);
     });
   }
@@ -453,10 +470,12 @@ export class Project {
     return k >= 0 ? k : Math.max(0, films.length - 1);
   }
 
-  // ---------- overlays ----------
+  // ---------- subject layers ----------
+  // What's cut out of a video: the clip seen through its object's outline (see overlay.ts). Each
+  // belongs to its video and shows only while the frames it's cut from play there.
 
   // cuts out the object tapped at frame i of video `reel` (see Editor.addCutout): it's tracked and
-  // cut there, and becomes an overlay of the film
+  // cut there, and becomes a subject layer of that video
   addCutout(reel: number, i: number, sel: Selection, bg: Background, focus: { w: number; h: number } | null) {
     const r = this.reel(reel);
     if (!r) return null;
@@ -473,7 +492,6 @@ export class Project {
         row: null,
         source: { reel, track },
         aspect: W && H ? W / H : 16 / 9,
-        at: this.filmTimeOf(r, cut.range.s),
         src: { ...cut.range },
         frames: cut.frames,
         anim: NO_ANIM,
@@ -488,16 +506,25 @@ export class Project {
     return this.overlays.find(o => o.id === id) ?? null;
   }
 
-  // the overlays, top last
+  // the subject layers, top last
   get overlayList(): readonly Overlay[] {
     return this.overlays;
   }
 
-  // ---------- checking a cutout's outlines ----------
-  // An overlay is cut out once its outlines have been checked (see Editor.startReview): the frames
-  // of the video it's cut from, fixed with taps like an effect's.
+  // the subject layers of the video playing at film time t, and the time in that video (null: none
+  // plays there)
+  subjectsAt(t: number): { overlays: Overlay[]; time: number } | null {
+    const at = this.locate(t);
+    const time = at && this.videoTime(at.reel, t);
+    if (!at || time === null || time === undefined) return null;
+    return { overlays: this.overlays.filter(o => o.source.reel === at.reel), time };
+  }
 
-  // the video an overlay is cut from, its cutout there, and that video's editor
+  // ---------- checking a cutout's outlines ----------
+  // A subject layer is cut out once its outlines have been checked (see Editor.startReview): the
+  // frames of its video, fixed with taps like an effect's.
+
+  // the video a subject layer is cut from, its cutout there, and that video's editor
   sourceOf(id: number) {
     const o = this.overlay(id);
     const r = o && this.reel(o.source.reel);
@@ -514,119 +541,93 @@ export class Project {
     this.sourceOf(id)?.editor.finishReview();
   }
 
-  // which stretch of its video it's cut from (the video's own time), keeping what shows where it is;
-  // commitOverlayRange once the change is done tracks what it grew into
+  // which stretch of its video it's cut from (the video's own time); commitOverlayRange once the
+  // change is done tracks what it grew into
   setCutoutSpan(id: number, r: { s?: number; e?: number }) {
+    const src = this.sourceOf(id);
     const o = this.overlay(id);
-    const ed = o && this.reel(o.source.reel)?.editor;
-    if (!o || !ed) return;
-    const film = (t: number) => o.at + (t - o.src.s);
+    if (!src || !o) return;
     this.step(`range:${id}`, () => {
-      const next = trimmed(
-        o,
-        { ...(r.s !== undefined && { s: film(r.s) }), ...(r.e !== undefined && { e: film(r.e) }) },
-        { s: 0, e: ed.sourceLength },
-      );
-      this.overlays = this.overlays.map(x => (x.id === id ? next : x));
-      ed.setCutoutRange(o.source.track, next.src);
+      src.editor.setCutoutRange(src.track, trimSpan(o.src, r, { s: 0, e: src.editor.sourceLength }));
       this.publish(true);
     });
   }
 
-  // the top overlay whose object is under (x, y) at time t, in a W x H picture
+  // the top subject layer whose object is under (x, y) at film time t, in a W x H picture
   overlayAt(t: number, x: number, y: number, W: number, H: number) {
-    return overlayAt(this.overlays, t, x, y, W, H)?.id ?? null;
+    const at = this.subjectsAt(t);
+    return (at && overlayAt(at.overlays, at.time, x, y, W, H)?.id) ?? null;
   }
 
   showing(id: number, t: number) {
     const o = this.overlay(id);
-    return !!o && showingAt(o, t);
+    const time = o && this.videoTime(o.source.reel, t);
+    return !!o && time !== null && showingAt(o, time);
   }
 
   transformAt(id: number, t: number): Transform | null {
     const o = this.overlay(id);
-    return o ? overlayTransform(o, t) : null;
+    return o ? overlayTransform(o, this.videoTime(o.source.reel, t) ?? o.src.s) : null;
   }
 
-  // whether it has a transform keyframe at time t; and whether it has any
+  // whether it has a transform keyframe at film time t; and whether it has any
   moveKeyAt(id: number, t: number) {
     const o = this.overlay(id);
-    return !!o && !!keyAt(o, t - o.at);
+    const time = o && this.videoTime(o.source.reel, t);
+    return !!o && time !== null && !!keyAt(o, time);
   }
   hasMoveKeys(id: number) {
     return !!this.overlay(id)?.keys.length;
   }
 
-  // moves, scales, turns or fades it at time t: the whole layer, or with keyframes, the one there
+  // moves, scales, turns or fades it at film time t (while it shows): the whole layer, or with
+  // keyframes, the one there
   setTransform(id: number, t: number, p: Partial<Transform>) {
-    this.changeOverlay(id, o => setTransformAt(o, t - o.at, p), `move:${id}`);
+    this.changeAt(id, t, (o, time) => setTransformAt(o, time, p), `move:${id}`);
   }
 
   toggleMoveKey(id: number, t: number) {
-    this.changeOverlay(id, o => toggleKey(o, t - o.at));
+    this.changeAt(id, t, (o, time) => toggleKey(o, time));
   }
 
   resetTransform(id: number) {
     this.changeOverlay(id, o => resetTransform(o));
   }
 
-  // starts it at time t (kept inside the film where it fits); its keyframes go with it
-  placeAt(id: number, t: number) {
-    this.changeOverlay(id, o => ({
-      ...o,
-      at: Math.max(0, Math.min(Math.max(0, this.length - overlayLength(o)), t)),
-    }));
-  }
-
-  // moves its start or end, keeping what shows where it is (see trimmed). While the video it's cut
-  // from is in the film it can grow into more of it (cut out once commitRange is called);
-  // otherwise only within what was cut.
+  // moves its start or end to film time s or e: which frames of its video it's cut from (it can grow
+  // into more of the video, cut once commitOverlayRange is called)
   setOverlayRange(id: number, r: { s?: number; e?: number }) {
     const o = this.overlay(id);
-    if (!o) return;
-    const src = this.reel(o.source.reel);
-    const ed = src?.editor;
-    const cut = ed?.cutoutOf(o.source.track);
-    const f = o.frames;
-    const limit =
-      ed && cut
-        ? { s: 0, e: ed.sourceLength }
-        : { s: f[0]?.t ?? o.src.s, e: f.length ? f[f.length - 1].t + 1 / 30 : o.src.e };
-    this.step(`range:${id}`, () => {
-      const next = trimmed(o, r, limit);
-      this.overlays = this.overlays.map(x => (x.id === id ? next : x));
-      // more of the video to cut
-      if (ed && cut && (next.src.s < cut.range.s - 1e-6 || next.src.e > cut.range.e + 1e-6))
-        ed.setCutoutRange(o.source.track, {
-          s: Math.min(cut.range.s, next.src.s),
-          e: Math.max(cut.range.e, next.src.e),
-        });
-      this.publish(true);
+    const v = o && this.reel(o.source.reel);
+    if (!o || !v) return;
+    const start = this.startOf(v.id);
+    const time = (t: number, end: boolean) => v.editor.toSource(Math.max(0, t - start), end);
+    this.setCutoutSpan(id, {
+      ...(r.s !== undefined && { s: time(r.s, false) }),
+      ...(r.e !== undefined && { e: time(r.e, true) }),
     });
   }
 
   // the change to its range is done: what it grew into is cut out
   commitOverlayRange(id: number) {
     this.merge = null;
-    const o = this.overlay(id);
-    const ed = o && this.reel(o.source.reel)?.editor;
-    if (o && ed) ed.commitRange(o.source.track);
+    const src = this.sourceOf(id);
+    if (src) src.editor.commitRange(src.track);
   }
 
-  // what it leaves in its video where it was cut from; null once that video is gone
+  // what it leaves in its video where it was cut from
   background(id: number): Background | null {
-    const o = this.overlay(id);
-    const ed = o && this.reel(o.source.reel)?.editor;
-    return (o && ed?.cutoutOf(o.source.track)?.bg) ?? null;
+    const src = this.sourceOf(id);
+    return (src && src.editor.cutoutOf(src.track)?.bg) ?? null;
   }
 
   setBackground(id: number, bg: Background) {
-    const o = this.overlay(id);
-    const ed = o && this.reel(o.source.reel)?.editor;
-    if (o && ed) ed.setBackground(o.source.track, bg);
+    const src = this.sourceOf(id);
+    if (src) src.editor.setBackground(src.track, bg);
   }
 
-  // a copy of it, on the row below, at the same time
+  // a copy of it (moved, animated and faded on its own), on the row below: the same object in the
+  // same frames of the same video
   duplicateOverlay(id: number) {
     const o = this.overlay(id);
     if (!o) return null;
@@ -644,7 +645,7 @@ export class Project {
     });
   }
 
-  // puts it on another row of the overlays (-1: a new one on top)
+  // puts it on another row of the Cutouts layer (-1: a new one on top)
   moveOverlayRow(id: number, row: number) {
     this.changeOverlay(id, o => ({ ...o, row }));
   }
@@ -663,7 +664,7 @@ export class Project {
     });
   }
 
-  // an overlay's animation of this kind set, or taken off (null)
+  // a subject layer's animation of this kind set, or taken off (null)
   setOverlayAnim(id: number, kind: AnimKind, slot: AnimSlot | null) {
     this.changeOverlay(id, o => ({ ...o, anim: { ...o.anim, [kind]: slot } }), `anim:${id}:${kind}`);
   }
@@ -676,6 +677,22 @@ export class Project {
       this.overlays = this.overlays.map(x => (x.id === id ? next : x));
       this.publish(true);
     });
+  }
+
+  // changeOverlay at film time t, given the time in its video then (nothing, if it isn't playing)
+  private changeAt(id: number, t: number, change: (o: Overlay, time: number) => Overlay, merge?: string) {
+    const o = this.overlay(id);
+    const time = o && this.videoTime(o.source.reel, t);
+    if (o && time !== null && time !== undefined) this.changeOverlay(id, x => change(x, time), merge);
+  }
+
+  // the time in video `reel` shown at film time t: null if another video plays then, or none
+  private videoTime(reel: number, t: number) {
+    const at = this.locate(t);
+    const ed = at?.reel === reel ? this.reel(reel)?.editor : null;
+    if (!at || !ed) return null;
+    const time = ed.toSource(at.t);
+    return ed.jumpFrom(time) === null ? time : null;
   }
 
   // ---------- the frame ----------
@@ -1022,7 +1039,15 @@ export class Project {
       this.insertReel(r.file, k, r.id, r.source ?? '');
       this.reel(r.id)!.editor.restoreSaved(r.editor);
     });
-    this.overlays = s.overlays.slice();
+    // (layers saved before they were kept to their video: timed in it now; any whose video had been
+    // taken out have nothing left to show)
+    const ids = new Set(s.reels.map(r => r.id));
+    this.overlays = s.overlays.map(upgradeOverlay).filter(o => ids.has(o.source.reel));
+    const dropped = s.overlays.length - this.overlays.length;
+    if (dropped)
+      this.events.status(
+        `${dropped} cutout${dropped > 1 ? 's' : ''} from videos no longer in the film ${dropped > 1 ? 'were' : 'was'} left out.`,
+      );
     this.music = s.music.map(m => m.clip);
     this.musicFiles = new Map(s.music.map(m => [m.clip.id, m.file]));
     this.looks = s.looks.map(c => ({ ...c, preset: upToDate(c.preset) }));
@@ -1206,7 +1231,7 @@ export class Project {
     this.overlays = this.overlays.map(o => {
       if (o.source.reel !== r.id) return o;
       const cut = r.editor.cutoutOf(o.source.track);
-      return cut ? { ...o, frames: cut.frames } : o;
+      return cut ? { ...o, src: { ...cut.range }, frames: cut.frames } : o;
     });
   }
 
@@ -1273,12 +1298,16 @@ export class Project {
       lanes.map(l => ({ range: l.range, layer: layerOf(l), row: l.row })),
     );
     lanes.forEach((l, k) => (l.row = rows[k]));
+    // (a subject layer shows where the frames it's cut from play in the film)
+    const shown = this.overlays.map(o => this.shownRange(o));
     const cutRows = assignRows(
-      this.overlays.map(shownRange),
+      shown,
       this.overlays.map(o => o.row),
     );
     this.overlays.forEach((o, k) => (o.row = cutRows[k]));
-    const overlayLanes = this.overlays.map((o, k) => this.overlayLane(o, cutRows[k]));
+    const overlayLanes = this.overlays.flatMap((o, k) =>
+      shown[k].e - shown[k].s > 1e-6 ? [this.overlayLane(o, shown[k], cutRows[k])] : [],
+    );
     const audioRows = assignRows(
       this.music.map(musicRange),
       this.music.map(m => m.row),
@@ -1336,10 +1365,15 @@ export class Project {
     this.events.changed(this.state, drawn);
   }
 
-  private overlayLane(o: Overlay, row: number): Lane {
-    const range = shownRange(o);
-    const src = this.reel(o.source.reel);
-    const cut = src?.editor.cutoutOf(o.source.track);
+  // when a subject layer shows in the film: where the frames it's cut from play
+  private shownRange(o: Overlay) {
+    const r = this.reel(o.source.reel);
+    return r ? { s: this.filmTimeOf(r, o.src.s), e: this.filmTimeOf(r, o.src.e) } : { s: 0, e: 0 };
+  }
+
+  private overlayLane(o: Overlay, range: { s: number; e: number }, row: number): Lane {
+    const r = this.reel(o.source.reel);
+    const cut = r?.editor.cutoutOf(o.source.track);
     return {
       id: o.id,
       name: o.name,
@@ -1358,9 +1392,9 @@ export class Project {
       spans: [{ ...range, weak: false }],
       keys: [],
       cutout: {
-        from: src && cut ? this.filmTimeOf(src, o.src.s) : null,
+        from: range.s,
         bg: cut?.bg ?? 'keep',
-        moves: o.keys.map(k => o.at + k.t),
+        moves: r ? o.keys.map(k => this.filmTimeOf(r, k.t)) : [],
         anim: o.anim,
       },
     };

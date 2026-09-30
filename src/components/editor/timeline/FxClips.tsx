@@ -21,7 +21,6 @@ export interface ClipActions {
   // an impact dragged to hit at time t
   moveImpact(id: number, t: number): void;
   // a cutout dragged to start at time t
-  moveCutout(id: number, t: number): void;
   // a clip dragged onto another row (-1: a new one on top)
   moveRow(id: number, row: number): void;
 }
@@ -98,7 +97,8 @@ export function useSlide(
   scale: Scale,
   duration: number,
   on: Pick<ClipActions, 'moveRow'>,
-  moveTo: (t: number) => void,
+  // (none: it stays at its time, and only moves between rows)
+  moveTo?: (t: number) => void,
 ) {
   const [drag, setDrag] = useState<{
     x: number;
@@ -127,7 +127,7 @@ export function useSlide(
         if (!drag.moved && Math.hypot(dx, dy) < 5) return;
         // a small sideways wobble while moving it up or down doesn't change its time
         const t =
-          Math.abs(dx) < 8
+          Math.abs(dx) < 8 || !moveTo
             ? drag.from
             : Math.max(0, Math.min(Math.max(0, duration - len), drag.from + dx / scale.pps));
         setDrag({ ...drag, t, dy, moved: true });
@@ -139,7 +139,7 @@ export function useSlide(
         if (d.moved) {
           const rows = Math.round(d.dy / ROW_PITCH);
           if (rows) on.moveRow(l.id, Math.max(-1, l.row + rows));
-          if (Math.abs(d.t - d.from) > 1e-6) moveTo(d.t);
+          if (moveTo && Math.abs(d.t - d.from) > 1e-6) moveTo(d.t);
         }
         select();
       },
@@ -186,13 +186,12 @@ export function ImpactClip({ lane: l, scale, selected, duration, sound, on }: Cl
   );
 }
 
-// a cutout: where it's placed, with where its object was found and its keyframes (tracking fixes as
-// on an effect, and its transform keyframes). Drag to place it at another time; its ends change
-// which frames it's cut from.
+// a cutout's subject layer: where the frames it's cut from play, with its transform keyframes. It
+// stays with its clip (drag it up or down to change rows); its ends change which frames it's cut from.
 export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<ClipProps, 'sound'>) {
   const { x } = scale;
   const len = l.range.e - l.range.s;
-  const slide = useSlide(l, scale, duration, on, t => on.moveCutout(l.id, t));
+  const slide = useSlide(l, scale, duration, on);
   const start = slide.start;
   const w = x(len);
   const cut = l.cutout;
@@ -208,7 +207,7 @@ export function CutoutClip({ lane: l, scale, selected, duration, on }: Omit<Clip
         type="button"
         className="fx-body"
         aria-pressed={selected}
-        aria-label={`${l.name}: ${mmss(l.range.s)} to ${mmss(l.range.e)}${from}. Tap to select, drag to place it.`}
+        aria-label={`${l.name}: ${mmss(l.range.s)} to ${mmss(l.range.e)}${from}. Tap to select.`}
         onClick={e => e.stopPropagation()}
         {...slide.handlers(() => on.select(l.id))}
       >

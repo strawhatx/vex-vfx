@@ -17,7 +17,6 @@ import {
   type AnimKind,
   type ClipAnim,
 } from '@/domain/effects/animation';
-import { overlayLength } from '@/domain/project/overlay';
 import type { Transition } from '@/domain/project/transitions';
 import { guessBlend, type EffectClip, type PackItem } from '@/domain/project/effectClips';
 import { familyOf, type ImpactStyle } from '@/domain/effects/impacts';
@@ -948,12 +947,6 @@ export class Player {
     this.redraw();
   }
 
-  // the cutout starts at time t (the playhead, or where it was dragged on the timeline)
-  placeCutout(id: number, t = this.time()) {
-    this.project.placeAt(id, t);
-    this.redraw();
-  }
-
   deleteTrack(id: number) {
     if (this.project.effectClip(id)) this.project.deleteEffect(id);
     else if (this.project.look(id)) this.project.deleteLook(id);
@@ -1196,8 +1189,7 @@ export class Player {
       const c = this.project.look(target.look);
       return c ? { s: c.at, e: c.at + c.len } : null;
     }
-    const o = this.project.overlay(target.overlay);
-    return o ? { s: o.at, e: o.at + overlayLength(o) } : null;
+    return this.ui.lanes.find(l => l.id === target.overlay)?.range ?? null;
   }
 
   // plays the part of the clip the animation moves: its start (in, and a little of combo), or its end
@@ -2044,13 +2036,16 @@ export class Player {
       // (for pictures of looks), no looks or text
       const all = this.recorder || this.ui.isolated === null;
       for (const layer of DRAW_ORDER) {
-        if (layer === 'cutouts')
-          this.overlays.draw(ctx, this.CW, this.CH, this.project.overlayList, now, {
-            selected: this.ui.selected,
-            outline,
-            isolate: this.recorder ? null : this.ui.isolated,
-          });
-        else if (!all) continue;
+        if (layer === 'cutouts') {
+          // (the subject layers of the video playing, at the time in it)
+          const subjects = this.project.subjectsAt(now);
+          if (subjects)
+            this.overlays.draw(ctx, this.CW, this.CH, subjects.overlays, subjects.time, {
+              selected: this.ui.selected,
+              outline,
+              isolate: this.recorder ? null : this.ui.isolated,
+            });
+        } else if (!all) continue;
         else if (layer === 'clips')
           this.effectPainter.draw(ctx, this.project.effectsAt(now), {
             playing: !paused,

@@ -424,34 +424,31 @@ export function duplicate(t: Track, id: number, clip: ClipFrame[]): Track {
   return d;
 }
 
-// the effects and impacts on the stretch `span` of the video (seconds), for a copy of that stretch
-// (a duplicated film): numbered from firstId in order, each cut to the stretch, with the same look
-// and the same tracking (shapes are by the video's frames, so they still match). An impact comes
-// along if it hits in the stretch. Cutouts stay with the original (their layers are the film's).
-// Each copy comes with the id of the one it's a copy of.
+// the effects, impacts and cutouts on the stretch `span` of the video (seconds), for a copy of that
+// stretch (a duplicated film): numbered from firstId in order, each cut to the stretch, with the
+// same look and the same tracking (shapes are by the video's frames, so they still match). An
+// impact comes along if it hits in the stretch. Each copy comes with the id of the one it's a copy of.
 export function copiedInto(tracks: readonly Track[], span: { s: number; e: number }, firstId: number) {
   const on = (t: Track) =>
     t.kind === 'impact'
       ? t.range.s >= span.s - 1e-6 && t.range.s < span.e - 1e-6
       : t.range.s < span.e - 1e-6 && t.range.e > span.s + 1e-6;
-  return tracks
-    .filter(t => t.kind !== 'cutout' && on(t))
-    .map((t, k): { from: number; track: Track } => {
-      const id = firstId + k;
-      const track: Track = {
-        ...t,
-        id,
-        range:
-          t.kind === 'impact'
-            ? { ...t.range }
-            : { s: Math.max(t.range.s, span.s), e: Math.min(t.range.e, span.e) },
-        shapes: t.shapes.map(sh => sh && { ...sh, id }),
-        parts: t.parts.map(p => ({ ...p, shapes: p.shapes.slice() })),
-        keys: t.keys.slice(),
-        frames: [],
-      };
-      return { from: t.id, track };
-    });
+  return tracks.filter(on).map((t, k): { from: number; track: Track } => {
+    const id = firstId + k;
+    const track: Track = {
+      ...t,
+      id,
+      range:
+        t.kind === 'impact'
+          ? { ...t.range }
+          : { s: Math.max(t.range.s, span.s), e: Math.min(t.range.e, span.e) },
+      shapes: t.shapes.map(sh => sh && { ...sh, id }),
+      parts: t.parts.map(p => ({ ...p, shapes: p.shapes.slice() })),
+      keys: t.keys.slice(),
+      frames: [],
+    };
+    return { from: t.id, track };
+  });
 }
 
 // the timeline layer a clip sits on: cutouts on Overlay, and effects and impacts (text following

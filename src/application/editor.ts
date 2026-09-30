@@ -273,9 +273,9 @@ export class Editor {
   frameAt(t: number) {
     return frameIndexAt(this.clip, this.src(t));
   }
-  // program time to the clip's own, and back
-  toSource(t: number) {
-    return this.src(t);
+  // program time to the clip's own, and back (end: t ends a stretch)
+  toSource(t: number, end = false) {
+    return this.src(t, end);
   }
   toProgram(t: number) {
     return toProgram(this.pieces(), t);

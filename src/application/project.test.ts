@@ -259,7 +259,7 @@ describe('reversing a film', () => {
   });
 });
 
-describe('cutouts as layers of the film', () => {
+describe('cutouts as subject layers of their clip', () => {
   function cutOut() {
     const a = addVideo(6);
     const id = project.addCutout(a, 14, { x: 50, y: 25 }, 'keep', null)!;
@@ -290,27 +290,81 @@ describe('cutouts as layers of the film', () => {
     expect(pictures.byId.get(id)?.get(1.4)).toEqual({ image, x: 0.4, y: 0.1, w: 0.2, h: 0.8 });
   });
 
-  it('can be placed over another video', () => {
-    const { id } = cutOut();
-    addVideo(4);
-    project.placeAt(id, 7);
-    expect(state.lanes.find(l => l.id === id)?.range).toEqual({ s: 7, e: 10 });
+  it('moves with its video, and shows only while its frames play', () => {
+    const { a, id } = cutOut();
+    const b = addVideo(4, 0);
+    expect(state.lanes.find(l => l.id === id)?.range).toEqual({ s: 5.4, e: 8.4 });
+    expect(project.showing(id, 2)).toBe(false); // (the other video plays then)
+    expect(project.showing(id, 6)).toBe(true);
+    expect(project.subjectsAt(2)).toMatchObject({ overlays: [] });
+    expect(project.subjectsAt(6)?.overlays.map(o => o.id)).toEqual([id]);
+    expect(project.subjectsAt(6)?.time).toBeCloseTo(2);
+    project.moveVideo(b, 1);
+    expect(project.startOf(a)).toBe(0);
+    expect(state.lanes.find(l => l.id === id)?.range).toEqual({ s: 1.4, e: 4.4 });
   });
 
-  it('stays when the video it’s cut from is taken out, as it was cut', () => {
+  it('keeps to its frames when its clip is split, trimmed or sped up', () => {
+    const { id } = cutOut();
+    project.split(3);
+    project.deleteFilm(1); // (3..6 gone)
+    expect(state.lanes.find(l => l.id === id)?.range).toEqual({ s: 1.4, e: 3 });
+    expect(project.showing(id, 2.9)).toBe(true);
+    project.undo();
+    // (0..3 at double speed, then 3..6 as filmed)
+    project.setSpeed(0, 2, false);
+    const r = state.lanes.find(l => l.id === id)!.range;
+    expect(r.s).toBeCloseTo(0.7);
+    expect(r.e).toBeCloseTo(2.9);
+  });
+
+  it('its keyframes are on its frames: they move with its video', () => {
+    const { id } = cutOut();
+    project.toggleMoveKey(id, 2);
+    expect(project.overlay(id)?.keys[0].t).toBeCloseTo(2);
+    const b = addVideo(4, 0);
+    expect(project.moveKeyAt(id, 6)).toBe(true);
+    expect(project.moveKeyAt(id, 2)).toBe(false);
+    expect(state.lanes.find(l => l.id === id)?.cutout?.moves[0]).toBeCloseTo(6);
+    project.removeVideo(b);
+  });
+
+  it('goes when the video it’s cut from is taken out; undo brings it back', () => {
     const { a, id } = cutOut();
     addVideo(4);
-    project.placeAt(id, 7);
     project.removeVideo(a);
-    const lane = state.lanes.find(l => l.id === id)!;
-    expect(lane.cutout?.from).toBeNull();
-    expect(project.overlay(id)?.frames).toHaveLength(30);
-    // it can still be moved about
-    project.setTransform(id, 1, { x: 0.1 });
-    expect(project.transformAt(id, 1)?.x).toBe(0.1);
-    // and stays when the other video is replaced too
-    project.replaceVideo(state.reels[0].id, new Blob());
+    expect(project.overlay(id)).toBeNull();
+    expect(state.lanes.some(l => l.id === id)).toBe(false);
+    project.undo();
     expect(project.overlay(id)).not.toBeNull();
+    // (and when its footage is replaced)
+    project.replaceVideo(a, new Blob());
+    expect(project.overlay(id)).toBeNull();
+  });
+
+  it('comes along when its film is duplicated', () => {
+    const { a, id } = cutOut();
+    project.setTransform(id, 2, { x: 0.2 });
+    const b = project.duplicateFilm(0)!;
+    scanVideo(b, 6);
+    const copies = project.overlayList.filter(o => o.source.reel === b);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).toMatchObject({ base: { x: 0.2 }, src: { s: 1.4, e: 4.4 } });
+    expect(copies[0].frames.length).toBeGreaterThan(0);
+    expect(analyses.get(b)!.tracks).toBe(0);
+    expect(project.overlay(id)?.source.reel).toBe(a);
+  });
+
+  it('opened from a film saved before, whose video was taken out, is left out', () => {
+    const { a, id } = cutOut();
+    const saved = project.saved();
+    const old = {
+      ...saved,
+      overlays: saved.overlays.map(o => ({ ...o, at: 0, source: { reel: a + 50, track: id } })),
+    };
+    project = newProject();
+    project.open(old);
+    expect(project.overlayList).toEqual([]);
   });
 
   it('checking it, sets which stretch of its video it’s cut from, both ways', () => {
@@ -337,11 +391,11 @@ describe('cutouts as layers of the film', () => {
     expect(project.editorOf(a)?.cutoutOf(id)).not.toBeNull();
   });
 
-  it('trimmed, keeps what shows where it is; it can grow into more of its video, cut once done', () => {
+  it('trimmed, is cut from less or more of its video, cut once done', () => {
     const { a, id } = cutOut();
     cutoutCall(a).on.done();
-    project.setOverlayRange(id, { s: 2 });
-    expect(project.overlay(id)).toMatchObject({ at: 2, src: { s: 2, e: 4.4 } });
+    project.setOverlayRange(id, { e: 3 });
+    expect(project.overlay(id)).toMatchObject({ src: { s: 1.4, e: 3 } });
     project.setOverlayRange(id, { e: 5.4 });
     expect(project.editorOf(a)?.cutoutOf(id)?.range).toEqual({ s: 1.4, e: 5.4 });
     project.commitOverlayRange(id);
@@ -352,7 +406,7 @@ describe('cutouts as layers of the film', () => {
   it('deleting it deletes what cuts it; a copy keeps that going', () => {
     const { a, id } = cutOut();
     const copy = project.duplicateOverlay(id)!;
-    expect(project.overlay(copy)).toMatchObject({ at: 1.4, name: 'Cutout 1 copy' });
+    expect(project.overlay(copy)).toMatchObject({ src: { s: 1.4, e: 4.4 }, name: 'Cutout 1 copy' });
     project.deleteOverlay(id);
     expect(project.editorOf(a)?.cutoutOf(id)).not.toBeNull();
     project.deleteOverlay(copy);

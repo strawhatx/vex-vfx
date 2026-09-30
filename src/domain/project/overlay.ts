@@ -1,10 +1,13 @@
-// Overlays: objects cut out of a video (see cutout.ts) as layers of their own, over the whole
-// film. An overlay is cut from one video, but belongs to the film: it can be placed at any time,
-// over any video, and it stays when the video it was cut from is taken out (it keeps what was cut).
-// It plays the stretch of its video it was cut from, from where it's placed, at the same speed;
-// its placement (moved, scaled, turned, faded) is keyframed in seconds from its start.
+// Subject layers: objects cut out of a video (see cutout.ts), each the clip seen through its
+// object's outline (docs/timeline-rules.md). A subject layer belongs to the video it's cut from and
+// shows only while those frames play there: it moves, trims and splits with its clip, and goes when
+// the video goes. On top of where the object is, it can be moved, scaled, turned and faded, with
+// keyframes, and animated in and out.
+//
+// Times: all in its video's own time (source time), never the film's, so trimming, splitting or
+// speeding up the clip never moves it off its frames (rule 9).
 import { poseAt, type ClipAnim } from '../effects/animation';
-import { transformAt, type Placement, type Transform } from './cutout';
+import { transformAt, type Placement, type Transform, type TransformKey } from './cutout';
 
 // the object in one frame it was cut from: when (seconds, its video's own time), and its box
 // (middle and size, as fractions of that video's frame)
@@ -16,6 +19,7 @@ export interface OverlayFrame {
   h: number;
 }
 
+// (its placement's keyframes are at times in its video)
 export interface Overlay extends Placement {
   id: number;
   name: string;
@@ -23,31 +27,21 @@ export interface Overlay extends Placement {
   row: number | null; // the timeline row the user put it on (null: wherever it fits)
   source: { reel: number; track: number }; // the video it's cut from, and the clip there cutting it
   aspect: number; // width / height of that video's frame
-  at: number; // when it starts, in the film's time
-  src: { s: number; e: number }; // the stretch of its video it plays (the video's own time)
+  src: { s: number; e: number }; // the stretch of its video it's cut from
   frames: OverlayFrame[]; // the object in each frame cut, in time order
   anim: ClipAnim; // how it moves as it plays (in, out, combo), on top of its placement
 }
 
 export const overlayLength = (o: Pick<Overlay, 'src'>) => o.src.e - o.src.s;
 
-// when it shows, in the film's time
-export const shownRange = (o: Pick<Overlay, 'at' | 'src'>) => ({ s: o.at, e: o.at + overlayLength(o) });
+// whether it shows at time t of its video
+export const showingAt = (o: Pick<Overlay, 'src'>, t: number) => t >= o.src.s - 1e-6 && t < o.src.e - 1e-6;
 
-// whether it's showing at film time t
-export const showingAt = (o: Pick<Overlay, 'at' | 'src'>, t: number) => {
-  const r = shownRange(o);
-  return t >= r.s - 1e-6 && t < r.e - 1e-6;
-};
-
-// the time in its video shown at film time t
-export const sourceTimeAt = (o: Pick<Overlay, 'at' | 'src'>, t: number) => o.src.s + (t - o.at);
-
-// the frame it shows at film time t: the last one cut at or before then; null when it isn't
+// the frame it shows at time t of its video: the last one cut at or before then; null when it isn't
 // showing, or nothing was cut there
 export function frameAt(o: Overlay, t: number): OverlayFrame | null {
   if (!showingAt(o, t)) return null;
-  const st = sourceTimeAt(o, t) + 1e-6;
+  const st = t + 1e-6;
   const f = o.frames;
   let lo = 0,
     hi = f.length - 1,
@@ -62,11 +56,11 @@ export function frameAt(o: Overlay, t: number): OverlayFrame | null {
   return best >= 0 && f[best].t >= o.src.s - 1e-6 ? f[best] : null;
 }
 
-// its transform at film time t
-export const overlayTransform = (o: Overlay, t: number): Transform => transformAt(o, t - o.at);
+// its transform at time t of its video
+export const overlayTransform = (o: Overlay, t: number): Transform => transformAt(o, t);
 
-// how its animation moves it at film time t
-export const overlayPose = (o: Overlay, t: number) => poseAt(o.anim, t - o.at, overlayLength(o));
+// how its animation moves it at time t of its video
+export const overlayPose = (o: Overlay, t: number) => poseAt(o.anim, t - o.src.s, overlayLength(o));
 
 // where a frame of this aspect sits in a W x H picture: as big as fits, centred (bars either side
 // or above and below when the shapes differ)
@@ -77,7 +71,7 @@ export function fitRect(aspect: number, W: number, H: number) {
   return { x: (W - w) / 2, y: (H - h) / 2, w, h };
 }
 
-// the object's box at film time t in a W x H picture, as placed: where its middle is, its size
+// the object's box at time t of its video in a W x H picture, as placed: where its middle is, its size
 // before scaling, and its transform; null when it isn't showing
 export function placedBox(o: Overlay, t: number, W: number, H: number) {
   const f = frameAt(o, t);
@@ -95,8 +89,8 @@ export function placedBox(o: Overlay, t: number, W: number, H: number) {
   };
 }
 
-// the top overlay (last in the list) whose object, as placed, is under (x, y) at film time t, in a
-// W x H picture
+// the top overlay (last in the list) whose object, as placed, is under (x, y) at time t of their
+// video (all of the same one), in a W x H picture
 export function overlayAt(
   overlays: readonly Overlay[],
   t: number,
@@ -119,38 +113,33 @@ export function overlayAt(
   return null;
 }
 
-// the shortest an overlay can be trimmed to
+// the shortest a subject layer can be trimmed to (seconds)
 export const MIN_OVERLAY_S = 0.1;
 
-// its start or end moved to film time s or e, keeping what shows where it is: moving the start
-// later plays from later in its video, and moving it earlier from earlier. It can't reach past
-// `limit` (the stretch of its video that can be cut; its own time) or before the film's start.
-export function trimmed(o: Overlay, r: { s?: number; e?: number }, limit: { s: number; e: number }): Overlay {
-  const shown = shownRange(o);
-  let s = r.s ?? shown.s;
-  const e = r.e ?? shown.e;
-  // in its video's time
-  let ss = sourceTimeAt(o, s),
-    se = sourceTimeAt(o, e);
-  if (ss < limit.s) {
-    s += limit.s - ss;
-    ss = limit.s;
+// the stretch of its video it's cut from with its start or end moved to s or e (its video's time),
+// kept inside `limit` and no shorter than MIN_OVERLAY_S
+export function trimSpan(
+  src: { s: number; e: number },
+  r: { s?: number; e?: number },
+  limit: { s: number; e: number },
+) {
+  let s = Math.max(limit.s, r.s ?? src.s),
+    e = Math.min(limit.e, r.e ?? src.e);
+  if (e - s < MIN_OVERLAY_S) {
+    if (r.s !== undefined) s = e - MIN_OVERLAY_S;
+    else e = s + MIN_OVERLAY_S;
   }
-  if (s < 0) {
-    ss -= s;
-    s = 0;
-  }
-  se = Math.min(se, limit.e);
-  if (se - ss < MIN_OVERLAY_S) {
-    if (r.s !== undefined) ss = se - MIN_OVERLAY_S;
-    else se = ss + MIN_OVERLAY_S;
-    s = o.at + (ss - o.src.s);
-  }
-  const moved = s - o.at;
-  return {
+  return { s, e };
+}
+
+// a layer as saved before subject layers kept to their video: it was placed at film time `at`, its
+// keyframes timed from there; now they're timed in its video (it played at its own speed from src.s)
+export function upgradeOverlay(o: Overlay & { at?: number }): Overlay {
+  if (o.at === undefined) return o;
+  const rest: Overlay & { at?: number } = {
     ...o,
-    at: s,
-    src: { s: ss, e: se },
-    keys: o.keys.map(k => ({ ...k, t: k.t - moved })),
+    keys: o.keys.map((k): TransformKey => ({ ...k, t: o.src.s + k.t })),
   };
+  delete rest.at;
+  return rest;
 }

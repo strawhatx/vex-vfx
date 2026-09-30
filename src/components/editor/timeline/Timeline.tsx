@@ -64,8 +64,6 @@ export function Timeline({
     commitRange(id: number): void;
     // an impact dragged to hit at time t
     moveImpact(id: number, t: number): void;
-    // a cutout dragged to start at time t
-    moveCutout(id: number, t: number): void;
     // a clip dragged onto another row (-1: a new one on top)
     moveRow(id: number, row: number): void;
   };
@@ -185,7 +183,6 @@ export function Timeline({
     setRange: on.setRange,
     commitRange: on.commitRange,
     moveImpact: on.moveImpact,
-    moveCutout: on.moveCutout,
     moveRow: on.moveRow,
   };
 

@@ -1,7 +1,6 @@
-// The film's overlays (objects cut out of its videos: see domain/project/overlay): their pictures,
-// kept here as they're cut so they can be drawn without the video they came from, and drawn over
-// the film's picture where each is placed — moved, scaled and turned about the object's middle,
-// and faded. In the editor, the selected one gets a dashed frame, as do ones still being cut; one
+// The subject layers (objects cut out of the film's videos: see domain/project/overlay): their
+// pictures, kept here as they're cut, and drawn over their video's picture while it plays, where
+// each is placed: on its object, or moved, scaled and turned about the object's middle, and faded. In the editor, the selected one gets a dashed frame, as do ones still being cut; one
 // can also be shown on its own, on a checkerboard. Its animation (in, out, combo) moves it on top of
 // where it's placed.
 import type { OverlayPictures, OverlaySprite } from '@/application/ports';
@@ -41,7 +40,8 @@ export class OverlayPainter implements OverlayPictures {
     this.byId.clear();
   }
 
-  // draws the overlays showing at film time t onto ctx, a W x H picture (top last)
+  // draws the subject layers showing at time t of their video (all of the one playing) onto ctx, a
+  // W x H picture (top last)
   draw(ctx: Ctx2D, W: number, H: number, overlays: readonly Overlay[], t: number, opts: OverlayDrawOptions) {
     const alone = opts.isolate !== null ? overlays.find(o => o.id === opts.isolate) : undefined;
     if (alone) {

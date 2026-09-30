@@ -229,7 +229,6 @@ export function toolsFor(
         disabled: s.busy,
       },
       sheet('background', 'Background', I.scene),
-      { key: 'place', label: 'Place here', icon: I.place, disabled: s.busy },
       { key: 'start', label: 'Starts here', icon: I.start, disabled: s.busy },
       { key: 'end', label: 'Ends here', icon: I.end, disabled: s.busy },
       { key: 'duplicate', label: 'Duplicate', icon: I.copy, disabled: s.busy },
