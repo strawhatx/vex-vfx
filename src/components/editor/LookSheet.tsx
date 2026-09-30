@@ -24,14 +24,13 @@ export const GROUP_NAMES: Record<MenuGroup, string> = {
   body: 'Object effects',
   impact: 'Custom effects',
 };
-// whether a group's presets are split up by category (filters, video effects, object effects and
-// text aren't: all of them in one list)
+// whether a group's presets are split up by category (none are, for now: all of them in one list)
 const BY_CATEGORY: Record<MenuGroup, boolean> = {
   filter: false,
   screen: false,
   text: false,
   body: false,
-  impact: true,
+  impact: false,
 };
 
 // a preset's picture when there's none of the frame: a filter's colors as it turns them, a body

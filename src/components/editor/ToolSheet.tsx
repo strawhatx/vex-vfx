@@ -2,21 +2,13 @@
 // clip's effect, impact style, color or size. On phones it takes over the dock; on desktop it
 // floats beside the preview.
 import type { CSSProperties } from 'react';
-import {
-  IMPACTS,
-  IMPACT_STYLES,
-  stylesLike,
-  type ImpactFamily,
-  type ImpactStyle,
-} from '@/domain/effects/impacts';
+import { IMPACTS, IMPACT_STYLES, stylesLike, type ImpactStyle } from '@/domain/effects/impacts';
 import type { Aim } from '@/domain/effects/laser';
 import { BACKGROUNDS, MAX_SCALE, MIN_SCALE, type Background, type Transform } from '@/domain/project/cutout';
 import { EDGE_LIMITS, type EdgeSettings } from '@/domain/project/edge';
 import { MAX_VOLUME } from '@/domain/project/music';
 import { MAX_SPEED, MIN_SPEED } from '@/domain/project/edit';
 import { DEFAULT_PAL, PALETTES, type Effect, type FxSettings } from '@/domain/effects/palettes';
-import { soundOfBurst } from '@/domain/effects/bursts';
-import { presetsIn } from '@/domain/effects/library';
 import { GLITCH_STYLES, type GlitchStyle } from '@/domain/effects/glitches';
 import { OUTLINE_STYLES, type OutlineStyle } from '@/domain/effects/outlines';
 import { FONTS, MAX_TEXT, TEXT_STYLES, type TextStyle } from '@/domain/effects/text';
@@ -49,20 +41,8 @@ export type Tool =
   | 'customize'
   // how a film or an overlay moves (see AnimSheet.tsx)
   | 'animation';
-// the effect categories: each continuous effect, and each family of impacts (listed together
-// under Impact)
-export type ImpactCategory = 'impact' | 'explosion' | 'shockwave' | 'word' | 'splash';
-export type Category = Effect | ImpactCategory;
-
-// the impact categories, and the family of styles each lists
-const IMPACT_CATEGORIES: Record<ImpactCategory, { family: ImpactFamily; name: string }> = {
-  impact: { family: 'hit', name: 'Hit' },
-  explosion: { family: 'explosion', name: 'Explosion' },
-  shockwave: { family: 'shockwave', name: 'Shockwave' },
-  word: { family: 'word', name: 'Text' },
-  splash: { family: 'water', name: 'Water' },
-};
-const isImpactCategory = (c: Category): c is ImpactCategory => c in IMPACT_CATEGORIES;
+// the effect categories: the object effects with styles of their own (see Toolbar.tsx)
+export type Category = Effect;
 
 // lasers are hidden for now: set this to true to bring them back into the menus
 export const SHOW_LASERS = false;
@@ -79,8 +59,7 @@ export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'text', label: 'Text' },
 ];
 export const effectName = (e: Effect) => EFFECTS.find(x => x.id === e)!.label;
-export const categoryName = (c: Category) =>
-  isImpactCategory(c) ? IMPACT_CATEGORIES[c].name : effectName(c);
+export const categoryName = (c: Category) => effectName(c);
 
 export const TOOL_TITLES: Record<Tool, string> = {
   styles: 'Styles',
@@ -242,13 +221,8 @@ const swatchBg = (i: number) => {
 const pct = (v: number, min: number, max: number) =>
   ({ '--p': `${((v - min) / (max - min)) * 100}%` }) as CSSProperties;
 
-// the burst presets in an Impact category
-const burstsIn = (category: string) => presetsIn('impact').find(c => c.category === category)?.presets ?? [];
-
 // what picking a style in a category adds
-export type Pick =
-  | { kind: 'effect'; effect: Effect; pal: number; fx?: Partial<FxSettings> }
-  | { kind: 'impact'; style: ImpactStyle; burst?: string };
+export type Pick = { kind: 'effect'; effect: Effect; pal: number; fx?: Partial<FxSettings> };
 
 export function ToolSheet({
   tool,
@@ -340,26 +314,7 @@ export function ToolSheet({
           ))}
         </div>
       )}
-      {tool === 'styles' && category && isImpactCategory(category) && (
-        <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
-          {/* (the burst presets of this kind; each shown as the style it sounds like) */}
-          {burstsIn(IMPACT_CATEGORIES[category].name).map(p => {
-            const st = soundOfBurst(p.passes);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className="tile"
-                onClick={() => onPick?.({ kind: 'impact', style: st, burst: p.id })}
-              >
-                <span className="tile-art" style={{ background: IMPACT_ART[st] }} />
-                {p.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {tool === 'styles' && category && !isImpactCategory(category) && LOOKS[category] && (
+      {tool === 'styles' && category && LOOKS[category] && (
         <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
           {LOOKS[category].map(l => (
             <button
@@ -397,7 +352,7 @@ export function ToolSheet({
           ))}
         </div>
       )}
-      {tool === 'styles' && category && !isImpactCategory(category) && !LOOKS[category] && (
+      {tool === 'styles' && category && !LOOKS[category] && (
         <div className="tiles" role="group" aria-label={`${categoryName(category)} styles`}>
           {PALETTES.map((p, i) => (
             <button
