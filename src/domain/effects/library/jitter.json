@@ -1,0 +1,18 @@
+{
+  "id": "jitter",
+  "name": "Jitter",
+  "group": "motion",
+  "category": "Combo",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "combo",
+      "params": {
+        "rate": 1.5,
+        "shake": 0.5
+      }
+    }
+  ],
+  "controls": []
+}

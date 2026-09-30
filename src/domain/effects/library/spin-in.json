@@ -1,0 +1,21 @@
+{
+  "id": "spin-in",
+  "name": "Spin In",
+  "group": "motion",
+  "category": "In",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "in",
+      "params": {
+        "duration": 0.7,
+        "ease": "out",
+        "turn": -360,
+        "scale": 0.2,
+        "opacity": 0
+      }
+    }
+  ],
+  "controls": []
+}

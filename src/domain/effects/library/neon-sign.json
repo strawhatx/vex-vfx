@@ -1,0 +1,83 @@
+{
+  "id": "neon-sign",
+  "name": "Neon Sign",
+  "group": "text",
+  "category": "Glow",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "OPEN LATE",
+        "font": "bebas",
+        "size": 0.14,
+        "spacing": 0.08
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "glow",
+      "params": {
+        "amount": 1,
+        "color": "#ff4fd8",
+        "size": 0.6
+      },
+      "motion": {
+        "kind": "flicker",
+        "rate": 6
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "stroke",
+      "params": {
+        "color": "#ff4fd8",
+        "width": 0.25
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#ffe8fb"
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "blur",
+        "duration": 0.5,
+        "stagger": 0.04
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "fade",
+        "duration": 0.3,
+        "stagger": 0
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "color",
+      "label": "Glow color",
+      "type": "color",
+      "def": "#ff4fd8",
+      "drives": [
+        {
+          "pass": 1,
+          "param": "color"
+        },
+        {
+          "pass": 2,
+          "param": "color"
+        }
+      ]
+    }
+  ]
+}

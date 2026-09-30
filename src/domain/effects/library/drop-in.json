@@ -1,0 +1,19 @@
+{
+  "id": "drop-in",
+  "name": "Drop",
+  "group": "motion",
+  "category": "In",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "in",
+      "params": {
+        "duration": 0.8,
+        "ease": "bounce",
+        "y": -1
+      }
+    }
+  ],
+  "controls": []
+}

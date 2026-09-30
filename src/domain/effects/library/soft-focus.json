@@ -1,0 +1,51 @@
+{
+  "id": "soft-focus",
+  "name": "Soft Focus",
+  "group": "screen",
+  "category": "Blur",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "blur",
+      "params": {
+        "amount": 0.35
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "glow",
+      "params": {
+        "amount": 0.3,
+        "threshold": 0.5,
+        "size": 0.4
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.8
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.6
+        }
+      ]
+    }
+  ],
+  "fade": {
+    "in": 0.3,
+    "out": 0.3
+  }
+}

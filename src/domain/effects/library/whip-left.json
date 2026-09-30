@@ -1,0 +1,33 @@
+{
+  "id": "whip-left",
+  "name": "Whip Left",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.5,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "ease": "in",
+        "x": -1
+      }
+    },
+    {
+      "engine": "motion",
+      "kind": "in",
+      "params": {
+        "ease": "out",
+        "x": 1
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "blur",
+      "params": {
+        "amount": 0.6
+      }
+    }
+  ],
+  "controls": []
+}

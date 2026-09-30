@@ -1,0 +1,38 @@
+{
+  "id": "bam",
+  "name": "BAM!",
+  "group": "impact",
+  "category": "Text",
+  "length": 0.85,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "word",
+        "sound": "bam",
+        "duration": 0.85,
+        "size": 0.085,
+        "flash": 0.6,
+        "screenFlash": 0.12,
+        "rings": 1,
+        "sparks": 14,
+        "speed": 4,
+        "gravity": 2,
+        "shake": 0.025,
+        "zoom": 0.05,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "word",
+      "params": {
+        "text": "BAM!",
+        "tilt": 0.18,
+        "spikes": 10
+      }
+    }
+  ],
+  "controls": []
+}

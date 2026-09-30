@@ -1,0 +1,53 @@
+{
+  "id": "dream-glow",
+  "name": "Dream Glow",
+  "group": "screen",
+  "category": "Light",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "glow",
+      "params": {
+        "amount": 0.8,
+        "threshold": 0.45,
+        "size": 0.7
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "vignette",
+      "params": {
+        "amount": 0.35,
+        "size": 0.6,
+        "color": "#fff3e0"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.6
+        }
+      ]
+    }
+  ],
+  "fade": {
+    "in": 0.4,
+    "out": 0.4
+  }
+}

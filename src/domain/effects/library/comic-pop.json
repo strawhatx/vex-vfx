@@ -1,0 +1,65 @@
+{
+  "id": "comic-pop",
+  "name": "Comic Pop",
+  "group": "text",
+  "category": "Bold",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "WHAM!",
+        "font": "bangers",
+        "size": 0.2,
+        "spacing": 0.03
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "shadow",
+      "params": {
+        "amount": 1,
+        "x": 0.25,
+        "y": 0.3,
+        "blur": 0
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "stroke",
+      "params": {
+        "color": "#000000",
+        "width": 0.7
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#ffd23f",
+        "color2": "#ff6a1a",
+        "gradient": 1
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "pop",
+        "duration": 0.35,
+        "stagger": 0.06
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "pop",
+        "duration": 0.2,
+        "stagger": 0.03
+      }
+    }
+  ],
+  "controls": []
+}

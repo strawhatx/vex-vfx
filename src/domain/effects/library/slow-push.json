@@ -1,0 +1,35 @@
+{
+  "id": "slow-push",
+  "name": "Slow Push",
+  "group": "screen",
+  "category": "Motion",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "zoom",
+      "params": {
+        "amount": 0.2
+      },
+      "motion": {
+        "kind": "rise"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.5
+        }
+      ]
+    }
+  ]
+}

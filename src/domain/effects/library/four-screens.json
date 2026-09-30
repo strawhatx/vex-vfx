@@ -1,0 +1,18 @@
+{
+  "id": "four-screens",
+  "name": "Four Screens",
+  "group": "screen",
+  "category": "Distort",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "split",
+      "params": {
+        "amount": 1,
+        "count": "4"
+      }
+    }
+  ],
+  "controls": []
+}

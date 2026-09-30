@@ -1,0 +1,49 @@
+{
+  "id": "heat-haze",
+  "name": "Heat Haze",
+  "group": "screen",
+  "category": "Distort",
+  "length": 4,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "wave",
+      "params": {
+        "amount": 0.2,
+        "freq": 0.6,
+        "speed": 0.5
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "glow",
+      "params": {
+        "amount": 0.25,
+        "threshold": 0.6,
+        "size": 0.4
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 0.4
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 0.5
+        }
+      ]
+    }
+  ]
+}

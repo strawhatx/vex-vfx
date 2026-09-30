@@ -1,0 +1,29 @@
+{
+  "id": "slam",
+  "name": "Slam",
+  "group": "impact",
+  "category": "Hit",
+  "length": 0.7,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "hit",
+        "sound": "slam",
+        "duration": 0.7,
+        "size": 0.06,
+        "flash": 1.4,
+        "screenFlash": 0.15,
+        "rings": 2,
+        "sparks": 40,
+        "speed": 4,
+        "gravity": 7,
+        "shake": 0.03,
+        "zoom": 0.07,
+        "colors": "white"
+      }
+    }
+  ],
+  "controls": []
+}

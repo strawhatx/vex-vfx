@@ -1,0 +1,52 @@
+{
+  "id": "halo-line",
+  "name": "Halo Line",
+  "group": "body",
+  "category": "Glow",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "edge",
+      "params": {
+        "color": "#fff6d8",
+        "glowColor": "#ffc640",
+        "width": 0.2,
+        "glow": 0.6,
+        "gap": 0.5
+      },
+      "motion": {
+        "kind": "pulse",
+        "rate": 1
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    },
+    {
+      "id": "color",
+      "label": "Glow color",
+      "type": "color",
+      "def": "#ffc640",
+      "drives": [
+        {
+          "pass": 0,
+          "param": "glowColor"
+        }
+      ]
+    }
+  ]
+}

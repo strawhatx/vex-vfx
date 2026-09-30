@@ -1,0 +1,42 @@
+{
+  "id": "pulse",
+  "name": "Energy pulse",
+  "group": "impact",
+  "category": "Shockwave",
+  "length": 1.4,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "shockwave",
+        "sound": "pulse",
+        "duration": 1.4,
+        "size": 0.06,
+        "flash": 1.4,
+        "screenFlash": 0.25,
+        "rings": 0,
+        "sparks": 0,
+        "speed": 0,
+        "gravity": 0,
+        "shake": 0.02,
+        "zoom": 0.05,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "wave",
+      "params": {
+        "rings": 3,
+        "gap": 0.18,
+        "reach": 5.5,
+        "particles": 70,
+        "flatten": 1,
+        "dust": "no",
+        "distort": 1
+      }
+    }
+  ],
+  "controls": []
+}

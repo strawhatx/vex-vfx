@@ -1,0 +1,36 @@
+{
+  "id": "arctic",
+  "name": "Arctic",
+  "group": "filter",
+  "category": "Cool",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "grade",
+      "params": {
+        "amount": 1,
+        "temperature": -0.6,
+        "saturation": -0.2,
+        "exposure": 0.2,
+        "highlights": 0.2
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "toxic",
+  "name": "Toxic",
+  "group": "filter",
+  "category": "Moody",
+  "length": 5,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "grade",
+      "params": {
+        "amount": 1,
+        "tint": -0.6,
+        "saturation": 0.2,
+        "contrast": 0.3,
+        "shadowTone": "#1d5a1d",
+        "shadowAmount": 0.7
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

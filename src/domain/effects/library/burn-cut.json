@@ -1,0 +1,30 @@
+{
+  "id": "burn-cut",
+  "name": "Burn",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.8,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "leak",
+      "params": {
+        "amount": 1,
+        "color": "#ff7a2f",
+        "x": 0.5,
+        "y": 0.5,
+        "size": 1,
+        "drift": 0.2
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "flash",
+      "params": {
+        "amount": 0.7,
+        "color": "#ffb347"
+      }
+    }
+  ],
+  "controls": []
+}

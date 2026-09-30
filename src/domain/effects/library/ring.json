@@ -1,0 +1,42 @@
+{
+  "id": "ring",
+  "name": "Ring",
+  "group": "impact",
+  "category": "Shockwave",
+  "length": 0.9,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "shockwave",
+        "sound": "ring",
+        "duration": 0.9,
+        "size": 0.06,
+        "flash": 0.8,
+        "screenFlash": 0.1,
+        "rings": 0,
+        "sparks": 0,
+        "speed": 0,
+        "gravity": 0,
+        "shake": 0.015,
+        "zoom": 0.03,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "wave",
+      "params": {
+        "rings": 1,
+        "gap": 0,
+        "reach": 5,
+        "particles": 90,
+        "flatten": 1,
+        "dust": "no",
+        "distort": 0.7
+      }
+    }
+  ],
+  "controls": []
+}

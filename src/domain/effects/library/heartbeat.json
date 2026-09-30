@@ -1,0 +1,18 @@
+{
+  "id": "heartbeat",
+  "name": "Heartbeat",
+  "group": "motion",
+  "category": "Combo",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "combo",
+      "params": {
+        "rate": 1.2,
+        "pulse": 0.7
+      }
+    }
+  ],
+  "controls": []
+}

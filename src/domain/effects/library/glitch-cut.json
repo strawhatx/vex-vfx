@@ -1,0 +1,34 @@
+{
+  "id": "glitch-cut",
+  "name": "Glitch",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.5,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "rgbSplit",
+      "params": {
+        "amount": 1,
+        "angle": 15
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "pixelate",
+      "params": {
+        "amount": 0.5
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "shake",
+      "params": {
+        "amount": 0.6,
+        "speed": 25,
+        "turn": 0
+      }
+    }
+  ],
+  "controls": []
+}

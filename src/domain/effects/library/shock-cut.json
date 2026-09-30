@@ -1,0 +1,34 @@
+{
+  "id": "shock-cut",
+  "name": "Shockwave",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.6,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "shake",
+      "params": {
+        "amount": 1,
+        "speed": 20,
+        "turn": 0.4
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "zoomBlur",
+      "params": {
+        "amount": 0.4
+      }
+    },
+    {
+      "engine": "frame",
+      "kind": "flash",
+      "params": {
+        "amount": 0.3,
+        "color": "#ffffff"
+      }
+    }
+  ],
+  "controls": []
+}

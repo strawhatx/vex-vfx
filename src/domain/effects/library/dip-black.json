@@ -1,0 +1,18 @@
+{
+  "id": "dip-black",
+  "name": "Dip to Black",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.8,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "flash",
+      "params": {
+        "amount": 1,
+        "color": "#000000"
+      }
+    }
+  ],
+  "controls": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "turntable",
+  "name": "Turntable",
+  "group": "motion",
+  "category": "Combo",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "combo",
+      "params": {
+        "spin": 1
+      }
+    }
+  ],
+  "controls": []
+}

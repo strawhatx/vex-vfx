@@ -1,0 +1,51 @@
+{
+  "id": "bigboom",
+  "name": "Big boom",
+  "group": "impact",
+  "category": "Explosion",
+  "length": 3.2,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "explosion",
+        "sound": "bigboom",
+        "duration": 3.2,
+        "size": 0.17,
+        "flash": 1.6,
+        "screenFlash": 0.55,
+        "rings": 0,
+        "sparks": 40,
+        "speed": 3,
+        "gravity": 2,
+        "shake": 0.06,
+        "zoom": 0.04,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "explosion",
+      "params": {
+        "smoke": 1,
+        "debris": 40,
+        "mushroom": "yes"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "wave",
+      "params": {
+        "rings": 1,
+        "gap": 0,
+        "reach": 3.5,
+        "particles": 70,
+        "flatten": 0.4,
+        "dust": "yes",
+        "distort": 0.8
+      }
+    }
+  ],
+  "controls": []
+}

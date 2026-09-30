@@ -1,0 +1,67 @@
+{
+  "id": "clean-title",
+  "name": "Clean Title",
+  "group": "text",
+  "category": "Basic",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "text",
+      "kind": "type",
+      "params": {
+        "words": "TITLE",
+        "font": "anton",
+        "size": 0.13
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "shadow",
+      "params": {
+        "amount": 0.6,
+        "x": 0,
+        "y": 0.25,
+        "blur": 0.5
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "fill",
+      "params": {
+        "color": "#ffffff"
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "in",
+      "params": {
+        "style": "rise",
+        "duration": 0.45,
+        "stagger": 0.04
+      }
+    },
+    {
+      "engine": "text",
+      "kind": "out",
+      "params": {
+        "style": "fade",
+        "duration": 0.3,
+        "stagger": 0
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "color",
+      "label": "Color",
+      "type": "color",
+      "def": "#ffffff",
+      "drives": [
+        {
+          "pass": 2,
+          "param": "color"
+        }
+      ]
+    }
+  ]
+}

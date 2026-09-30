@@ -1,0 +1,49 @@
+{
+  "id": "spirit-aura",
+  "name": "Spirit Aura",
+  "group": "body",
+  "category": "Elements",
+  "length": 3,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "aura",
+      "params": {
+        "amount": 1.2,
+        "palette": "void"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "edge",
+      "params": {
+        "color": "#fbeaff",
+        "glowColor": "#a24bff",
+        "width": 0.15,
+        "glow": 0.6
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 1,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1.2
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 1
+        }
+      ]
+    }
+  ]
+}

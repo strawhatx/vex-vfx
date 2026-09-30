@@ -1,0 +1,86 @@
+{
+  "id": "rising-ash",
+  "name": "Rising Ash",
+  "group": "body",
+  "category": "Particles",
+  "length": 3,
+  "fade": {
+    "in": 0.3,
+    "out": 0.5
+  },
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "emitter",
+      "params": {
+        "palette": "ash",
+        "from": "top",
+        "rate": 25,
+        "life": 2.5,
+        "lifeRandom": 0.5,
+        "speed": 5,
+        "speedRandom": 0.6,
+        "spread": 30,
+        "gravity": -1,
+        "drag": 0.3,
+        "sway": 18,
+        "shape": "smoke",
+        "size": 1.4,
+        "sizeRandom": 0.5,
+        "grow": 1.2,
+        "colorStart": "deep",
+        "colorEnd": "deep",
+        "opacity": 0.18,
+        "fadeIn": 0.25,
+        "blend": "over"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "emitter",
+      "params": {
+        "palette": "ash",
+        "from": "top",
+        "rate": 30,
+        "life": 2.2,
+        "lifeRandom": 0.5,
+        "speed": 6,
+        "speedRandom": 0.6,
+        "spread": 35,
+        "gravity": -1.5,
+        "drag": 0.3,
+        "sway": 24,
+        "shape": "spark",
+        "size": 0.2,
+        "sizeRandom": 0.5,
+        "colorStart": "mid",
+        "colorEnd": "deep",
+        "opacity": 0.9,
+        "fadeIn": 0.1,
+        "twinkle": 0.3
+      }
+    }
+  ],
+  "controls": [
+    {
+      "id": "strength",
+      "label": "Strength",
+      "type": "slider",
+      "def": 0.6666666666666666,
+      "drives": [
+        {
+          "pass": 0,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        },
+        {
+          "pass": 1,
+          "param": "amount",
+          "from": 0,
+          "to": 1.5
+        }
+      ]
+    }
+  ]
+}

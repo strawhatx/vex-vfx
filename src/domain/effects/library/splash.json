@@ -1,0 +1,37 @@
+{
+  "id": "splash",
+  "name": "Splash",
+  "group": "impact",
+  "category": "Water",
+  "length": 1.2,
+  "passes": [
+    {
+      "engine": "object",
+      "kind": "hit",
+      "params": {
+        "family": "water",
+        "sound": "splash",
+        "duration": 1.2,
+        "size": 0.06,
+        "flash": 0,
+        "screenFlash": 0,
+        "rings": 0,
+        "sparks": 0,
+        "speed": 0,
+        "gravity": 0,
+        "shake": 0.012,
+        "zoom": 0.02,
+        "colors": "palette"
+      }
+    },
+    {
+      "engine": "object",
+      "kind": "splash",
+      "params": {
+        "drops": 60,
+        "height": 3
+      }
+    }
+  ],
+  "controls": []
+}

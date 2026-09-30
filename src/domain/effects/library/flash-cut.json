@@ -1,0 +1,26 @@
+{
+  "id": "flash-cut",
+  "name": "Flash",
+  "group": "transition",
+  "category": "Transition",
+  "length": 0.5,
+  "passes": [
+    {
+      "engine": "frame",
+      "kind": "flash",
+      "params": {
+        "amount": 1,
+        "color": "#ffffff"
+      }
+    },
+    {
+      "engine": "motion",
+      "kind": "in",
+      "params": {
+        "ease": "out",
+        "scale": 1.08
+      }
+    }
+  ],
+  "controls": []
+}

@@ -1,0 +1,20 @@
+{
+  "id": "fall-out",
+  "name": "Fall",
+  "group": "motion",
+  "category": "Out",
+  "length": 2,
+  "passes": [
+    {
+      "engine": "motion",
+      "kind": "out",
+      "params": {
+        "duration": 0.6,
+        "ease": "in",
+        "y": 1.2,
+        "turn": 12
+      }
+    }
+  ],
+  "controls": []
+}
