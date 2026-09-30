@@ -91,10 +91,12 @@ export function Timeline({
   const scale: Scale = { pps, x: t => t * pps };
   // every film deleted: nothing but the button to add a clip
   const hasFilm = filmShowing(ui);
-  // (the film just there: scrolled down to it, like CapCut's main track, with the layers above)
+  // (the film just there: scrolled to it, like CapCut's main track, with the layers above and its
+  // object lanes and the sound below)
   useEffect(() => {
     const el = scrollRef.current;
-    if (hasFilm && el) el.scrollTop = el.scrollHeight;
+    const main = el?.querySelector<HTMLElement>('.main-row');
+    if (hasFilm && el && main) el.scrollTop = main.offsetTop + main.offsetHeight - el.clientHeight * 0.6;
   }, [hasFilm]);
   // each layer's rows of clips
   const rowsOf = (layer: LayerKind, count: number) => {
@@ -188,6 +190,33 @@ export function Timeline({
     moveCutout: on.moveCutout,
     moveRow: on.moveRow,
   };
+  // the film's object lanes (effects on objects and impacts), under it
+  const effects = (
+    <Layer
+      layer="effects"
+      rows={rowsOf('effects', ui.rows)}
+      add={{
+        label: adding('effects') ?? 'Add effect',
+        on: !!ui.adding && ui.adding.kind !== 'cutout',
+        run: on.addEffect,
+      }}
+      busy={busy}
+      clip={l => {
+        const Clip = l.kind === 'impact' ? ImpactClip : EffectClip;
+        return (
+          <Clip
+            key={l.id}
+            lane={l}
+            scale={scale}
+            selected={l.id === ui.selected}
+            duration={dur}
+            sound={soundShape(l)}
+            on={clipActions}
+          />
+        );
+      }}
+    />
+  );
 
   return (
     <div className="timeline" onClick={on.deselect}>
@@ -199,37 +228,8 @@ export function Timeline({
         <div className="tl-inner" style={{ width: scale.x(dur) }}>
           <Ruler scale={scale} duration={dur} time={shownTime} scrubbable={scrubbable} />
 
-          {hasFilm && (
-            <>
-              {/* the film's layers in the order they're drawn, like CapCut: higher is in front */}
-              {[...DRAW_ORDER].reverse().map(l => stackLayer(l))}
-              {/* (effects on objects and impacts are drawn on the video itself: just above it) */}
-              <Layer
-                layer="effects"
-                rows={rowsOf('effects', ui.rows)}
-                add={{
-                  label: adding('effects') ?? 'Add effect',
-                  on: !!ui.adding && ui.adding.kind !== 'cutout',
-                  run: on.addEffect,
-                }}
-                busy={busy}
-                clip={l => {
-                  const Clip = l.kind === 'impact' ? ImpactClip : EffectClip;
-                  return (
-                    <Clip
-                      key={l.id}
-                      lane={l}
-                      scale={scale}
-                      selected={l.id === ui.selected}
-                      duration={dur}
-                      sound={soundShape(l)}
-                      on={clipActions}
-                    />
-                  );
-                }}
-              />
-            </>
-          )}
+          {/* the film's layers in the order they're drawn, like CapCut: higher is in front */}
+          {hasFilm && [...DRAW_ORDER].reverse().map(l => stackLayer(l))}
 
           <VideoRow
             ui={ui}
@@ -241,6 +241,7 @@ export function Timeline({
             joined={join}
             makeThumbs={makeThumbs}
           />
+          {hasFilm && effects}
           {hasFilm && (
             <AudioRow
               ui={ui}

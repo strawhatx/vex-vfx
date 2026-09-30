@@ -64,7 +64,7 @@ export function VideoRow({
   }
   const count = ui.films.length;
   return (
-    <div className="tl-row">
+    <div className="tl-row main-row">
       {ui.reels.map(r => (
         <ReelStrip
           key={r.id}
