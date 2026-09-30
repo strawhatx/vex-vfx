@@ -466,10 +466,24 @@ button.primary {
   min-height: 1px;
 }
 .ruler {
-  position: relative;
+  /* (pinned at the top while the layers scroll under it) */
+  position: sticky;
+  top: 0;
+  z-index: 7;
   height: 24px;
+  background: var(--bg);
   cursor: pointer;
   touch-action: none;
+}
+/* (over the layer icons' margin too, so they pass under it) */
+.ruler::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -48px;
+  width: 48px;
+  background: var(--bg);
 }
 .tick {
   position: absolute;

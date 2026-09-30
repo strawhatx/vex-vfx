@@ -93,6 +93,11 @@ export function Timeline({
   const scale: Scale = { pps, x: t => t * pps };
   // every film deleted: nothing but the button to add a clip
   const hasFilm = filmShowing(ui);
+  // (the film just there: scrolled down to it, like CapCut's main track, with the layers above)
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (hasFilm && el) el.scrollTop = el.scrollHeight;
+  }, [hasFilm]);
   // each layer's rows of clips
   const rowsOf = (layer: LayerKind, count: number) => {
     const mine = ui.lanes.filter(l => layerOf(l) === layer);
@@ -206,47 +211,11 @@ export function Timeline({
         <div className="tl-inner" style={{ width: scale.x(dur) }}>
           <Ruler scale={scale} duration={dur} time={shownTime} scrubbable={scrubbable} />
 
-          <VideoRow
-            ui={ui}
-            scale={scale}
-            selected={scene}
-            onSelect={on.selectScene}
-            onChooseFile={on.chooseFile}
-            onJoin={on.selectJoin}
-            joined={join}
-            makeThumbs={makeThumbs}
-          />
-          {hasFilm && (
-            <AudioRow
-              ui={ui}
-              scale={scale}
-              selected={scene !== null}
-              onSelect={() => on.selectScene(scene ?? 0)}
-            />
-          )}
-
           {hasFilm && (
             <>
-              <Layer
-                layer="audio"
-                rows={Array.from({ length: ui.audioRows }, (_, r) => ui.music.filter(m => m.row === r))}
-                add={{ label: 'Add audio', on: false, run: on.addAudio }}
-                busy={busy}
-                clip={m => (
-                  <MusicClip
-                    key={m.id}
-                    music={m}
-                    scale={scale}
-                    selected={m.id === ui.selected}
-                    duration={dur}
-                    on={clipActions}
-                    moveTo={t => on.moveMusic(m.id, t)}
-                  />
-                )}
-              />
-              {/* the film's layers as they're stacked, the one in front first */}
+              {/* the film's layers as they're stacked, like CapCut or After Effects: higher is in front */}
               {[...ui.stack].reverse().map(l => stackLayer(l))}
-              {/* (effects on objects and impacts are drawn on the video itself: under all of them) */}
+              {/* (effects on objects and impacts are drawn on the video itself: just above it) */}
               <Layer
                 layer="effects"
                 rows={rowsOf('effects', ui.rows)}
@@ -270,6 +239,46 @@ export function Timeline({
                     />
                   );
                 }}
+              />
+            </>
+          )}
+
+          <VideoRow
+            ui={ui}
+            scale={scale}
+            selected={scene}
+            onSelect={on.selectScene}
+            onChooseFile={on.chooseFile}
+            onJoin={on.selectJoin}
+            joined={join}
+            makeThumbs={makeThumbs}
+          />
+          {hasFilm && (
+            <AudioRow
+              ui={ui}
+              scale={scale}
+              selected={scene !== null}
+              onSelect={() => on.selectScene(scene ?? 0)}
+            />
+          )}
+          {hasFilm && (
+            <>
+              <Layer
+                layer="audio"
+                rows={Array.from({ length: ui.audioRows }, (_, r) => ui.music.filter(m => m.row === r))}
+                add={{ label: 'Add audio', on: false, run: on.addAudio }}
+                busy={busy}
+                clip={m => (
+                  <MusicClip
+                    key={m.id}
+                    music={m}
+                    scale={scale}
+                    selected={m.id === ui.selected}
+                    duration={dur}
+                    on={clipActions}
+                    moveTo={t => on.moveMusic(m.id, t)}
+                  />
+                )}
               />
             </>
           )}
