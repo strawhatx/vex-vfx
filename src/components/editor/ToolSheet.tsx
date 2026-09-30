@@ -46,6 +46,9 @@ export type Category = Effect;
 
 // lasers are hidden for now: set this to true to bring them back into the menus
 export const SHOW_LASERS = false;
+// overlays (objects cut out of the footage, on the Overlay layer) are hidden for now too: set this to
+// true to bring back Overlay, Cut out and the Overlay layer
+export const SHOW_OVERLAYS = false;
 
 export const EFFECTS: { id: Effect; label: string }[] = [
   { id: 'fire', label: 'Fire' },

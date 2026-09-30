@@ -15,6 +15,7 @@ import { AudioRow, VideoRow, hasFilm as filmShowing } from './ClipRows';
 import { CutoutClip, EffectClip, ImpactClip } from './FxClips';
 import type { LookGroup } from '@/domain/effects/presets';
 import { LookClip } from './LookClip';
+import { SHOW_OVERLAYS } from '../ToolSheet';
 import { EffectClipBar } from './EffectClipBar';
 import { MusicClip } from './MusicClip';
 import { PAD, type Scale } from './layout';
@@ -165,26 +166,28 @@ export function Timeline({
 
           {hasFilm && (
             <>
-              <Layer
-                layer="overlay"
-                rows={rowsOf('overlay', ui.cutRows)}
-                add={{
-                  label: adding('overlay') ?? 'Add overlay',
-                  on: ui.adding?.kind === 'cutout',
-                  run: on.addOverlay,
-                }}
-                busy={busy}
-                clip={l => (
-                  <CutoutClip
-                    key={l.id}
-                    lane={l}
-                    scale={scale}
-                    selected={l.id === ui.selected}
-                    duration={dur}
-                    on={clipActions}
-                  />
-                )}
-              />
+              {SHOW_OVERLAYS && (
+                <Layer
+                  layer="overlay"
+                  rows={rowsOf('overlay', ui.cutRows)}
+                  add={{
+                    label: adding('overlay') ?? 'Add overlay',
+                    on: ui.adding?.kind === 'cutout',
+                    run: on.addOverlay,
+                  }}
+                  busy={busy}
+                  clip={l => (
+                    <CutoutClip
+                      key={l.id}
+                      lane={l}
+                      scale={scale}
+                      selected={l.id === ui.selected}
+                      duration={dur}
+                      on={clipActions}
+                    />
+                  )}
+                />
+              )}
               <Layer
                 layer="audio"
                 rows={Array.from({ length: ui.audioRows }, (_, r) => ui.music.filter(m => m.row === r))}

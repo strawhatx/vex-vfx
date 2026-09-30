@@ -2,7 +2,7 @@
 // behind a back button, like CapCut.
 import { Icon, I } from './icons';
 import type { ImpactFamily } from '@/domain/effects/impacts';
-import { SHOW_LASERS, type Category, type Tool } from './ToolSheet';
+import { SHOW_LASERS, SHOW_OVERLAYS, type Category, type Tool } from './ToolSheet';
 
 export type ToolKey =
   | Tool
@@ -130,7 +130,9 @@ export function toolsFor(
       { ...sheet('speed', 'Speed', I.speed), disabled: s.busy || s.films < 1 },
       { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
       { ...sheet('animation', 'Animation', I.move), disabled: s.busy || s.films < 1 },
-      { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
+      ...(SHOW_OVERLAYS
+        ? [{ key: 'cutout' as const, label: 'Cut out', icon: I.cutout, disabled: s.busy }]
+        : []),
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       ...(s.video && s.video.of > 1
         ? [
@@ -277,7 +279,9 @@ export function toolsFor(
     { key: 'addtext', label: 'Text', icon: I.text, disabled: s.busy || !s.ready },
     { key: 'catalog', label: 'Effects', icon: I.effects, disabled: s.busy },
     { key: 'filters', label: 'Filters', icon: I.color, disabled: s.busy || !s.ready },
-    { key: 'cutout', label: 'Overlay', icon: I.cutout, disabled: s.busy || !s.ready },
+    ...(SHOW_OVERLAYS
+      ? [{ key: 'cutout' as const, label: 'Overlay', icon: I.cutout, disabled: s.busy || !s.ready }]
+      : []),
   ];
 }
 
