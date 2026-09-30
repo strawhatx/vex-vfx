@@ -3,12 +3,14 @@
 // and the export show. Everything in the project (tracking, effects, cutouts) stays in the clip's
 // own time, source time, so deleting a film never touches it: it's only mapped between the two.
 // A film can play faster or slower than it was filmed (its speed): 2 plays its stretch of the clip in
-// half the time. It can also move as it plays (its animation: see effects/animation.ts).
+// half the time. It can also move as it plays (its animation: see effects/animation.ts), and have its
+// background hidden, leaving just what's cut out of it (docs/timeline-rules.md: remove background).
 import { NO_ANIM, hasAnim, type ClipAnim } from '../effects/animation';
 import { scenesOf } from './scenes';
 
 // a kept scene: its source range, where it starts in program time, and how fast it plays (pitch:
-// its sound's pitch changes with it, rather than staying as it was)
+// its sound's pitch changes with it, rather than staying as it was); noBackground: its background
+// layer is hidden
 export interface Piece {
   s: number;
   e: number;
@@ -16,6 +18,7 @@ export interface Piece {
   speed: number;
   pitch: boolean;
   anim: ClipAnim;
+  noBackground: boolean;
 }
 
 // a scene's speed, by where it starts (source time); scenes without one play at 1
@@ -31,13 +34,15 @@ const EPS = 1e-6;
 // how long a piece plays for, in program time
 export const playLength = (p: Pick<Piece, 's' | 'e' | 'speed'>) => (p.e - p.s) / p.speed;
 
-// the kept scenes, back to back. gone: the source start of each deleted scene
+// the kept scenes, back to back. gone: the source start of each deleted scene; hidden: of each
+// scene with its background hidden
 export function piecesOf(
   cuts: readonly number[],
   gone: readonly number[],
   duration: number,
   speeds: readonly SceneSpeed[] = [],
   anims: readonly SceneAnim[] = [],
+  hidden: readonly number[] = [],
 ): Piece[] {
   let at = 0;
   const out: Piece[] = [];
@@ -45,7 +50,8 @@ export function piecesOf(
     if (gone.some(g => Math.abs(g - sc.s) < EPS)) continue;
     const sp = speeds.find(x => Math.abs(x.s - sc.s) < EPS);
     const anim = anims.find(x => Math.abs(x.s - sc.s) < EPS)?.anim ?? NO_ANIM;
-    const p = { ...sc, at, speed: sp?.speed ?? 1, pitch: sp?.pitch ?? false, anim };
+    const noBackground = hidden.some(h => Math.abs(h - sc.s) < EPS);
+    const p = { ...sc, at, speed: sp?.speed ?? 1, pitch: sp?.pitch ?? false, anim, noBackground };
     out.push(p);
     at += playLength(p);
   }
@@ -63,6 +69,12 @@ export function withSpeed(speeds: readonly SceneSpeed[], s: number, speed: numbe
 export function withAnim(anims: readonly SceneAnim[], s: number, anim: ClipAnim) {
   const rest = anims.filter(x => Math.abs(x.s - s) >= EPS);
   return hasAnim(anim) ? [...rest, { s, anim }] : rest;
+}
+
+// the background of the scene starting at source time s hidden (on) or shown
+export function withHidden(hidden: readonly number[], s: number, on: boolean) {
+  const rest = hidden.filter(h => Math.abs(h - s) >= EPS);
+  return on ? [...rest, s] : rest;
 }
 
 // how long the film plays, as edited

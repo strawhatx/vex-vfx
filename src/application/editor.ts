@@ -28,6 +28,7 @@ import {
   type SceneAnim,
   type SceneSpeed,
   withAnim,
+  withHidden,
   toProgram,
   toSource,
   type Piece,
@@ -106,6 +107,7 @@ export interface EditorSave {
   gone: number[];
   speeds: SceneSpeed[];
   anims: SceneAnim[];
+  hidden?: number[]; // (projects saved before backgrounds could be hidden: none)
   tracked: [number, FrameSpan][];
   jobs: TrackJob[];
   lastFx: FxSettings;
@@ -225,6 +227,8 @@ export class Editor {
   private speeds: SceneSpeed[] = [];
   // how each film moves as it plays (see effects/animation.ts), by where it starts
   private anims: SceneAnim[] = [];
+  // the films with their background hidden, by where they start
+  private hidden: number[] = [];
 
   // the effects and impacts on it
   private tracks: Track[] = [];
@@ -351,6 +355,7 @@ export class Editor {
     this.gone = [];
     this.speeds = [];
     this.anims = [];
+    this.hidden = [];
     this.undos = [];
     this.redos = [];
     this.merge = null;
@@ -434,6 +439,7 @@ export class Editor {
         ...was.anim,
         in: null,
       });
+      this.hidden = withHidden(this.hidden, at, was.noBackground);
     }
     this.cuts = cuts;
     this.sendScenes();
@@ -460,6 +466,17 @@ export class Editor {
     if (!p) return false;
     this.record(`anim:${p.s}:${kind}`);
     this.anims = withAnim(this.anims, p.s, { ...p.anim, [kind]: slot });
+    this.publish(true);
+    this.update(this.filmState(), true);
+    return true;
+  }
+
+  // film k's (of those kept) background hidden (on), leaving what's cut out of it, or shown again
+  setNoBackground(k: number, on: boolean) {
+    const p = this.pieces()[k];
+    if (!p || p.noBackground === on) return false;
+    this.record();
+    this.hidden = withHidden(this.hidden, p.s, on);
     this.publish(true);
     this.update(this.filmState(), true);
     return true;
@@ -1069,6 +1086,7 @@ export class Editor {
       gone: this.gone,
       speeds: this.speeds,
       anims: this.anims,
+      hidden: this.hidden,
       tracked: [...this.tracked],
       jobs: this.jobs.pending(),
       lastFx: this.lastFx,
@@ -1086,6 +1104,7 @@ export class Editor {
     this.gone = snap.gone;
     this.speeds = snap.speeds;
     this.anims = snap.anims;
+    this.hidden = snap.hidden ?? [];
     this.tracked = new Map(snap.tracked);
     this.lastFx = snap.lastFx;
     this.lastImpact = snap.lastImpact;
@@ -1121,7 +1140,7 @@ export class Editor {
 
   // the kept films, back to back
   private pieces() {
-    return piecesOf(this.cuts, this.gone, this.duration, this.speeds, this.anims);
+    return piecesOf(this.cuts, this.gone, this.duration, this.speeds, this.anims, this.hidden);
   }
 
   // program time t in the clip's own time (end: t ends a stretch)

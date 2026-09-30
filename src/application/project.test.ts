@@ -163,6 +163,29 @@ describe('duplicating a film', () => {
   });
 });
 
+describe('hiding a film’s background', () => {
+  it('is set on that film, kept by both halves of a split, undone, duplicated and saved', () => {
+    const a = addVideo(6);
+    project.split(3);
+    expect(project.setNoBackground(1, true)).toBe(true);
+    expect(state.films.map(f => f.noBackground)).toEqual([false, true]);
+    project.split(4.5);
+    expect(state.films.map(f => f.noBackground)).toEqual([false, true, true]);
+    project.undo();
+    project.undo();
+    expect(state.films.map(f => f.noBackground)).toEqual([false, false]);
+    project.redo();
+    const b = project.duplicateFilm(1)!;
+    scanVideo(b, 6);
+    expect(state.films.filter(f => f.reel === b).map(f => f.noBackground)).toEqual([true]);
+    const saved = project.saved();
+    project = newProject();
+    project.open(saved);
+    scanVideo(a, 6);
+    expect(state.films.filter(f => f.reel === a).map(f => f.noBackground)).toEqual([false, true]);
+  });
+});
+
 describe('tracing each file once', () => {
   // an effect on the object at frame i of video `reel`
   const tap = (reel: number, i: number, x = 50) => project.editorOf(reel)!.addTrack(i, { x, y: 25 })!;

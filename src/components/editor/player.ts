@@ -717,6 +717,14 @@ export class Player {
     this.say('Reversed.');
   }
 
+  // film k's background hidden (on), leaving what's cut out of it over black, or shown again
+  setNoBackground(k: number, on: boolean) {
+    if (!this.project.setNoBackground(k, on)) return;
+    this.redraw();
+    if (on && !this.project.overlayList.some(o => o.source.reel === this.state?.films[k]?.reel))
+      this.say('Background hidden. Cut something out to show it on its own.');
+  }
+
   // deletes film k: the playhead moves on to what plays there now
   deleteScene(k: number) {
     this.pause();
@@ -2001,25 +2009,27 @@ export class Player {
     if (rv.video.preservesPitch === sp.pitch) rv.video.preservesPitch = !sp.pitch;
     const review = this.ui.review;
     const outline = (this.showOutline || !!review) && !this.recorder;
+    const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
+    const film = this.state?.films[this.project.filmAt(now)];
     const idx = rv.renderer.render(rv.video, t - rv.start, {
       outline,
       paused,
       selected: review ? review.track : this.ui.selected,
       roto: review && review.reel === rv.id ? review.track : undefined,
+      noBackground: !!film?.noBackground,
     });
-    // the video's picture, fitted into the preview, then the overlays over it
+    // the video's picture, fitted into the preview, then the layers over it
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     const r = this.fitOf(rv);
-    const now = this.project.startOf(rv.id) + ed.toProgram(t - rv.start);
     // the film playing, moved as its animation and any transition says (about the frame's middle)
-    const film = this.state?.films[this.project.filmAt(now)];
     const cut = this.project.transitionAt(now);
     let pose = film && hasAnim(film.anim) ? poseAt(film.anim, now - film.at, playTime(film)) : null;
     if (cut) pose = combinePoses(pose ?? REST_POSE, cut.pose);
-    if (pose || r.w < this.CW || r.h < this.CH) {
+    // (its background hidden: black behind what's cut out of it)
+    if (pose || film?.noBackground || r.w < this.CW || r.h < this.CH) {
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, this.CW, this.CH);
     }
@@ -2037,13 +2047,14 @@ export class Player {
       const all = this.recorder || this.ui.isolated === null;
       for (const layer of DRAW_ORDER) {
         if (layer === 'cutouts') {
-          // (the subject layers of the video playing, at the time in it)
+          // (the subject layers of the video playing, at the time in it, moved with the footage)
           const subjects = this.project.subjectsAt(now);
           if (subjects)
             this.overlays.draw(ctx, this.CW, this.CH, subjects.overlays, subjects.time, {
               selected: this.ui.selected,
               outline,
               isolate: this.recorder ? null : this.ui.isolated,
+              clipPose: pose,
             });
         } else if (!all) continue;
         else if (layer === 'clips')

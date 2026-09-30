@@ -108,6 +108,7 @@ export interface Film {
   speed: number;
   pitch: boolean;
   anim: ClipAnim;
+  noBackground: boolean; // its background hidden: just what's cut out of it shows
 }
 
 // how long a film plays for
@@ -327,6 +328,7 @@ export class Project {
         gone: starts.filter(s => Math.abs(s - f.s) > 1e-6),
         speeds: edits.speeds.filter(x => Math.abs(x.s - f.s) < 1e-6),
         anims: edits.anims.filter(x => Math.abs(x.s - f.s) < 1e-6),
+        hidden: f.noBackground ? [f.s] : [],
       });
       // each copied cutout's subject layers, placed and animated as they were (their frames and
       // pictures come once the copy is listed and cut out: see sync)
@@ -363,6 +365,7 @@ export class Project {
         ...ed.saved(),
         speeds: f.speed !== 1 || f.pitch ? [{ s: 0, speed: f.speed, pitch: f.pitch }] : [],
         anims: moves ? [{ s: 0, anim: f.anim }] : [],
+        hidden: f.noBackground ? [0] : [],
       });
       this.reels[at].editor.deleteScene(f.k);
       return id;
@@ -455,6 +458,12 @@ export class Project {
   setFilmAnim(k: number, kind: AnimKind, slot: AnimSlot | null) {
     const f = this.state.films[k];
     return !!f && !!this.editorOf(f.reel)?.setAnim(f.k, kind, slot);
+  }
+
+  // film k's background hidden (on), leaving what's cut out of it, or shown again
+  setNoBackground(k: number, on: boolean) {
+    const f = this.state.films[k];
+    return !!f && !!this.editorOf(f.reel)?.setNoBackground(f.k, on);
   }
 
   // deletes film k (of this.state.films)
@@ -1291,6 +1300,7 @@ export class Project {
           speed: p.speed,
           pitch: p.pitch,
           anim: p.anim,
+          noBackground: p.noBackground,
         }),
       );
     });

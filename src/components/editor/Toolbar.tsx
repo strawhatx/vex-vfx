@@ -29,6 +29,7 @@ export type ToolKey =
   | 'duplicatescene'
   | 'reverse'
   | 'cutout'
+  | 'hidebg'
   | 'movekey'
   | 'place'
   | 'deletescene'
@@ -96,6 +97,7 @@ export function toolsFor(
     moveKey: boolean; // the selected cutout has a transform keyframe at the playhead
     isolated: boolean; // the selected cutout is shown on its own
     films: number; // how many films the clip is split into (kept)
+    noBackground: boolean; // the selected film's background is hidden
     // the selected film's video: where it is among the film's videos, and how many there are
     video: { at: number; of: number } | null;
   },
@@ -124,6 +126,13 @@ export function toolsFor(
       { key: 'crop', label: 'Crop', icon: I.crop, disabled: s.busy || s.films < 1 },
       { ...sheet('animation', 'Animation', I.move), disabled: s.busy || s.films < 1 },
       { key: 'cutout', label: 'Cut out', icon: I.cutout, disabled: s.busy },
+      {
+        key: 'hidebg',
+        label: s.noBackground ? 'Show background' : 'Hide background',
+        icon: I.scene,
+        on: s.noBackground,
+        disabled: s.busy || s.films < 1,
+      },
       { key: 'deletescene', label: 'Delete', icon: I.trash, disabled: s.busy || s.films < 1 },
       ...(s.video && s.video.of > 1
         ? [

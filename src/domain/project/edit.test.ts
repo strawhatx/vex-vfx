@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { jumpFrom, lengthOf, pieceAt, piecesOf, toProgram, toSource, withSpeed } from './edit';
+import { jumpFrom, lengthOf, pieceAt, piecesOf, toProgram, toSource, withHidden, withSpeed } from './edit';
 
 // a 6-second clip split at 2 and 4, with the middle film deleted
 const pieces = piecesOf([2, 4], [2], 6);
@@ -62,5 +62,12 @@ describe('the film as edited', () => {
     // back to 1 with the pitch kept: no speed left
     expect(withSpeed(speeds, 2, 1, false)).toEqual([{ s: 4, speed: 0.5, pitch: true }]);
     expect(withSpeed([], 0, 99, false)[0].speed).toBe(10);
+  });
+
+  it('hides a film’s background, by where it starts', () => {
+    const hidden = withHidden([], 2, true);
+    expect(piecesOf([2, 4], [], 6, [], [], hidden).map(p => p.noBackground)).toEqual([false, true, false]);
+    expect(withHidden(hidden, 2, true)).toEqual([2]);
+    expect(withHidden(hidden, 2, false)).toEqual([]);
   });
 });

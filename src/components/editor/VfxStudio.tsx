@@ -358,6 +358,7 @@ export default function VfxStudio({ id }: { id: string }) {
     moveKey: !!cutout && !!ui.cutoutNow?.onKey,
     isolated: !!cutout && ui.isolated === cutout.id,
     films: ui.films.length,
+    noBackground: scene !== null && !!ui.films[scene]?.noBackground,
     video:
       filmVideo !== null ? { at: ui.reels.findIndex(r => r.id === filmVideo), of: ui.reels.length } : null,
   });
@@ -379,6 +380,9 @@ export default function VfxStudio({ id }: { id: string }) {
         return;
       case 'reverse':
         if (scene !== null) void pl?.reverseScene(scene);
+        return;
+      case 'hidebg':
+        if (scene !== null) pl?.setNoBackground(scene, !ui.films[scene]?.noBackground);
         return;
       case 'removevideo':
         if (filmVideo !== null) pl?.removeVideo(filmVideo);

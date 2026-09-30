@@ -7,6 +7,7 @@ import type { OverlayPictures, OverlaySprite } from '@/application/ports';
 import { frameAt, overlayPose, placedBox, type Overlay } from '@/domain/project/overlay';
 import { applyPose } from './pose';
 import type { Ctx2D } from './sprites';
+import type { ClipPose } from '@/domain/effects/animation';
 
 // pictures are kept by their time in the video, to the millisecond
 const key = (t: number) => Math.round(t * 1000);
@@ -15,6 +16,7 @@ export interface OverlayDrawOptions {
   selected: number | null;
   outline: boolean; // editing, not exporting
   isolate: number | null; // show this one on its own
+  clipPose?: ClipPose | null; // how its clip is moved (its animation, a transition), to move with it
 }
 
 export class OverlayPainter implements OverlayPictures {
@@ -55,6 +57,7 @@ export class OverlayPainter implements OverlayPictures {
       const pic = this.byId.get(o.id)?.get(key(f.t));
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (opts.clipPose && !alone) applyPose(ctx, opts.clipPose, W / 2, H / 2, W, H);
       applyPose(ctx, overlayPose(o, t), b.at.x, b.at.y, W, H);
       ctx.translate(b.at.x, b.at.y);
       ctx.rotate((b.tf.rot * Math.PI) / 180);

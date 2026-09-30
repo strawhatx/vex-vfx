@@ -50,6 +50,9 @@ export interface RenderOptions {
   // a cutout whose outline is being checked: just the footage, with everything outside its outline
   // dimmed, so what it takes in is plain to see
   roto?: number;
+  // the footage's background hidden: the effects drawn on nothing (what's cut out of it is drawn
+  // over them by the film)
+  noBackground?: boolean;
 }
 
 // how dark the footage outside a cutout being checked is
@@ -153,7 +156,8 @@ export class Renderer implements EffectLayers {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(source, 0, 0, this.CW, this.CH);
+    if (opts.noBackground && opts.roto === undefined) ctx.clearRect(0, 0, this.CW, this.CH);
+    else ctx.drawImage(source, 0, 0, this.CW, this.CH);
     const idx = this.CW ? frameIndexAt(this.clip, t) : -1;
     if (idx < 0) return -1;
 
