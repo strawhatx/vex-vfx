@@ -305,6 +305,8 @@ const presetFor = (id: string, group: PresetGroup) => (id === MY_OWN ? blankEffe
 const LOOK_THUMB_W = 144;
 // how far into a preset its thumbnail shows its particles (s)
 const THUMB_PARTICLES_AT = 1.5;
+// how much bigger particles are drawn in a thumbnail than on the film, to be seen at that size
+const THUMB_PARTICLES_ZOOM = 3;
 
 // one video of the film, in the player
 interface ReelView {
@@ -1264,7 +1266,7 @@ export class Player {
         pg.drawImage(out, 0, 0);
         // (its particles, a while in)
         const at = Math.min(THUMB_PARTICLES_AT, p.length * 0.6);
-        particles.draw(pg, particlesAt([newLook(1, p, 0, p.length)], at));
+        particles.draw(pg, particlesAt([newLook(1, p, 0, p.length)], at), THUMB_PARTICLES_ZOOM);
       }
       const blob = await pic.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
       if (this.destroyed) return;

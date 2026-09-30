@@ -19,10 +19,11 @@ export class FrameParticles {
   private systems = new Map<string, { sys: ParticleSystem; t: number }>();
   private none = new Float32Array(0);
 
-  // the emitters playing now over ctx's canvas; systems of the ones not playing are forgotten
-  draw(ctx: Ctx2D, emitters: readonly DrawnEmitter[]) {
+  // the emitters playing now over ctx's canvas; systems of the ones not playing are forgotten.
+  // zoom: how much bigger the particles are drawn than on a film (a small picture's, to be seen)
+  draw(ctx: Ctx2D, emitters: readonly DrawnEmitter[], zoom = 1) {
     const { width: W, height: H } = ctx.canvas;
-    const k: SystemScale = { u: Math.max(2, Math.min(W, H) * UNIT), intensity: 1, area: 1, W, H };
+    const k: SystemScale = { u: Math.max(2, Math.min(W, H) * UNIT) * zoom, intensity: 1, area: 1, W, H };
     const frame = (t: number, dt: number): FxFrame => ({
       index: 0,
       t,
