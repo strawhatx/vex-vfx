@@ -32,11 +32,6 @@ export const FONT_FAMILIES: Record<FontId, string> = {
   'ibm-plex-mono': plexMono.style.fontFamily,
 };
 
-// a class that declares every recipe font on the page (they still download only when used)
-export const RECIPE_FONT_CLASSES = [inter, interTight, syne, archivoBlack, spaceMono, vt323, plexMono]
-  .map(f => f.className)
-  .join(' ');
-
 // waits for a recipe's fonts (with a timeout, so a slow network never blocks the video)
 export async function loadRecipeFonts(recipes: readonly Recipe[]): Promise<FontFamilies> {
   if (typeof document === 'undefined' || !document.fonts) return FONT_FAMILIES;

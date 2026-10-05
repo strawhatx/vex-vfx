@@ -170,8 +170,9 @@ describe('Studio', () => {
   it('tells the director what the video is for', () => {
     const { studio } = make();
     withShots(studio);
-    studio.setPurpose('a Product Hunt launch');
+    studio.setPurpose('a Product Hunt launch', [25, 45]);
     expect(studio.prompt()).toContain('for a Product Hunt launch');
+    expect(studio.prompt()).toContain('25–45 second');
   });
 
   it('switches aspect on the plan that plays', () => {

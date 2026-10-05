@@ -23,10 +23,10 @@ export const EXAMPLES: Example[] = [
     aspect: '16:9',
     product: 'Orbit',
     description:
-      'A calm 16:9 launch video for Orbit, a changelog tool, made from four screenshots in the Clean Apple style.',
+      'A calm 16:9 launch video for Orbit, a changelog tool, made from four screenshots in the Clean Apple style: a floating device, slow zooms and soft dissolves.',
     transcript:
-      'Meet Orbit. Changelogs that write themselves. Every release, in one place. See what shipped this week. Built for small teams. Orbit, orbit.dev. Try it free. Made with PromoReel.',
-    seconds: 15,
+      'Meet Orbit. Changelogs that write themselves. Drafted from your commits. See what people read. Everyone hears about it. Orbit. orbit.dev. Try it free. Made with PromoReel.',
+    seconds: 15.8,
     uploadDate: '2026-10-05',
   },
   {
@@ -38,7 +38,7 @@ export const EXAMPLES: Example[] = [
     description:
       'A fast 9:16 promo for TikTok and Reels in the Y2K Chrome style: chrome devices, flash cuts and slammed words.',
     transcript:
-      'Orbit is here. Changelogs that write themselves. Ship notes in one click. Your team, in the loop. Orbit, orbit.dev. Try it free. Made with PromoReel.',
+      'Orbit is here. Changelogs that write themselves. Ship notes in one click. Watch the reads roll in. Your team, in the loop. Orbit. orbit.dev. Try it free. Made with PromoReel.',
     seconds: 13,
     uploadDate: '2026-10-05',
   },
@@ -51,8 +51,8 @@ export const EXAMPLES: Example[] = [
     description:
       'A loud 9:16 launch video in the Brutalist style: huge capitals, hard cuts and an orange accent.',
     transcript:
-      'Introducing Orbit. Changelogs that write themselves. No more release notes at midnight. Built for makers. Orbit, orbit.dev. Try it free. Made with PromoReel.',
-    seconds: 12,
+      'Introducing Orbit. Changelogs that write themselves. No more release notes at midnight. Know what landed. Built for makers. Orbit. orbit.dev. Try it free. Made with PromoReel.',
+    seconds: 12.6,
     uploadDate: '2026-10-05',
   },
 ];

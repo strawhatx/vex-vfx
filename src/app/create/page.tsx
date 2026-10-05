@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { CreateIsland } from '@/components/create/CreateIsland';
 import '@/components/create/create.css';
-import { RECIPE_FONT_CLASSES } from '@/components/engine/recipeFonts';
 import { Logo } from '@/components/site/Logo';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { pageMetadata } from '@/lib/seo/metadata';
@@ -18,7 +17,7 @@ export const metadata = pageMetadata({
 // client-only studio. No smooth scrolling here; it's an app.
 export default function CreatePage() {
   return (
-    <div className={`create-page ${RECIPE_FONT_CLASSES}`}>
+    <div className="create-page">
       <JsonLd data={softwareApplication()} />
       <header className="create-head">
         <Logo />

@@ -35,7 +35,7 @@ export function CreateApp() {
     const aspect = q.get('aspect');
     const useCase = findUseCase(q.get('for') ?? '');
     if (useCase) {
-      studio.setPurpose(useCase.purpose);
+      studio.setPurpose(useCase.purpose, useCase.seconds);
       studio.setAspect(useCase.aspect);
     }
     if (aspect && (ASPECTS as string[]).includes(aspect)) studio.setAspect(aspect as Aspect);

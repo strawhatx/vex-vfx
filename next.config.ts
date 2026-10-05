@@ -37,6 +37,8 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   poweredByHeader: false,
   trailingSlash: false,
+  // the CSS is ~12 KB: inline it so the first paint doesn't wait on stylesheet requests
+  experimental: { inlineCss: true },
   pageExtensions: ["ts", "tsx", "md", "mdx"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

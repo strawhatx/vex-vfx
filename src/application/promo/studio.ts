@@ -71,6 +71,7 @@ export class Studio {
   private apiKey = '';
   private notifying = false;
   private purpose: string | undefined;
+  private seconds: [number, number] | undefined;
 
   constructor(
     private deps: StudioDeps,
@@ -123,12 +124,14 @@ export class Studio {
       shots: s.shots.length,
       aspect: s.aspect,
       purpose: this.purpose,
+      seconds: this.seconds,
     });
   }
 
-  // what the video is for (from a /for page), used in the director prompt
-  setPurpose(purpose: string | undefined) {
+  // what the video is for (from a /for page) and its target length, used in the director prompt
+  setPurpose(purpose: string | undefined, seconds?: [number, number]) {
     this.purpose = purpose;
+    this.seconds = seconds;
   }
 
   canDirect = () => this.state.shots.length > 0;
