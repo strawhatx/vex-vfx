@@ -1,0 +1,24 @@
+{
+  "slug": "y2k-chrome",
+  "name": "Y2K Chrome",
+  "palette": { "bg": "#070B1A", "fg": "#EAF2FF", "accent": "#7CF3FF", "muted": "#8E9AB5" },
+  "fonts": { "display": "syne", "body": "inter-tight" },
+  "caps": false,
+  "motion": { "ease": "back.out(1.7)", "tempo": "fast", "scene": [1.4, 2.6] },
+  "texture": "glow",
+  "layout": "floating-device",
+  "transitions": ["flash-cut", "glitch", "whip-pan"],
+  "moves": {
+    "screen": ["tilt-float", "device-frame-spin", "zoom-detail", "slide-in"],
+    "text": ["word-slam", "word-pop"],
+    "extra": ["light-sweep", "glow-pulse"]
+  },
+  "page": {
+    "keyword": "y2k product video template",
+    "title": "Y2K product video template: chrome, glow, free",
+    "description": "Turn app screenshots into a Y2K chrome promo video: glowing devices, flash cuts and slammed type. Free and private, made in your browser.",
+    "blurb": "Liquid chrome, cyan glow and a night-sky backdrop. Devices spin in, words slam onto the screen and cuts land on a white flash. It stops the scroll on TikTok and X because it does not look like another SaaS ad.",
+    "bestFor": ["consumer and social apps", "TikTok and Reels promos", "creator and music tools"],
+    "mood": "loud, shiny, nostalgic"
+  }
+}

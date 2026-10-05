@@ -1,47 +1,50 @@
 import type { Metadata, Viewport } from 'next';
-import { Anton, Bangers, Bebas_Neue, Inter } from 'next/font/google';
+import Script from 'next/script';
+import { body, display, mono } from '@/lib/fonts';
+import { JsonLd } from '@/lib/seo/JsonLd';
+import { organization, website } from '@/lib/seo/schema';
+import { SITE } from '@/lib/seo/site';
 import './globals.css';
 
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin'],
-});
-
-const anton = Anton({
-  variable: '--font-anton',
-  weight: '400',
-  subsets: ['latin'],
-});
-
-// text effects' fonts (all SIL Open Font License)
-const bebas = Bebas_Neue({
-  variable: '--font-bebas',
-  weight: '400',
-  subsets: ['latin'],
-});
-
-const bangers = Bangers({
-  variable: '--font-bangers',
-  weight: '400',
-  subsets: ['latin'],
-});
-
 export const metadata: Metadata = {
-  title: 'FlareCut',
-  description: 'Click a hand, a body, or anything else, pick an effect, and watch it follow frame by frame.',
+  metadataBase: new URL(SITE.url),
+  title: { default: `${SITE.name}: ${SITE.tagline}`, template: `%s | ${SITE.name}` },
+  description: SITE.description,
+  applicationName: SITE.name,
+  openGraph: { siteName: SITE.name, locale: SITE.locale, type: 'website' },
+  twitter: { card: 'summary_large_image' },
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION,
+    other: process.env.BING_SITE_VERIFICATION
+      ? { 'msvalidate.01': process.env.BING_SITE_VERIFICATION }
+      : undefined,
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  viewportFit: 'cover',
-  themeColor: '#0b0b0c',
+  themeColor: '#0b0a09',
+  colorScheme: 'dark',
 };
+
+// Cloudflare Web Analytics: cookieless, loaded after everything else, only when a token is set
+const beacon = process.env.NEXT_PUBLIC_CF_BEACON_TOKEN;
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${inter.variable} ${anton.variable} ${bebas.variable} ${bangers.variable}`}>
-      <body>{children}</body>
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+      <body>
+        <JsonLd data={[organization(), website()]} />
+        {children}
+        {beacon && (
+          <Script
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            strategy="lazyOnload"
+            data-cf-beacon={JSON.stringify({ token: beacon })}
+          />
+        )}
+      </body>
     </html>
   );
 }

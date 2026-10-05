@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1624" viewBox="0 0 750 1624" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif">
+<title>Orbit releases feed</title>
+<rect width="750" height="1624" fill="#F7F8FA"/>
+<text x="56" y="70" font-size="26" font-weight="600" fill="#111">9:41</text>
+<rect x="612" y="50" width="70" height="26" rx="8" fill="none" stroke="#111" stroke-width="3"/><rect x="617" y="55" width="50" height="16" rx="4" fill="#111"/>
+<circle cx="88" cy="168" r="32" fill="#2F6BFF"/><circle cx="88" cy="168" r="12" fill="#fff"/>
+<text x="140" y="160" font-size="36" font-weight="700" fill="#0B0D12">Orbit</text>
+<text x="140" y="196" font-size="24" fill="#6B7280">Releases</text>
+<rect x="40" y="250" width="670" height="76" rx="38" fill="#EEF0F4"/><text x="80" y="298" font-size="26" fill="#9CA3AF">Search releases</text>
+<rect x="40" y="360" width="670" height="200" rx="28" fill="#fff" stroke="#E6E8EC" stroke-width="2"/>
+<rect x="72" y="392" width="78" height="40" rx="20" fill="#16A34A" opacity="0.14"/><text x="90" y="420" font-size="22" font-weight="600" fill="#16A34A">New</text>
+<text x="170" y="420" font-size="22" fill="#9CA3AF">v2.4 · today</text>
+<text x="72" y="472" font-size="32" font-weight="700" fill="#0B0D12">Exports are 3× faster</text><rect x="72" y="498" width="520" height="16" rx="8" fill="#E5E7EB"/><rect x="72" y="538" width="440" height="16" rx="8" fill="#E5E7EB"/><rect x="40" y="580" width="670" height="240" rx="28" fill="#fff" stroke="#E6E8EC" stroke-width="2"/>
+<rect x="72" y="612" width="148" height="40" rx="20" fill="#2F6BFF" opacity="0.14"/><text x="90" y="640" font-size="22" font-weight="600" fill="#2F6BFF">Improved</text>
+<text x="240" y="640" font-size="22" fill="#9CA3AF">v2.3 · Oct 1</text>
+<text x="72" y="692" font-size="32" font-weight="700" fill="#0B0D12">Dark mode everywhere</text><rect x="72" y="718" width="560" height="16" rx="8" fill="#E5E7EB"/><rect x="72" y="758" width="380" height="16" rx="8" fill="#E5E7EB"/><rect x="72" y="798" width="300" height="16" rx="8" fill="#E5E7EB"/><rect x="40" y="840" width="670" height="160" rx="28" fill="#fff" stroke="#E6E8EC" stroke-width="2"/>
+<rect x="72" y="872" width="78" height="40" rx="20" fill="#EA580C" opacity="0.14"/><text x="90" y="900" font-size="22" font-weight="600" fill="#EA580C">Fix</text>
+<text x="170" y="900" font-size="22" fill="#9CA3AF">v2.2 · Sep 24</text>
+<text x="72" y="952" font-size="32" font-weight="700" fill="#0B0D12">Fixed sync on slow networks</text><rect x="72" y="978" width="480" height="16" rx="8" fill="#E5E7EB"/><rect x="40" y="1020" width="670" height="200" rx="28" fill="#fff" stroke="#E6E8EC" stroke-width="2"/>
+<rect x="72" y="1052" width="78" height="40" rx="20" fill="#16A34A" opacity="0.14"/><text x="90" y="1080" font-size="22" font-weight="600" fill="#16A34A">New</text>
+<text x="170" y="1080" font-size="22" fill="#9CA3AF">v2.1 · Sep 17</text>
+<text x="72" y="1132" font-size="32" font-weight="700" fill="#0B0D12">Slack and Discord alerts</text><rect x="72" y="1158" width="540" height="16" rx="8" fill="#E5E7EB"/><rect x="72" y="1198" width="420" height="16" rx="8" fill="#E5E7EB"/>
+<circle cx="640" cy="1380" r="56" fill="#2F6BFF"/><rect x="616" y="1376" width="48" height="8" rx="4" fill="#fff"/><rect x="636" y="1356" width="8" height="48" rx="4" fill="#fff"/>
+<rect x="0" y="1480" width="750" height="144" fill="#fff"/><line x1="0" y1="1480" x2="750" y2="1480" stroke="#E6E8EC" stroke-width="2"/>
+<circle cx="150" cy="1540" r="14" fill="#2F6BFF"/><circle cx="300" cy="1540" r="14" fill="#C4C8D0"/><circle cx="450" cy="1540" r="14" fill="#C4C8D0"/><circle cx="600" cy="1540" r="14" fill="#C4C8D0"/>
+<rect x="250" y="1596" width="250" height="10" rx="5" fill="#111"/>
+</svg>

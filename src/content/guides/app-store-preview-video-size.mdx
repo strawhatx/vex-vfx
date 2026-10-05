@@ -1,0 +1,36 @@
+**Short answer:** App Store app previews are 15–30 seconds long, H.264 (or ProRes) in .mov, .m4v or .mp4, at up to 30 frames per second, and each iPhone and iPad display size has its own resolution. For the current largest iPhones (6.9-inch), portrait previews are 886×1920. You can add up to three previews per localization.
+
+Apple updates these specs from time to time, so check App Store Connect's _app preview specifications_ before you upload. The table below covers the sizes most apps need.
+
+## Common resolutions
+
+| Display          | Portrait  | Landscape |
+| ---------------- | --------- | --------- |
+| iPhone 6.9″      | 886×1920  | 1920×886  |
+| iPhone 6.5″      | 886×1920  | 1920×886  |
+| iPhone 5.5″      | 1080×1920 | 1920×1080 |
+| iPad 13″ / 12.9″ | 1200×1600 | 1600×1200 |
+
+## What App Review checks
+
+Apple wants previews to show the app itself. In practice:
+
+- **Use footage of your app's real UI.** Screen captures or screens shown as they appear in the app.
+- **Avoid hands, people using devices, and heavy device frames.**
+- **Don't promise what the app doesn't do,** and keep text overlays short.
+- **The first frames matter twice:** previews autoplay muted in search results and on your product page.
+
+That's why stylized promo videos (spinning devices, glitch cuts) are great for social posts but risky as App Store previews. Use a quiet style and let the screens carry it.
+
+## Making one from screenshots
+
+1. Open [PromoReel](/create?for=app-store-preview-video&style=clean-apple). It presets 9:16 and the [Clean Apple](/aesthetics/clean-apple) style, which keeps screens flat and moves gentle.
+2. Add 3–6 screenshots of the screens you'd show in a demo.
+3. Direct it, then keep the total between 15 and 30 seconds.
+4. Download the 1080×1920 MP4. That fits the 5.5-inch slot directly; for the 6.9-inch slot, scale it to 886×1920 (for example with QuickTime or `ffmpeg -vf scale=886:1920`).
+
+## Tips
+
+- **Lead with your best screen.** Many people only see the first few seconds.
+- **One idea per scene.** A caption of two to five words, and a zoom on the thing the caption names.
+- **Make a separate social cut.** Use a louder style like [Y2K Chrome](/aesthetics/y2k-chrome) for [TikTok](/for/tiktok-app-promo), where App Review doesn't apply.
