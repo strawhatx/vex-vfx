@@ -1,7 +1,7 @@
 'use client';
 
 // The marketing pages' motion, all in one place: smooth scrolling (Lenis, kept in step with
-// ScrollTrigger), reveals as sections scroll in, split headlines, and the custom cursor.
+// ScrollTrigger), reveals as sections scroll in, and split headlines.
 // Everything is visible in the HTML first: a reveal only sets its start state on elements still
 // below the fold, just before animating them in. With reduced motion, none of this runs.
 import Lenis from 'lenis';
@@ -60,36 +60,6 @@ export function SiteMotion() {
     });
     return () => ctx.revert();
   }, [path]);
-
-  // the cursor: a dot that grows over anything clickable (mouse only)
-  useEffect(() => {
-    if (reducedMotion() || !window.matchMedia('(pointer: fine)').matches) return;
-    const dot = document.createElement('div');
-    dot.className = 'cursor';
-    dot.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(dot);
-    const x = gsap.quickTo(dot, 'x', { duration: 0.2, ease: 'power3.out' });
-    const y = gsap.quickTo(dot, 'y', { duration: 0.2, ease: 'power3.out' });
-    const move = (e: PointerEvent) => {
-      if (e.pointerType !== 'mouse') return;
-      dot.classList.add('on');
-      x(e.clientX);
-      y(e.clientY);
-      const t = e.target as Element | null;
-      dot.classList.toggle(
-        'hover',
-        !!t?.closest('a, button, [data-cursor="hover"], summary, label, input, select, textarea'),
-      );
-    };
-    const leave = () => dot.classList.remove('on');
-    window.addEventListener('pointermove', move, { passive: true });
-    document.addEventListener('pointerleave', leave);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      document.removeEventListener('pointerleave', leave);
-      dot.remove();
-    };
-  }, []);
 
   return null;
 }

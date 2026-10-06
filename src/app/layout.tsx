@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
-import { body, display, mono } from '@/lib/fonts';
+import { inter } from '@/lib/fonts';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { organization, website } from '@/lib/seo/schema';
 import { SITE } from '@/lib/seo/site';
@@ -24,8 +24,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0b0a09',
-  colorScheme: 'dark',
+  themeColor: '#ffffff',
+  colorScheme: 'light',
 };
 
 // Cloudflare Web Analytics: cookieless, loaded after everything else, only when a token is set
@@ -33,7 +33,7 @@ const beacon = process.env.NEXT_PUBLIC_CF_BEACON_TOKEN;
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <html lang="en" className={inter.variable}>
       <body>
         <JsonLd data={[organization(), website()]} />
         {children}

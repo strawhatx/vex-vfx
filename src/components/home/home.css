@@ -1,0 +1,292 @@
+/* The home page, in Apple's product-page rhythm: centred headline, the product large, then
+   alternating white and mist bands with 28px cards. */
+
+/* ---------- hero ---------- */
+.hero {
+  padding: 56px 0 0;
+  text-align: center;
+}
+.hero-copy {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+.hero h1 {
+  font-size: clamp(44px, 8vw, 80px);
+  max-width: 12em;
+}
+.hero-sub {
+  font-size: clamp(19px, 2.2vw, 21px);
+  line-height: 1.38;
+  color: var(--slate);
+  max-width: 34em;
+}
+.hero-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 28px;
+  margin-top: 8px;
+}
+.hero-stage {
+  margin-top: 48px;
+}
+
+/* the frame the engine plays in: mist, 28px corners, no shadow */
+.stage-frame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--mist);
+  /* the hairline token: keeps a white stage (Swiss Minimal) from melting into the page */
+  box-shadow: 0 0 0 1px var(--control);
+}
+.stage-frame canvas {
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 759px) {
+  .hero-stage .stage-frame,
+  .stage-frame.tall {
+    aspect-ratio: 9 / 16;
+    width: min(100%, 420px);
+  }
+}
+.hero-stage .stage-frame {
+  animation: rise var(--t-4) var(--ease-reel) both;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+}
+
+/* ---------- the problem, as one big statement ---------- */
+.statement-band {
+  padding: 120px 0;
+}
+.statement {
+  font-size: clamp(28px, 4.4vw, 48px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.012em;
+}
+
+/* ---------- showcase (signature) ---------- */
+.showcase {
+  background: var(--white);
+}
+.showcase-pin {
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  gap: 28px;
+  padding: 72px 0 32px;
+}
+.showcase-head {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+}
+.showcase-head h2 {
+  font-size: clamp(40px, 6vw, 64px);
+  margin-bottom: 14px;
+}
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--mist);
+  border-radius: 999px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 14px/1 var(--font-sans);
+  letter-spacing: -0.016em;
+  padding: 10px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--t-2) var(--ease-reel),
+    color var(--t-2) var(--ease-reel);
+}
+.segmented button[aria-selected='true'] {
+  background: var(--ink);
+  color: #fff;
+}
+.showcase-stage {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+.showcase-stage .stage-frame.wide {
+  width: min(100%, calc((100svh - 400px) * 16 / 9));
+}
+.stage-caption {
+  font-size: 17px;
+  color: var(--slate);
+  text-align: center;
+}
+.stage-caption strong {
+  color: var(--ink);
+}
+@media (max-width: 759px) {
+  .showcase-pin {
+    padding: 64px 0 16px;
+    gap: 16px;
+  }
+  .showcase-head h2 {
+    font-size: 36px;
+    margin-bottom: 8px;
+  }
+  .showcase-stage .stage-frame.tall {
+    width: min(100%, calc((100svh - 280px) * 9 / 16));
+  }
+}
+
+/* your turn */
+.try {
+  padding: 40px 0 120px;
+}
+.try-card {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+  padding: clamp(48px, 8vw, 96px) 24px;
+  background: var(--mist);
+  border-radius: var(--radius);
+  outline: 2px dashed transparent;
+  outline-offset: -16px;
+  transition:
+    outline-color var(--t-2) var(--ease-reel),
+    background var(--t-2) var(--ease-reel);
+}
+.try-card h2 {
+  font-size: clamp(36px, 6vw, 56px);
+}
+.try-card.over {
+  outline-color: var(--blue);
+  background: #eef4fd;
+}
+.try-card.landed {
+  animation: landed var(--t-2) var(--ease-reel);
+}
+@keyframes landed {
+  40% {
+    transform: scale(0.99);
+  }
+}
+
+/* ---------- bands and cards ---------- */
+.band {
+  background: var(--mist);
+  padding: 100px 0;
+}
+.section-pad {
+  padding: 100px 0;
+}
+.band-title {
+  font-size: clamp(36px, 5.6vw, 56px);
+  margin-bottom: 40px;
+}
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+@media (min-width: 860px) {
+  .cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 28px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 220px;
+}
+.card h3 {
+  font-size: 24px;
+  line-height: 1.16;
+}
+.card-n {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--slate);
+}
+
+/* the style tiles */
+.tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 44vw), 1fr));
+}
+.tile {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+}
+.tile:hover {
+  text-decoration: none;
+}
+.tile-media {
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--mist);
+  box-shadow: 0 0 0 1px var(--control);
+  margin-bottom: 10px;
+  transition: transform var(--t-3) var(--ease-reel);
+}
+.tile-media canvas {
+  width: 100%;
+  height: 100%;
+}
+.tile strong {
+  font-size: 19px;
+  font-weight: 600;
+}
+.tile .muted {
+  font-size: 14px;
+}
+.tile .more {
+  font-size: 14px;
+  margin-top: 4px;
+}
+.tile:hover .tile-media,
+.tile:focus-visible .tile-media {
+  transform: scale(1.02);
+}
+.tile:hover .more {
+  text-decoration: underline;
+}
+
+/* ---------- closing ---------- */
+.final {
+  padding: 120px 0 140px;
+  text-align: center;
+}
+.final h2 {
+  font-size: clamp(36px, 6vw, 64px);
+  margin-bottom: 20px;
+}

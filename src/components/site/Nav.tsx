@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { CtaLink } from './CtaLink';
 import { Logo } from './Logo';
 
+// a frosted bar: the wordmark, the sections, and the one blue action
 export function Nav() {
   return (
     <header className="nav">

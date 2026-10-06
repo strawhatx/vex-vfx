@@ -1,8 +1,8 @@
-import { Credits } from '@/components/site/Credits';
+import { Footer } from '@/components/site/Footer';
 import { Nav } from '@/components/site/Nav';
 import { SiteMotion } from '@/components/site/SiteMotion';
 
-// the marketing and SEO pages: nav, smooth scroll and reveals, and the end-credits footer
+// the marketing and SEO pages: nav, smooth scroll and reveals, and the footer
 export default function SiteLayout({ children }: LayoutProps<'/'>) {
   return (
     <>
@@ -11,7 +11,7 @@ export default function SiteLayout({ children }: LayoutProps<'/'>) {
       </a>
       <Nav />
       <main id="main">{children}</main>
-      <Credits />
+      <Footer />
       <SiteMotion />
     </>
   );

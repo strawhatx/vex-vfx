@@ -1,22 +1,19 @@
 import Link from 'next/link';
-import { RECIPES } from '@/domain/promo/recipes';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import { GUIDES } from '@/domain/promo/content/guides';
 import { COMPETITORS } from '@/domain/promo/content/competitors';
-import { Logo } from './Logo';
+import { GUIDES } from '@/domain/promo/content/guides';
+import { USE_CASES } from '@/domain/promo/content/useCases';
+import { RECIPES } from '@/domain/promo/recipes';
 
-// the footer, as end credits: every section linked, billed like a film
-export function Credits() {
+// the footer: a note, every section linked in columns, then the fine print
+export function Footer() {
   return (
-    <footer className="credits">
-      <div className="wrap credits-roll">
-        <Logo />
-        <p className="credits-billing">
-          <span>Directed by</span>You
-          <span>Edited by</span>AI, or a few good rules
-          <span>Rendered in</span>Your browser
+    <footer className="footer">
+      <div className="wrap">
+        <p className="footer-note">
+          PromoReel makes your video in your browser. Screenshots are never uploaded. Directing with AI uses
+          your own chat subscription or API key, or no AI at all.
         </p>
-        <div className="credits-cols">
+        <div className="footer-cols">
           <div>
             <h2>Styles</h2>
             <ul>
@@ -58,21 +55,23 @@ export function Credits() {
             </ul>
           </div>
         </div>
-        <ul className="fine" style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <li>
-            <Link href="/create">Make a video</Link>
-          </li>
-          <li>
-            <Link href="/examples">Examples</Link>
-          </li>
-          <li>
-            <Link href="/privacy">Privacy</Link>
-          </li>
-          <li>
-            <a href="/llms.txt">llms.txt</a>
-          </li>
-        </ul>
-        <p className="fine">No screenshots were uploaded in the making of this video.</p>
+        <div className="footer-base">
+          <p>PromoReel. Free, in your browser.</p>
+          <ul>
+            <li>
+              <Link href="/create">Make a video</Link>
+            </li>
+            <li>
+              <Link href="/examples">Examples</Link>
+            </li>
+            <li>
+              <Link href="/privacy">Privacy</Link>
+            </li>
+            <li>
+              <a href="/llms.txt">llms.txt</a>
+            </li>
+          </ul>
+        </div>
       </div>
     </footer>
   );

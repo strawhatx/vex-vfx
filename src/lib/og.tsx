@@ -1,5 +1,5 @@
-// The Open Graph card: a cinema screen with the page's title on it, lit in the page's aesthetic
-// colours (or the site's own). Rendered by next/og at build time.
+// The Open Graph card, in the site's style: a white page, a centred kicker and headline, and the
+// page's aesthetic shown as a colour panel (or the site's mist). Rendered by next/og at build time.
 import { ImageResponse } from 'next/og';
 
 export const OG_SIZE = { width: 1200, height: 630 };
@@ -7,7 +7,7 @@ export const OG_SIZE = { width: 1200, height: 630 };
 export function ogCard({
   title,
   kicker,
-  colors = { bg: '#F3ECDF', fg: '#15120F', accent: '#FFB547' },
+  colors = { bg: '#F5F5F7', fg: '#1D1D1F', accent: '#0071E3' },
 }: {
   title: string;
   kicker: string;
@@ -20,70 +20,53 @@ export function ogCard({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#0B0A09',
-        padding: 48,
-        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: '#FFFFFF',
+        padding: '64px 72px 0',
+        color: '#1D1D1F',
       }}
     >
+      <div style={{ display: 'flex', fontSize: 30, fontWeight: 600, color: '#6E6E73' }}>{kicker}</div>
       <div
         style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 70,
-          background: 'linear-gradient(90deg,#2d070a,#6b1119)',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 70,
-          background: 'linear-gradient(270deg,#2d070a,#6b1119)',
-        }}
-      />
-      <div
-        style={{
-          flex: 1,
-          margin: '0 60px',
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          padding: 56,
-          background: colors.bg,
-          color: colors.fg,
-          borderRadius: 8,
-          boxShadow: '0 0 120px rgba(255,205,140,0.35)',
+          textAlign: 'center',
+          fontSize: title.length > 44 ? 64 : 80,
+          fontWeight: 700,
+          lineHeight: 1.05,
+          letterSpacing: -2,
+          maxWidth: 1000,
         }}
       >
+        {title}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          height: 150,
+          padding: '0 40px',
+          borderRadius: '28px 28px 0 0',
+          background: colors.bg,
+          color: colors.fg,
+          fontSize: 28,
+          fontWeight: 600,
+        }}
+      >
+        <div style={{ display: 'flex' }}>PromoReel</div>
         <div
           style={{
             display: 'flex',
-            fontSize: 26,
-            letterSpacing: 4,
-            textTransform: 'uppercase',
-            opacity: 0.7,
+            padding: '12px 26px',
+            borderRadius: 999,
+            background: '#0071E3',
+            color: '#FFFFFF',
           }}
         >
-          {kicker}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            fontSize: title.length > 48 ? 64 : 80,
-            fontWeight: 800,
-            lineHeight: 1,
-            textTransform: 'uppercase',
-          }}
-        >
-          {title}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 28 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 14, background: colors.accent }} />
-          PromoReel · free, in your browser
+          Make my video
         </div>
       </div>
     </div>,

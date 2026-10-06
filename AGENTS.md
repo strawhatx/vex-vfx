@@ -33,8 +33,8 @@ src/
 ├── server/             # import "server-only": the newsletter signup (zod, rate limit)
 ├── lib/                # fonts and SEO helpers (metadata, JSON-LD, site URL)
 ├── components/
-│   ├── site/           # nav, end-credits footer, buttons, cursor, smooth scroll, reveals
-│   ├── theater/        # the home page's cinema: curtains, the signature screen, Now Showing
+│   ├── site/           # nav, footer, buttons, smooth scroll, reveals
+│   ├── home/           # the home page: hero, the signature style showcase, bands and cards
 │   ├── engine/         # the engine on a page (EnginePlayer) and the recipe fonts
 │   └── create/         # the /create tool; studioStore.ts is its composition root
 ├── content/guides/     # MDX guides
@@ -56,7 +56,7 @@ src/
 - Every indexable page is static, with all its content in the HTML. Animation may move content but never hide it before JavaScript runs; `prefers-reduced-motion` turns motion off.
 - Each page has `pageMetadata(...)`, one h1, breadcrumbs (nested pages) and the matching JSON-LD from `lib/seo/schema.ts`.
 - Motion uses the one ease, "reel" (`--ease-reel` in CSS, `'reel'` in GSAP), and the 0.2/0.4/0.8/1.6s steps.
-- Three.js loads only via `next/dynamic` with `ssr: false`, after the hero paints, on capable devices.
+- The look follows Apple's product pages: white and `--mist` bands, `--ink` type in the system font (Inter elsewhere), blue (`--blue`) only for actions, 28px corners, no shadows or gradients (a 1px `--control` hairline is the one allowed edge).
 
 ## Before you finish
 - `npm test`, `npx tsc --noEmit` and `npx eslint .` pass, and `npm run format` has been run (Prettier).

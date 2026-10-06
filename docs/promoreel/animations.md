@@ -7,31 +7,26 @@ the videos). Durations step 0.2 / 0.4 / 0.8 / 1.6s (`--t-1` to `--t-4`). Change 
 three places and the whole site and every video change together.
 
 **Reduced motion.** With `prefers-reduced-motion`, the intro, the pin, smooth scrolling, the reveals,
-the cursor and the 3D beam are all off; CSS transitions are cut to ~0; the engine previews show a
+and the hero's rise-in are all off; CSS transitions are cut to ~0; the engine previews show a
 still frame. All content stays visible.
 
 ## On the site
 
+Motion is quiet, the Apple way: things rise and fade in once, and the product does the moving.
+
 | Animation | Where | Duration / ease | Code |
 | --- | --- | --- | --- |
-| Intro: house lights dim | Home hero | 1.2s, reel | `components/theater/TheaterFx.tsx:42` |
-| Intro: curtains draw back (from 62% to the stylesheet's `--open`) | Home hero | 1.4s, reel | same timeline |
-| Intro: projector lamp flicker (`--lamp`) | Hero screen | 0.5s, `steps(5)`, starts at 0.25s | same timeline |
-| Curtains open fully as you scroll (`--open-scroll`) | Hero | scrubbed over the hero's height | `TheaterFx.tsx:59` |
-| Screen dollies closer (scale 1 → 1.06) | Hero | scrubbed | `TheaterFx.tsx:67` |
-| Projector beam: cone flicker and dust drift | Hero, desktop only | continuous; flicker in the shader (`sin(t·47)·sin(t·13)`), dust 0.02 rad/s | `components/theater/Auditorium3D.tsx` |
-| Premiere pin and reel changes | Signature section | pinned for `reels × 90%` of the viewport | `components/theater/Premiere.tsx:54` |
-| Reel change: gate flash and weave | Premiere screen | 0.4s, `steps(4)` and `steps(6)` | `Premiere.tsx:65-66` |
-| Drop-screen hover and landing | "Your film here" | 0.4s reel; `landed` keyframes | `theater.css:347` |
-| Split headlines (words rise from a mask) | `h2[data-split]` below the fold | 0.8s, 0.06s stagger, reel | `components/site/SiteMotion.tsx:40` |
-| Section reveals (y 32px, fade) | `[data-reveal]` below the fold | 0.8s, reel | `SiteMotion.tsx:50` |
-| Smooth scroll | Marketing pages | Lenis, 1.1s, ease-out cubic | `SiteMotion.tsx:18` |
-| Cursor dot follows, grows over links | Mouse only | 0.2s, power3.out; grow 0.4s reel | `SiteMotion.tsx:71`, `.cursor` in `globals.css` |
-| Magnetic buttons | Every "Make my video" | up to 12×10px toward the pointer, 0.4s reel | `components/site/CtaLink.tsx`, `.btn` |
-| Poster tiles lift and play on hover | Now Showing, /create gallery | 0.4s reel; plays the live engine | `theater.css` `.poster`, `EnginePlayer.tsx` |
-| Marquee bulbs chase | Final CTA | 1.6s, `steps(2)`, infinite | `theater.css:492` |
-| Index-list rows slide on hover | Content pages | 0.4s reel | `.index-list a` in `globals.css` |
-| Drop zone: over, landed pulse, amber sweep | /create step 2 | 0.4s and 0.8s reel | `components/create/create.css:185-190` |
+| Hero frame rises in (24px, 98% → 100%, fade) | Home hero | 1.6s, reel, on load; the text never moves | `components/home/home.css` (`@keyframes rise`) |
+| Showcase pin and style changes | Signature section | pinned for `reels × 90%` of the viewport | `components/home/Showcase.tsx` (ScrollTrigger) |
+| Style change crossfade (opacity 0.35 → 1, 98.5% → 100%) | Showcase frame | 0.6s, reel | `Showcase.tsx` |
+| Segmented control selection | Showcase | 0.4s, reel | `.segmented` in `home.css` |
+| "Now try yours" drag-over and landing | Showcase end | 0.4s, reel; `landed` keyframes | `home.css` |
+| Split headlines (words rise from a mask) | `h2[data-split]` below the fold | 0.8s, 0.06s stagger, reel | `components/site/SiteMotion.tsx` |
+| Section reveals (y 32px, fade) | `[data-reveal]` below the fold | 0.8s, reel | `SiteMotion.tsx` |
+| Smooth scroll | Marketing pages | Lenis, 1.1s, ease-out cubic | `SiteMotion.tsx` |
+| Tiles grow (102%) and play on hover | Five styles, /create gallery | 0.8s, reel; plays the live engine | `.tile` in `home.css`, `EnginePlayer.tsx` |
+| Buttons and links | Everywhere | 0.2s colour, reel | `.btn` in `globals.css` |
+| Drop zone: over, landed pulse, blue sweep | /create step 2 | 0.4s and 0.8s reel | `components/create/create.css` |
 
 ## In the videos (the move library)
 

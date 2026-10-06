@@ -19,15 +19,11 @@ export default function CreatePage() {
   return (
     <div className="create-page">
       <JsonLd data={softwareApplication()} />
-      <header className="create-head">
+      <header className="nav create-head">
         <Logo />
         <nav aria-label="Help">
-          <Link href="/guides" className="muted">
-            Guides
-          </Link>
-          <Link href="/privacy" className="muted">
-            Privacy
-          </Link>
+          <Link href="/guides">Guides</Link>
+          <Link href="/privacy">Privacy</Link>
         </nav>
       </header>
       <main id="main" className="create-main">

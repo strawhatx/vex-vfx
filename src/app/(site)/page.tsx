@@ -1,7 +1,7 @@
-import { Hero } from '@/components/theater/Hero';
-import { Premiere } from '@/components/theater/Premiere';
-import { Acts, Faq, MadeFor, Marquee, NowShowing, PrivacyNote, Problem } from '@/components/theater/Sections';
-import '@/components/theater/theater.css';
+import { Hero } from '@/components/home/Hero';
+import { Faq, FinalCta, Gallery, MadeFor, Privacy, Problem, Steps } from '@/components/home/Sections';
+import { Showcase } from '@/components/home/Showcase';
+import '@/components/home/home.css';
 import { HOME_FAQ } from '@/domain/promo/content/faq';
 import { RECIPES, SIGNATURE_REELS } from '@/domain/promo/recipes';
 import { JsonLd } from '@/lib/seo/JsonLd';
@@ -22,13 +22,13 @@ export default function Home() {
       <JsonLd data={[softwareApplication(), faqPage(HOME_FAQ)]} />
       <Hero />
       <Problem />
-      <Premiere reels={SIGNATURE_REELS.map(r => ({ slug: r.slug, name: r.name, line: r.page.mood }))} />
-      <Acts />
-      <NowShowing recipes={RECIPES} />
+      <Showcase reels={SIGNATURE_REELS.map(r => ({ slug: r.slug, name: r.name, line: r.page.mood }))} />
+      <Steps />
+      <Gallery recipes={RECIPES} />
       <MadeFor />
-      <PrivacyNote />
+      <Privacy />
       <Faq items={HOME_FAQ} />
-      <Marquee />
+      <FinalCta />
     </>
   );
 }
