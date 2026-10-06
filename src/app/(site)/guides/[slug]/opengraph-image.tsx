@@ -1,4 +1,4 @@
-import { GUIDES, guideBySlug } from '@/domain/promo/content/guides';
+import { GUIDES, guideBySlug } from '@/domain/video/content/guides';
 import { ogCard, OG_SIZE } from '@/lib/og';
 
 export const size = OG_SIZE;

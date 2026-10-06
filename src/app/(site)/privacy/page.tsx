@@ -2,9 +2,9 @@ import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({
-  title: 'Privacy: your screenshots never leave your browser',
+  title: 'Privacy: your video is made in your browser',
   description:
-    'PromoReel makes your video on your device. Screenshots are never uploaded. Here is exactly what is sent where, and what we keep.',
+    'PromoReel makes your video on your device and saves your project there. Here is exactly what is sent where, and what we keep.',
   path: '/privacy',
 });
 
@@ -15,16 +15,16 @@ export default function PrivacyPage() {
         <Breadcrumbs items={[{ name: 'Privacy', path: '/privacy' }]} />
         <h1>Privacy</h1>
         <p className="answer">
-          Your screenshots never leave your browser. PromoReel decodes, animates and encodes your video on
-          your device. We never receive your screenshots, music or videos.
+          Your video is made in your browser. PromoReel draws and encodes every frame on your device, and
+          saves your project there. We never receive your logo, music or videos.
         </p>
       </header>
       <div className="prose">
         <h2>What stays on your device</h2>
         <ul>
           <li>
-            Screenshots, music and the videos you make. They exist only in your browser tab and are gone when
-            you close it.
+            Your project (the plan, your text and numbers, and your logo), saved in this browser’s storage.
+            Music and the videos you make exist only in your browser tab.
           </li>
           <li>
             Your Anthropic API key, if you use one. It’s kept in memory, or in your browser’s storage only if
@@ -40,12 +40,9 @@ export default function PrivacyPage() {
             link.
           </li>
           <li>
-            <strong>Your screenshots and the prompt</strong>, only if you choose “Your API key”: your browser
-            sends them straight to Anthropic’s API to direct the video. They don’t pass through our servers.
-            Anthropic’s own terms apply to that request.
-          </li>
-          <li>
-            <strong>Copy prompt</strong> sends nothing: you paste the prompt into your own AI chat yourself.
+            <strong>Nothing else, for now.</strong> AI scripting isn’t live yet. When it is, it will use your
+            own Gemini or Claude key, and your browser will send your product description straight to the
+            provider you choose, never through our servers.
           </li>
           <li>
             <strong>Anonymous page statistics</strong> (Cloudflare Web Analytics: pages viewed and load times,

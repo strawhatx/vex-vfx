@@ -1,4 +1,4 @@
-import { USE_CASES, findUseCase } from '@/domain/promo/content/useCases';
+import { USE_CASES, findUseCase } from '@/domain/video/content/useCases';
 import { ogCard, OG_SIZE } from '@/lib/og';
 
 export const size = OG_SIZE;

@@ -10,10 +10,10 @@ export function Hero() {
         <p className="kicker">
           PromoReel <span className="new">Free</span>
         </p>
-        <h1 id="hero-title">Turn screenshots into a launch video. Free.</h1>
+        <h1 id="hero-title">Describe your product. Get a launch video.</h1>
         <p className="hero-sub">
-          Drop in 3–6 screenshots, pick a style, and AI directs a promo video for X, Product Hunt and TikTok.
-          Your screenshots never leave your browser.
+          Kinetic type, counters, rings and cards in your brand, for X, Product Hunt and TikTok. Edit every
+          scene, then download the MP4. Free, and made in your browser.
         </p>
         <div className="hero-ctas">
           <CtaLink href="/create" className="btn btn-primary">

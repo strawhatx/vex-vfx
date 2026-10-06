@@ -1,4 +1,4 @@
-import { RECIPES, recipeBySlug } from '@/domain/promo/recipes';
+import { RECIPES, recipeBySlug } from '@/domain/video/recipes';
 import { ogCard, OG_SIZE } from '@/lib/og';
 
 export const size = OG_SIZE;

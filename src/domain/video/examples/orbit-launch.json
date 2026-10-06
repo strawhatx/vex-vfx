@@ -1,0 +1,78 @@
+{
+  "v": 2,
+  "format": "9:16",
+  "aesthetic": "clean-soft",
+  "brandColor": "#1F6FEB",
+  "length": 15,
+  "product": {
+    "name": "Orbit",
+    "url": "orbit.dev"
+  },
+  "captions": true,
+  "scenes": [
+    {
+      "type": "logo-reveal",
+      "sec": 2.4,
+      "caption": "Meet *Orbit*.",
+      "transition": null,
+      "name": "Orbit",
+      "tagline": "Release notes on autopilot"
+    },
+    {
+      "type": "kinetic-type",
+      "sec": 2,
+      "caption": "Writing them is the worst part of shipping.",
+      "transition": null,
+      "text": "Release notes take *hours*.",
+      "move": "mask-reveal"
+    },
+    {
+      "type": "card-stack",
+      "sec": 4,
+      "caption": "Connect, draft, *publish*.",
+      "transition": null,
+      "cards": [
+        {
+          "title": "Connect your repo",
+          "subtitle": "GitHub or GitLab"
+        },
+        {
+          "title": "Orbit drafts the notes",
+          "subtitle": "From every merged pull request"
+        },
+        {
+          "title": "Publish everywhere",
+          "subtitle": "Changelog, email and Slack"
+        }
+      ],
+      "stat": {
+        "value": 2,
+        "confirmed": true
+      },
+      "statPrefix": "",
+      "statSuffix": "min",
+      "statLabel": "from merge to published"
+    },
+    {
+      "type": "stat-counter",
+      "sec": 2.8,
+      "caption": "Teams everywhere ship with *Orbit*.",
+      "transition": null,
+      "value": {
+        "value": 12000,
+        "confirmed": true
+      },
+      "prefix": "",
+      "suffix": "+",
+      "label": "teams ship with Orbit"
+    },
+    {
+      "type": "kinetic-type",
+      "sec": 2,
+      "caption": "Start free at orbit.dev",
+      "transition": null,
+      "text": "Ship notes, not *chores*.",
+      "move": "word-pop"
+    }
+  ]
+}

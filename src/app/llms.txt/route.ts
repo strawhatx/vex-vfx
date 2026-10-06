@@ -1,8 +1,8 @@
-import { COMPETITORS } from '@/domain/promo/content/competitors';
-import { HOME_FAQ } from '@/domain/promo/content/faq';
-import { GUIDES } from '@/domain/promo/content/guides';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import { RECIPES } from '@/domain/promo/recipes';
+import { COMPETITORS } from '@/domain/video/content/competitors';
+import { HOME_FAQ } from '@/domain/video/content/faq';
+import { GUIDES } from '@/domain/video/content/guides';
+import { USE_CASES } from '@/domain/video/content/useCases';
+import { RECIPES } from '@/domain/video/recipes';
 import { SITE, absolute } from '@/lib/seo/site';
 
 export const dynamic = 'force-static';
@@ -14,9 +14,9 @@ export function GET() {
     '',
     `> ${SITE.description}`,
     '',
-    'PromoReel is a free web tool for indie developers and founders. You pick a visual style, drop in 3–6 screenshots of your app, add its name, tagline and URL, and an AI director plans a 10–45 second promo video: the hook, scene order, camera move for each scene, zoom targets and captions. The video renders and exports as an MP4 (9:16 or 16:9) entirely in the browser using WebCodecs. Screenshots are never uploaded. There is no signup; an email is asked for before download.',
+    'PromoReel is a free web tool for indie developers and founders that makes launch videos for software products out of motion graphics: kinetic typography, stat counters, progress rings, card timelines and logo reveals, in the product’s brand. You pick one of five styles, start from an example plan, put in your product, logo, brand colour and real numbers, edit every scene, and download an MP4 (9:16, 1:1 or 16:9). The video is drawn and encoded entirely in the browser; projects are saved on the device. No signup; an email is asked for before download.',
     '',
-    'AI direction works three ways: copy a generated prompt into Claude, ChatGPT or Gemini and paste the JSON plan back; use your own Anthropic API key (called from the browser); or use the built-in rule-based director with no AI. Every plan is validated before it plays.',
+    'Coming next: describe your product and an AI (your own Gemini or Claude key) writes the script and fills the scenes. The AI never generates pixels or invents numbers; every number in a video is one the user gave or confirmed.',
     '',
     '## Key pages',
     `- [Make a video](${absolute('/create')}): the tool`,

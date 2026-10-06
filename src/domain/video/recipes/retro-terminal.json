@@ -1,0 +1,35 @@
+{
+  "slug": "retro-terminal",
+  "name": "Retro Terminal",
+  "palette": {
+    "bg": "#050805",
+    "surface": "#0B140B",
+    "fg": "#B8FFB0",
+    "muted": "#5E8F5A",
+    "accent": "#39FF6A"
+  },
+  "brandIsAccent": false,
+  "fonts": {
+    "display": "vt323",
+    "body": "ibm-plex-mono"
+  },
+  "caps": true,
+  "radius": 0.01,
+  "motion": {
+    "ease": "steps(6)",
+    "speed": 1,
+    "tempo": "steady"
+  },
+  "texture": "scanlines",
+  "transitions": ["glitch", "flash-cut"],
+  "textMoves": ["typewriter", "word-pop"],
+  "scenes": ["logo-reveal", "stat-counter", "stat-ring", "card-stack", "ambient-wall", "kinetic-type"],
+  "page": {
+    "keyword": "terminal style video template",
+    "title": "Retro terminal video template for dev tools, free",
+    "description": "A green-screen terminal launch video: typed lines, scanlines and glitch cuts. Made for CLIs and dev tools. Describe your product; free, in your browser.",
+    "blurb": "Phosphor green on black, scanlines, and lines that type themselves out. Counters tick in steps and cuts glitch. Developers read it instantly as a tool made for them.",
+    "bestFor": ["CLIs and developer tools", "open source launches", "changelog and \"what I shipped\" posts"],
+    "mood": "nerdy, playful, hacker"
+  }
+}

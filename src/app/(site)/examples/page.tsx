@@ -2,14 +2,14 @@ import Link from 'next/link';
 import { ExampleVideo } from '@/components/content/ExampleVideo';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { RECIPES } from '@/domain/promo/recipes';
+import { RECIPES } from '@/domain/video/recipes';
 import { availableExamples } from '@/lib/examples';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({
-  title: 'Product launch video examples made from screenshots',
+  title: 'Product launch video examples, made with PromoReel',
   description:
-    'Product launch video examples made with PromoReel from a handful of screenshots, in different styles and sizes, with the words on screen for each.',
+    'Product launch video examples made with PromoReel: kinetic type, counters, rings and cards, in different styles and sizes, with the words on screen for each.',
   path: '/examples',
 });
 
@@ -21,8 +21,8 @@ export default function ExamplesPage() {
         <Breadcrumbs items={[{ name: 'Examples', path: '/examples' }]} />
         <h1>Launch video examples</h1>
         <p className="lede">
-          Made with PromoReel from four screenshots of a demo app. Same screens, different styles: see what
-          yours could look like.
+          Made with PromoReel for Orbit, a demo app. Same product, different styles and sizes: see what yours
+          could look like.
         </p>
       </header>
       {examples.length ? (

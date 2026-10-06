@@ -1,4 +1,4 @@
-import type { Example } from '@/domain/promo/content/examples';
+import type { Example } from '@/domain/video/content/examples';
 import { exampleFiles } from '@/lib/examples';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { videoObject } from '@/lib/seo/schema';

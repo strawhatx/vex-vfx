@@ -3,7 +3,7 @@
 // Step 1: the aesthetics as a gallery of looping previews. A radio group: arrow keys move between
 // styles; the chosen one plays, the others play when hovered.
 import { EnginePlayer } from '@/components/engine/EnginePlayer';
-import type { Recipe } from '@/domain/promo/recipe';
+import type { Recipe } from '@/domain/video/recipe';
 
 export function StylePicker({
   recipes,
@@ -30,7 +30,7 @@ export function StylePicker({
           <span className="style-media">
             <EnginePlayer
               recipe={r.slug}
-              aspect="9:16"
+              format="9:16"
               mode={value === r.slug ? 'loop' : 'hover'}
               maxShort={320}
               label={`${r.name} preview`}

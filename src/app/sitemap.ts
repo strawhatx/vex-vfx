@@ -1,8 +1,8 @@
 import type { MetadataRoute } from 'next';
-import { COMPETITORS } from '@/domain/promo/content/competitors';
-import { GUIDES } from '@/domain/promo/content/guides';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import { RECIPES } from '@/domain/promo/recipes';
+import { COMPETITORS } from '@/domain/video/content/competitors';
+import { GUIDES } from '@/domain/video/content/guides';
+import { USE_CASES } from '@/domain/video/content/useCases';
+import { RECIPES } from '@/domain/video/recipes';
 import { availableExamples, exampleFiles } from '@/lib/examples';
 import { absolute } from '@/lib/seo/site';
 

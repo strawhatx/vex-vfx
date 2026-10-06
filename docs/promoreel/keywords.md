@@ -5,10 +5,10 @@ Check these against real volumes in Search Console after launch and adjust title
 
 | Page | Main keyword | Intent | Secondary |
 | --- | --- | --- | --- |
-| `/` | screenshots to video | Tool / transactional | product launch video maker, free promo video maker |
-| `/create` | app promo video maker | Tool | promo video from screenshots, launch video generator |
+| `/` | product launch video | Tool / transactional | product launch video maker, free promo video maker |
+| `/create` | product launch video maker | Tool | saas explainer video maker, launch video generator |
 | `/aesthetics` | product video templates | Browse | launch video templates |
-| `/aesthetics/clean-apple` | apple style product video template | Template | minimal app video |
+| `/aesthetics/clean-soft` | saas explainer video template | Template | clean product video |
 | `/aesthetics/y2k-chrome` | y2k product video template | Template | chrome video template |
 | `/aesthetics/swiss-minimal` | minimalist app promo video | Template | swiss design video |
 | `/aesthetics/brutalist` | brutalist video template | Template | bold launch video |

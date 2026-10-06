@@ -1,8 +1,8 @@
 // The fonts the videos are drawn in, self-hosted by next/font and not preloaded: they download only
 // when a video is drawn (loadRecipeFonts asks for them), so they never slow the first paint.
 import { Archivo_Black, IBM_Plex_Mono, Inter, Inter_Tight, Space_Mono, Syne, VT323 } from 'next/font/google';
-import type { FontId, Recipe } from '@/domain/promo/recipe';
-import type { FontFamilies } from '@/infrastructure/promo/engine/fonts';
+import type { FontId, Recipe } from '@/domain/video/recipe';
+import type { FontFamilies } from '@/infrastructure/video/engine/fonts';
 
 const inter = Inter({ subsets: ['latin'], weight: ['500', '600', '700'], preload: false, display: 'swap' });
 const interTight = Inter_Tight({

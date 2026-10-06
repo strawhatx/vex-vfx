@@ -1,0 +1,35 @@
+{
+  "slug": "y2k-chrome",
+  "name": "Y2K Chrome",
+  "palette": {
+    "bg": "#070B1A",
+    "surface": "#121A33",
+    "fg": "#EAF2FF",
+    "muted": "#8E9AB5",
+    "accent": "#7CF3FF"
+  },
+  "brandIsAccent": false,
+  "fonts": {
+    "display": "syne",
+    "body": "inter-tight"
+  },
+  "caps": false,
+  "radius": 0.05,
+  "motion": {
+    "ease": "back.out(1.7)",
+    "speed": 1.25,
+    "tempo": "fast"
+  },
+  "texture": "glow",
+  "transitions": ["flash-cut", "glitch", "whip-pan"],
+  "textMoves": ["word-slam", "word-pop", "letter-stagger"],
+  "scenes": ["logo-reveal", "stat-counter", "stat-ring", "card-stack", "ambient-wall", "kinetic-type"],
+  "page": {
+    "keyword": "y2k product video template",
+    "title": "Y2K product video template: chrome, glow, free",
+    "description": "A Y2K chrome launch video for your product: glowing type, bouncy counters, flash cuts. Describe your product and edit everything. Free, in your browser.",
+    "blurb": "Cyan glow on a night-sky stage. Words slam onto the screen, counters bounce into place and cuts land on a white flash. It stops the scroll on TikTok and X because it doesn't look like another SaaS ad.",
+    "bestFor": ["consumer and social apps", "TikTok and Reels promos", "creator and music tools"],
+    "mood": "loud, shiny, nostalgic"
+  }
+}

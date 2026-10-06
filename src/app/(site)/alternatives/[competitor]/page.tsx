@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { COMPETITORS, REVIEWED, competitorBySlug } from '@/domain/promo/content/competitors';
+import { COMPETITORS, REVIEWED, competitorBySlug } from '@/domain/video/content/competitors';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const dynamicParams = false;
@@ -31,9 +31,9 @@ export default async function AlternativePage({ params }: PageProps<'/alternativ
         />
         <h1>{c.name} alternative for app promo videos</h1>
         <p className="answer">
-          {c.what} PromoReel does one narrower job: it turns 3–6 screenshots into a finished, captioned promo
-          video, directed by AI, free and in your browser. If you need{' '}
-          {c.bestFor.toLowerCase().replace(/\.$/, '')}, {c.name} is the better pick; if you need a launch
+          {c.what} PromoReel does one narrower job: it makes a finished, captioned launch video out of motion
+          graphics (kinetic type, counters, rings and cards in your brand), free and in your browser. If you
+          need {c.bestFor.toLowerCase().replace(/\.$/, '')}, {c.name} is the better pick; if you need a launch
           video in two minutes, try PromoReel.
         </p>
       </header>
@@ -93,7 +93,7 @@ export default async function AlternativePage({ params }: PageProps<'/alternativ
       </section>
 
       <div className="cta-band">
-        <h2>Try it on your screenshots</h2>
+        <h2>Try it on your product</h2>
         <p className="muted">Free, no signup. If it’s not for you, you’ve lost two minutes.</p>
         <CtaLink href="/create" className="btn btn-primary">
           Make my video

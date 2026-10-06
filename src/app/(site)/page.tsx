@@ -2,16 +2,16 @@ import { Hero } from '@/components/home/Hero';
 import { Faq, FinalCta, Gallery, MadeFor, Privacy, Problem, Steps } from '@/components/home/Sections';
 import { Showcase } from '@/components/home/Showcase';
 import '@/components/home/home.css';
-import { HOME_FAQ } from '@/domain/promo/content/faq';
-import { RECIPES, SIGNATURE_REELS } from '@/domain/promo/recipes';
+import { HOME_FAQ } from '@/domain/video/content/faq';
+import { RECIPES, SIGNATURE_REELS } from '@/domain/video/recipes';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { pageMetadata } from '@/lib/seo/metadata';
 import { faqPage, softwareApplication } from '@/lib/seo/schema';
 
 export const metadata = pageMetadata({
-  title: 'PromoReel: turn screenshots into a launch video. Free.',
+  title: 'PromoReel: describe your product, get a launch video. Free.',
   description:
-    'Turn your app screenshots into a polished promo video in two minutes. Pick a style, AI directs it, download the MP4. Free, no signup, and your screenshots never leave your browser.',
+    'Make a launch video for your product out of motion graphics: kinetic type, counters, rings and cards in your brand. Pick a style, edit every scene, download the MP4. Free, no signup, made in your browser.',
   path: '/',
   absoluteTitle: true,
 });

@@ -3,9 +3,9 @@ import { notFound } from 'next/navigation';
 import { ExampleVideo } from '@/components/content/ExampleVideo';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { GUIDES } from '@/domain/promo/content/guides';
-import { USE_CASES, findUseCase } from '@/domain/promo/content/useCases';
-import { recipeBySlug } from '@/domain/promo/recipes';
+import { GUIDES } from '@/domain/video/content/guides';
+import { USE_CASES, findUseCase } from '@/domain/video/content/useCases';
+import { recipeBySlug } from '@/domain/video/recipes';
 import { availableExamples } from '@/lib/examples';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { pageMetadata } from '@/lib/seo/metadata';
@@ -125,7 +125,7 @@ export default async function UseCasePage({ params }: PageProps<'/for/[useCase]'
       <div className="cta-band">
         <h2>Your {u.name.toLowerCase()}, in two minutes</h2>
         <p className="muted">
-          Opens the tool sized for it ({u.specs[0].value}). Free, and your screenshots stay on your device.
+          Opens the tool sized for it ({u.specs[0].value}). Free, and made in your browser.
         </p>
         <CtaLink href={create} className="btn btn-primary">
           Make my video

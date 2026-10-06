@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import { COMPETITORS } from '@/domain/promo/content/competitors';
-import { GUIDES } from '@/domain/promo/content/guides';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import { RECIPES } from '@/domain/promo/recipes';
+import { COMPETITORS } from '@/domain/video/content/competitors';
+import { GUIDES } from '@/domain/video/content/guides';
+import { USE_CASES } from '@/domain/video/content/useCases';
+import { RECIPES } from '@/domain/video/recipes';
 
 // the footer: a note, every section linked in columns, then the fine print
 export function Footer() {
@@ -10,8 +10,8 @@ export function Footer() {
     <footer className="footer">
       <div className="wrap">
         <p className="footer-note">
-          PromoReel makes your video in your browser. Screenshots are never uploaded. Directing with AI uses
-          your own chat subscription or API key, or no AI at all.
+          PromoReel makes your video in your browser, and your project is saved on this device. Nothing is
+          uploaded; AI scripting, when it comes, uses your own key.
         </p>
         <div className="footer-cols">
           <div>

@@ -49,6 +49,8 @@ const nextConfig: NextConfig = {
       { source: "/editor", destination: "/create", statusCode: 301 },
       { source: "/editor/:path*", destination: "/create", statusCode: 301 },
       { source: "/contact", destination: "/", statusCode: 301 },
+      // the Clean Apple style became Clean Soft
+      { source: "/aesthetics/clean-apple", destination: "/aesthetics/clean-soft", statusCode: 301 },
     ];
   },
 };

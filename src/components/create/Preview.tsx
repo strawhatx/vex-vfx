@@ -3,66 +3,82 @@
 // The live preview: the same engine as the export, seeked on every animation frame. Play, pause and
 // scrub; the music (if any) plays along from the same point.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Plan } from '@/domain/promo/plan';
-import type { Product } from '@/domain/promo/product';
-import type { Recipe } from '@/domain/promo/recipe';
-import { totalSeconds } from '@/domain/promo/schedule';
-import { Engine } from '@/infrastructure/promo/engine/engine';
-import type { ShotStore } from '@/infrastructure/promo/shots';
+import { totalSeconds, type Plan } from '@/domain/video/plan';
+import { loadImage, type ImageLike } from '@/infrastructure/video/canvas';
+import { Engine } from '@/infrastructure/video/engine/engine';
+import { recipeBySlug } from '@/domain/video/recipes';
 import { FONT_FAMILIES, loadRecipeFonts } from '@/components/engine/recipeFonts';
 
 interface Props {
-  plan: Plan | null;
-  recipe: Recipe;
-  product: Product;
-  brand: string;
-  shotIds: string[];
-  shots: ShotStore;
+  plan: Plan;
+  logo: string | null;
   musicUrl: string | null;
 }
 
-export function Preview({ plan, recipe, product, brand, shotIds, shots, musicUrl }: Props) {
+const SIZE: Record<Plan['format'], [number, number]> = {
+  '9:16': [540, 960],
+  '1:1': [720, 720],
+  '16:9': [960, 540],
+};
+
+export function Preview({ plan, logo, musicUrl }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const audio = useRef<HTMLAudioElement>(null);
   const engine = useRef<Engine | null>(null);
-  const clock = useRef({ t: 0, playing: false, last: 0 });
+  const clock = useRef({ t: 0, last: 0 });
   // the scrubber and time label follow playback directly (no React render per frame)
   const range = useRef<HTMLInputElement>(null);
   const label = useRef<HTMLSpanElement>(null);
-  const duration = useMemo(() => (plan ? totalSeconds(plan) : 0), [plan]);
+  const duration = useMemo(() => totalSeconds(plan), [plan]);
   const [playing, setPlaying] = useState(false);
+  const [logoImg, setLogoImg] = useState<{ url: string; img: ImageLike } | null>(null);
 
-  // (re)load the plan into the engine whenever anything that changes the picture changes
+  // the logo, decoded once per change
   useEffect(() => {
-    const c = canvas.current;
-    if (!c || !plan) return;
-    const [w, h] = plan.aspect === '9:16' ? [540, 960] : [960, 540];
-    c.width = w;
-    c.height = h;
-    engine.current ??= new Engine(c, FONT_FAMILIES);
-    const e = engine.current;
-    e.load({ plan, recipe, product, brand, shots: shotIds.map(id => shots.get(id)!).filter(Boolean) });
-    clock.current.t = Math.min(clock.current.t, e.duration);
-    e.render(clock.current.t);
+    if (!logo) return;
     let alive = true;
-    loadRecipeFonts([recipe]).then(() => alive && e.render(clock.current.t));
+    loadImage(logo)
+      .then(img => alive && setLogoImg({ url: logo, img }))
+      .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [plan, recipe, product, brand, shotIds, shots]);
+  }, [logo]);
+  const img = logo && logoImg?.url === logo ? logoImg.img : null;
 
-  // a new take starts playing (not every edit; and not at all with reduced motion). Set while
-  // rendering when the take changes, React's pattern for state that follows a prop.
-  const take = plan ? `${plan.hook.text}|${plan.scenes.map(x => `${x.shot}${x.move}`).join(',')}` : '';
-  const [shownTake, setShownTake] = useState(take);
+  // (re)load the plan into the engine whenever it changes, and redraw where we are
+  useEffect(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const [w, h] = SIZE[plan.format];
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+    engine.current ??= new Engine(c, FONT_FAMILIES);
+    const e = engine.current;
+    e.load({ plan, logo: img });
+    clock.current.t = Math.min(clock.current.t, e.duration);
+    e.render(clock.current.t);
+    let alive = true;
+    const r = recipeBySlug(plan.aesthetic);
+    if (r) loadRecipeFonts([r]).then(() => alive && e.render(clock.current.t));
+    return () => {
+      alive = false;
+    };
+  }, [plan, img]);
+
+  // a new example, style or format starts playing (not every edit; never with reduced motion). Set
+  // while rendering when it changes, React's pattern for state that follows a prop.
+  const take = `${plan.aesthetic}|${plan.format}|${plan.scenes.map(s => s.type).join(',')}`;
+  const [shownTake, setShownTake] = useState('');
   if (take !== shownTake) {
     setShownTake(take);
-    if (take && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(true);
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) setPlaying(true);
   }
 
   // the play loop
   useEffect(() => {
-    clock.current.playing = playing;
     const a = audio.current;
     if (!playing) {
       a?.pause();
@@ -104,24 +120,17 @@ export function Preview({ plan, recipe, product, brand, shotIds, shots, musicUrl
     if (audio.current && musicUrl) audio.current.currentTime = v;
   };
 
-  const tall = plan?.aspect !== '16:9';
+  const shape = plan.format === '9:16' ? 'tall' : plan.format === '1:1' ? 'square' : 'wide';
   return (
     <div className="preview">
-      <div className={`preview-frame ${tall ? 'tall' : 'wide'}`}>
+      <div className={`preview-frame ${shape}`}>
         <canvas ref={canvas} role="img" aria-label="Preview of your video" />
-        {!plan && (
-          <div className="preview-empty">
-            <p className="label">Reel 00</p>
-            <p>Your preview appears here as soon as you add a screenshot.</p>
-          </div>
-        )}
       </div>
       <div className="transport">
         <button
           type="button"
           className="btn btn-sm"
           onClick={() => setPlaying(p => !p)}
-          disabled={!plan}
           aria-pressed={playing}
         >
           {playing ? 'Pause' : 'Play'}
@@ -137,7 +146,6 @@ export function Preview({ plan, recipe, product, brand, shotIds, shots, musicUrl
             setPlaying(false);
             seek(Number(e.target.value));
           }}
-          disabled={!plan}
           aria-label="Scrub through the video"
         />
         <span className="label tc" ref={label}>

@@ -4,9 +4,10 @@ import { EnginePlayer } from '@/components/engine/EnginePlayer';
 import { ExampleVideo } from '@/components/content/ExampleVideo';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import { MOVES } from '@/domain/promo/moves';
-import { RECIPES, recipeBySlug } from '@/domain/promo/recipes';
+import { USE_CASES } from '@/domain/video/content/useCases';
+import { MOVES } from '@/domain/video/moves';
+import { SCENES } from '@/domain/video/scenes';
+import { RECIPES, recipeBySlug } from '@/domain/video/recipes';
 import { availableExamples } from '@/lib/examples';
 import { pageMetadata } from '@/lib/seo/metadata';
 
@@ -28,7 +29,7 @@ export default async function AestheticPage({ params }: PageProps<'/aesthetics/[
   if (!r) notFound();
   const examples = availableExamples().filter(e => e.recipe === r.slug);
   const fits = USE_CASES.filter(u => u.recipes.includes(r.slug));
-  const moves = [...r.moves.screen, ...r.moves.text, ...r.transitions, ...r.moves.extra];
+  const moves = [...r.textMoves, ...r.transitions];
 
   return (
     <div className="page wrap">
@@ -58,7 +59,7 @@ export default async function AestheticPage({ params }: PageProps<'/aesthetics/[
             <div className="live-tall">
               <EnginePlayer
                 recipe={r.slug}
-                aspect="9:16"
+                format="9:16"
                 mode="loop"
                 label={`${r.name} vertical preview`}
                 maxShort={480}
@@ -67,7 +68,8 @@ export default async function AestheticPage({ params }: PageProps<'/aesthetics/[
             <div className="live-wide">
               <EnginePlayer
                 recipe={r.slug}
-                aspect="16:9"
+                format="16:9"
+                example="orbit-feature"
                 mode="loop"
                 label={`${r.name} horizontal preview`}
                 maxShort={480}
@@ -96,9 +98,8 @@ export default async function AestheticPage({ params }: PageProps<'/aesthetics/[
               brand colour
             </li>
             <li>Texture: {r.texture === 'none' ? 'clean' : r.texture}</li>
-            <li>
-              Pace: {r.motion.tempo}, {r.motion.scene[0]}–{r.motion.scene[1]}s per scene
-            </li>
+            <li>Pace: {r.motion.tempo}</li>
+            <li>Scenes: {r.scenes.map(t => SCENES[t].label.toLowerCase()).join(', ')}</li>
           </ul>
         </section>
       </div>
@@ -151,7 +152,7 @@ export default async function AestheticPage({ params }: PageProps<'/aesthetics/[
 
       <div className="cta-band">
         <h2>Make it {r.name}</h2>
-        <p className="muted">Opens the tool with this style picked. Bring 3–6 screenshots.</p>
+        <p className="muted">Opens the tool with this style picked. Bring your logo and your real numbers.</p>
         <CtaLink href={`/create?style=${r.slug}`} className="btn btn-primary">
           Use this style
         </CtaLink>

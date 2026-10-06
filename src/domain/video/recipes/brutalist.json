@@ -1,0 +1,35 @@
+{
+  "slug": "brutalist",
+  "name": "Brutalist",
+  "palette": {
+    "bg": "#F2F0E9",
+    "surface": "#FFFFFF",
+    "fg": "#0A0A0A",
+    "muted": "#5C5C5C",
+    "accent": "#FF4D00"
+  },
+  "brandIsAccent": false,
+  "fonts": {
+    "display": "archivo-black",
+    "body": "space-mono"
+  },
+  "caps": true,
+  "radius": 0,
+  "motion": {
+    "ease": "expo.out",
+    "speed": 1.3,
+    "tempo": "fast"
+  },
+  "texture": "grain",
+  "transitions": ["flash-cut", "glitch", "wipe"],
+  "textMoves": ["word-slam", "typewriter"],
+  "scenes": ["logo-reveal", "stat-counter", "stat-ring", "card-stack", "ambient-wall", "kinetic-type"],
+  "page": {
+    "keyword": "brutalist video template",
+    "title": "Brutalist video template for product launches, free",
+    "description": "A brutalist launch video: huge capitals, raw borders, orange accents and hard cuts. Describe your product and edit everything. Free, in your browser.",
+    "blurb": "Thick black borders, giant capitals, paper grain and a hazard-orange accent. Nothing floats; everything slams. It suits indie products with a point of view and launches that should feel like a poster on a wall.",
+    "bestFor": ["indie hacker launches", "Product Hunt and X posts", "products with a strong opinion"],
+    "mood": "raw, loud, opinionated"
+  }
+}

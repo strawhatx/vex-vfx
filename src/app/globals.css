@@ -156,7 +156,8 @@ p {
   border-radius: 9999px;
   border: 1px solid var(--blue);
   background: transparent;
-  color: var(--blue);
+  /* (the link blue: readable on white and on mist) */
+  color: var(--link);
   font: 400 17px/1 var(--font-sans);
   letter-spacing: -0.022em;
   text-decoration: none;

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
-import { COMPETITORS } from '@/domain/promo/content/competitors';
+import { COMPETITORS } from '@/domain/video/content/competitors';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
-import { USE_CASES } from '@/domain/promo/content/useCases';
+import { USE_CASES } from '@/domain/video/content/useCases';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({

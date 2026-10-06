@@ -30,13 +30,13 @@ alternating white and mist bands with 28px cards.
 
 | # | Section | Job | Notes |
 | --- | --- | --- | --- |
-| 1 | Hero | Headline and CTA in 5 seconds | Kicker "PromoReel · Free", the h1 (the LCP element), the subline, **Make my video** and "See the styles ›". Below them, a Clean Apple promo for the demo app plays live in a large mist frame, rising in on load. |
+| 1 | Hero | Headline and CTA in 5 seconds | Kicker "PromoReel · Free", the h1 "Describe your product. Get a launch video." (the LCP element), the subline, **Make my video** and "See the styles ›". Below them, Orbit's Clean Soft launch video plays live in a large mist frame, rising in on load. |
 | 2 | The problem | Why this exists | One large statement: launch day with no video, the $500 editor, the lost weekend (in grey), then "PromoReel takes two minutes." |
-| 3 | One screenshot. Every style. (signature) | "This made my product look designed" | Pinned for about 360% of the viewport. One Orbit screenshot re-cut as Clean → Y2K Chrome → Brutalist → Swiss Minimal by the real engine, with a soft crossfade on each change. A segmented control shows and picks the style (keyboard, reduced motion). It ends on **"Now try yours."**: drop screenshots and /create opens with them. |
-| 4 | How it works | Steps | Three white cards on a mist band: pick a style, drop screenshots, let AI direct. |
+| 3 | One video. Every style. (signature) | "This looks professionally made" | Pinned for about 360% of the viewport. Orbit's launch video restyled live as Clean Soft → Y2K Chrome → Swiss Minimal → Brutalist by the real engine, with a soft crossfade on each change. A segmented control shows and picks the style (keyboard, reduced motion). It ends on **"Now make yours."**, linking into /create. |
+| 4 | How it works | Steps | Three white cards on a mist band: pick a style, make it yours, download it. |
 | 5 | Five styles | Choice | Five tiles; each plays its live preview on hover or focus and links to its style page. |
 | 6 | Sized for where you launch | Internal links | The six /for pages with their size and length. |
-| 7 | Privacy | Trust | Three cards on a mist band: made on your device, your AI or none, free. |
+| 7 | Privacy | Trust | Three cards on a mist band: made on your device, your numbers checked, free. |
 | 8 | Questions | Objections | Six questions, also FAQPage JSON-LD. |
 | 9 | Closing | Final CTA | "Your launch video. Two minutes from now." with the blue pill. |
 | 10 | Footer | Links | A mist footer: a privacy note, columns for styles, use cases, guides and comparisons, then the fine print. |

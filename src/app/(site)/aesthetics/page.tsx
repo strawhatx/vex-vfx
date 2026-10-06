@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { RECIPES } from '@/domain/promo/recipes';
+import { RECIPES } from '@/domain/video/recipes';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({
   title: 'Product video templates: 5 styles for your launch video',
   description:
-    'Five product video styles, from Clean Apple to Retro Terminal. Each turns your app screenshots into a promo video with its own colours, type, motion and cuts. Free, in your browser.',
+    'Five product video styles, from Clean Soft to Retro Terminal. Each restyles every scene of your launch video: colours, type, motion and cuts. Free, in your browser.',
   path: '/aesthetics',
 });
 
@@ -19,7 +19,7 @@ export default function AestheticsPage() {
         <h1>Product video templates</h1>
         <p className="lede">
           Five styles for your launch video. Each one is a recipe of palette, two fonts, a motion style, a
-          texture and a set of cuts. Drop in the same screenshots and get a very different film.
+          texture and a set of cuts. Switch styles and the same video becomes a very different film.
         </p>
       </header>
       <ul className="index-list">

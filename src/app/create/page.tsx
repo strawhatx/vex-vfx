@@ -7,9 +7,9 @@ import { pageMetadata } from '@/lib/seo/metadata';
 import { softwareApplication } from '@/lib/seo/schema';
 
 export const metadata = pageMetadata({
-  title: 'App promo video maker: make yours from screenshots',
+  title: 'Product launch video maker, free in your browser',
   description:
-    'Free app promo video maker in your browser. Drop in 3–6 screenshots, pick a style, let AI direct, and download a 9:16 or 16:9 MP4. No signup; screenshots never leave your device.',
+    'Make a launch video for your product: kinetic type, counters, rings and cards in your brand. Pick a style, edit every scene, download a 9:16, 1:1 or 16:9 MP4. Free, no signup.',
   path: '/create',
 });
 
@@ -30,8 +30,9 @@ export default function CreatePage() {
         <div className="create-intro">
           <h1>Make your promo video</h1>
           <p className="muted">
-            Pick a style, drop in 3–6 screenshots, and let AI (or the built-in rules) direct a 10–45 second
-            video. Edit the captions, then download a 9:16 or 16:9 MP4. Free, and nothing leaves your browser.
+            Pick a style, start from an example and make it yours: your product, your brand colour, your real
+            numbers. Edit every scene, then download a 9:16, 1:1 or 16:9 MP4. Free, and your project stays in
+            this browser.
           </p>
         </div>
         <CreateIsland />

@@ -1,0 +1,35 @@
+{
+  "slug": "swiss-minimal",
+  "name": "Swiss Minimal",
+  "palette": {
+    "bg": "#FFFFFF",
+    "surface": "#F2F2F2",
+    "fg": "#111111",
+    "muted": "#6B6B6B",
+    "accent": "#E63323"
+  },
+  "brandIsAccent": false,
+  "fonts": {
+    "display": "inter-tight",
+    "body": "ibm-plex-mono"
+  },
+  "caps": false,
+  "radius": 0,
+  "motion": {
+    "ease": "power3.out",
+    "speed": 1.1,
+    "tempo": "steady"
+  },
+  "texture": "none",
+  "transitions": ["wipe", "flash-cut"],
+  "textMoves": ["mask-reveal", "highlight-swipe", "typewriter"],
+  "scenes": ["logo-reveal", "stat-counter", "stat-ring", "card-stack", "ambient-wall", "kinetic-type"],
+  "page": {
+    "keyword": "minimalist product video template",
+    "title": "Minimalist product video template in Swiss style, free",
+    "description": "A Swiss-style launch video: a strict grid, one red accent, sharp type and hard wipes. Describe your product and edit everything. Free, in your browser.",
+    "blurb": "White space, a visible grid and one red accent. Type rises on the grid, numbers sit in their column, and every cut is a clean wipe. It reads as confident and considered, which is what a developer tool should say about itself.",
+    "bestFor": ["developer tools and APIs", "design and productivity apps", "portfolio and agency work"],
+    "mood": "precise, editorial, confident"
+  }
+}

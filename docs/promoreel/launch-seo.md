@@ -40,7 +40,7 @@ Three are written (✓). Each one should answer its question in the first paragr
 4. How to make a TikTok video for your app without showing your face (`tiktok app promo without face`)
 5. X (Twitter) video specs and launch post tips (`twitter video size`)
 6. What to put in a SaaS demo video, and what to leave out (`saas demo video`)
-7. How to turn screenshots into a video (`screenshots to video`)
+7. How to make an animated stat video for your product (`animated stat counter video`)
 8. How to write a "what I shipped" post that people read (`build in public update`)
 9. How long should a launch video be? (`how long should a product video be`)
 10. Product Hunt launch checklist for solo founders (`product hunt launch checklist`)

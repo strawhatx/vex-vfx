@@ -1,13 +1,13 @@
 'use client';
 
-// The signature moment: one screenshot, re-cut in four styles as you scroll (Clean → Y2K Chrome →
-// Brutalist → Swiss Minimal). It's the real engine playing, not a recording. The styles are also a
+// The signature moment: one product's video, restyled live as you scroll (Clean Soft → Y2K Chrome →
+// Swiss Minimal → Brutalist). It's the real engine playing, not a recording. The styles are also a
 // row of tabs, so keyboard and reduced-motion visitors pick them directly. It ends by asking for
-// your own screenshots.
+// yours.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EnginePlayer } from '@/components/engine/EnginePlayer';
 import { gsap, reducedMotion, ScrollTrigger } from '@/components/site/motion';
-import type { Aspect } from '@/domain/promo/plan';
+import type { Format } from '@/domain/video/plan';
 import { TryYours } from './TryYours';
 
 export interface Reel {
@@ -18,7 +18,7 @@ export interface Reel {
 
 export function Showcase({ reels }: { reels: Reel[] }) {
   const [active, setActive] = useState(0);
-  const [aspect, setAspect] = useState<Aspect>('16:9');
+  const [aspect, setAspect] = useState<Format>('16:9');
   const [changes, setChanges] = useState(0);
   const pin = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
@@ -74,7 +74,7 @@ export function Showcase({ reels }: { reels: Reel[] }) {
     <section className="showcase" id="styles" aria-labelledby="showcase-title">
       <div className="showcase-pin" ref={pin}>
         <div className="wrap showcase-head">
-          <p className="kicker">One screenshot.</p>
+          <p className="kicker">One video.</p>
           <h2 id="showcase-title">Every style.</h2>
           <div className="segmented" role="tablist" aria-label="Styles" ref={tabs}>
             {reels.map((r, i) => (
@@ -101,11 +101,10 @@ export function Showcase({ reels }: { reels: Reel[] }) {
             <EnginePlayer
               key={`${reel.slug}-${aspect}`}
               recipe={reel.slug}
-              aspect={aspect}
+              format={aspect}
+              example={aspect === '9:16' ? 'orbit-launch' : 'orbit-feature'}
               mode="loop"
-              single
-              scenesOnly
-              label={`The Orbit demo screenshot as a ${reel.name} promo video`}
+              label={`A launch video for Orbit, a demo app, in the ${reel.name} style`}
             />
           </div>
           <p className="stage-caption" aria-live="polite">

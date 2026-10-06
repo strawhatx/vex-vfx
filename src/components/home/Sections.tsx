@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { EnginePlayer } from '@/components/engine/EnginePlayer';
 import { CtaLink } from '@/components/site/CtaLink';
-import { USE_CASES } from '@/domain/promo/content/useCases';
-import type { Recipe } from '@/domain/promo/recipe';
+import { USE_CASES } from '@/domain/video/content/useCases';
+import type { Recipe } from '@/domain/video/recipe';
 
 // The problem, said plainly in one big paragraph.
 export function Problem() {
@@ -27,14 +27,14 @@ export function Problem() {
 // How it works, in three cards on a mist band.
 export function Steps() {
   const steps = [
-    ['Pick a style.', 'Five looks, from Clean Apple to Retro Terminal. Each one plays its own preview.'],
+    ['Pick a style.', 'Five looks, from Clean Soft to Retro Terminal. Each one plays its own preview.'],
     [
-      'Drop your screenshots.',
-      '3–6 screens, your product’s name, a tagline and a link. The brand colour is picked up for you.',
+      'Make it yours.',
+      'Put in your product’s name, logo, brand colour and your real numbers. Every scene is editable.',
     ],
     [
-      'Let AI direct.',
-      'Paste the prompt into Claude, ChatGPT or Gemini, use your own API key, or let the rules direct. Edit, then download.',
+      'Download it.',
+      'The MP4 is made in your browser in seconds: 9:16, 1:1 or 16:9. AI scripting with your own Gemini or Claude key comes next.',
     ],
   ];
   return (
@@ -63,7 +63,7 @@ export function Gallery({ recipes }: { recipes: readonly Recipe[] }) {
     <section className="section-pad" aria-labelledby="gallery-title">
       <div className="wrap-wide">
         <h2 id="gallery-title" className="band-title" data-split>
-          Five styles. Same screenshots.
+          Five styles. Same video.
         </h2>
         <ul className="tiles">
           {recipes.map(r => (
@@ -72,7 +72,7 @@ export function Gallery({ recipes }: { recipes: readonly Recipe[] }) {
                 <div className="tile-media">
                   <EnginePlayer
                     recipe={r.slug}
-                    aspect="9:16"
+                    format="9:16"
                     mode="hover"
                     maxShort={400}
                     label={`${r.name} style preview`}
@@ -122,20 +122,21 @@ export function Privacy() {
     <section className="band" aria-labelledby="privacy-title">
       <div className="wrap-wide">
         <h2 id="privacy-title" className="band-title" data-split>
-          Your screenshots never leave this browser.
+          Your work stays in this browser.
         </h2>
         <div className="cards">
           <div className="card" data-reveal>
             <h3>Made on your device.</h3>
             <p className="muted">
-              Screenshots are decoded, animated and encoded into an MP4 right here. No upload, no account.
+              Every frame is drawn and encoded into an MP4 right here. Your project is saved on this device.
+              No upload, no account.
             </p>
           </div>
           <div className="card" data-reveal>
-            <h3>Your AI, or none.</h3>
+            <h3>Your numbers, checked.</h3>
             <p className="muted">
-              Use the chat you already pay for, your own API key (sent from your browser straight to
-              Anthropic), or the built-in rules.
+              Every number in your video is one you typed or confirmed. Nothing is invented, and nothing ships
+              until you’ve checked it.
             </p>
           </div>
           <div className="card" data-reveal>

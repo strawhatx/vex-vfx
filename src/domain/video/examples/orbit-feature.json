@@ -1,0 +1,102 @@
+{
+  "v": 2,
+  "format": "16:9",
+  "aesthetic": "clean-soft",
+  "brandColor": "#1F6FEB",
+  "length": 30,
+  "product": {
+    "name": "Orbit",
+    "url": "orbit.dev"
+  },
+  "captions": true,
+  "scenes": [
+    {
+      "type": "kinetic-type",
+      "sec": 2.5,
+      "caption": "New in Orbit.",
+      "transition": null,
+      "text": "Your changelog just *wrote itself*.",
+      "move": "mask-reveal"
+    },
+    {
+      "type": "ambient-wall",
+      "sec": 4,
+      "caption": "Every merged pull request becomes a line in your notes.",
+      "transition": null,
+      "icon": "file-text",
+      "title": "Every merge, *documented*"
+    },
+    {
+      "type": "stat-ring",
+      "sec": 3.5,
+      "caption": "People actually *read* them.",
+      "transition": null,
+      "percent": {
+        "value": 87,
+        "confirmed": true
+      },
+      "label": "of subscribers open release emails",
+      "badge": "Most-read email"
+    },
+    {
+      "type": "card-stack",
+      "sec": 5,
+      "caption": "From merge to inbox, *automatically*.",
+      "transition": null,
+      "cards": [
+        {
+          "title": "Merge",
+          "subtitle": "You ship as usual"
+        },
+        {
+          "title": "Draft",
+          "subtitle": "Orbit writes it up"
+        },
+        {
+          "title": "Review",
+          "subtitle": "Edit in one click"
+        },
+        {
+          "title": "Send",
+          "subtitle": "Email, Slack, changelog"
+        }
+      ],
+      "stat": {
+        "value": 2,
+        "confirmed": true
+      },
+      "statPrefix": "",
+      "statSuffix": "min",
+      "statLabel": "of your time per release"
+    },
+    {
+      "type": "stat-counter",
+      "sec": 4,
+      "caption": "And it adds up.",
+      "transition": null,
+      "value": {
+        "value": 3.2,
+        "confirmed": true
+      },
+      "prefix": "",
+      "suffix": "M",
+      "label": "release notes published"
+    },
+    {
+      "type": "logo-reveal",
+      "sec": 3.5,
+      "caption": "*Orbit*. Release notes on autopilot.",
+      "transition": null,
+      "name": "Orbit",
+      "tagline": "Release notes on autopilot"
+    },
+    {
+      "type": "kinetic-type",
+      "sec": 3,
+      "caption": "Try it free at orbit.dev",
+      "transition": null,
+      "text": "Ship it. *We'll write it.*",
+      "move": "word-pop"
+    }
+  ]
+}

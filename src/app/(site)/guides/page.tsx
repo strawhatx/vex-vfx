@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
-import { GUIDES } from '@/domain/promo/content/guides';
+import { GUIDES } from '@/domain/video/content/guides';
 import { pageMetadata } from '@/lib/seo/metadata';
 
 export const metadata = pageMetadata({

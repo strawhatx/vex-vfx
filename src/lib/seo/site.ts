@@ -4,9 +4,9 @@
 export const SITE = {
   name: 'PromoReel',
   url: (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://promoreel.app').replace(/\/+$/, ''),
-  tagline: 'Turn screenshots into a launch video. Free.',
+  tagline: 'Describe your product. Get a launch video.',
   description:
-    'PromoReel turns 3–6 screenshots of your app into a polished promo video in a style you pick, directed by AI. Free, no signup, and your screenshots never leave your browser.',
+    'PromoReel makes launch videos for software products out of motion graphics: kinetic type, counters, rings and cards in your brand. Pick a style, put in your product and your real numbers, edit every scene, and download an MP4. Free, and made in your browser.',
   locale: 'en_US',
 } as const;
 

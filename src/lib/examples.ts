@@ -1,7 +1,7 @@
 import 'server-only';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXAMPLES, type Example } from '@/domain/promo/content/examples';
+import { EXAMPLES, type Example } from '@/domain/video/content/examples';
 
 // Example videos are files in public/examples (made with the tool itself). A page only shows,
 // and the sitemap only lists, the ones that exist.

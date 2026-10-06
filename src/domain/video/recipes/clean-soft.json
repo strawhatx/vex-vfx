@@ -1,0 +1,35 @@
+{
+  "slug": "clean-soft",
+  "name": "Clean Soft",
+  "palette": {
+    "bg": "#F6F7F9",
+    "surface": "#FFFFFF",
+    "fg": "#101828",
+    "muted": "#5D6677",
+    "accent": "#1F6FEB"
+  },
+  "brandIsAccent": true,
+  "fonts": {
+    "display": "inter-tight",
+    "body": "inter"
+  },
+  "caps": false,
+  "radius": 0.035,
+  "motion": {
+    "ease": "reel",
+    "speed": 0.9,
+    "tempo": "calm"
+  },
+  "texture": "soft",
+  "transitions": ["soft-push", "blur-dissolve"],
+  "textMoves": ["mask-reveal", "word-pop", "letter-stagger", "highlight-swipe"],
+  "scenes": ["logo-reveal", "stat-counter", "stat-ring", "card-stack", "ambient-wall", "kinetic-type"],
+  "page": {
+    "keyword": "saas explainer video template",
+    "title": "Clean SaaS explainer video template, free",
+    "description": "Make a calm, trustworthy SaaS launch video: soft light, counters that tick up, cards that step in. Describe your product; edit everything; free in your browser.",
+    "blurb": "Light and quiet, with soft gradients and a faint grid. Numbers count up, rings fill, cards step in as a timeline, and your brand colour carries every highlight. It's the look people already trust from the best B2B launch videos.",
+    "bestFor": ["B2B and SaaS products", "website hero videos", "LinkedIn and Product Hunt launches"],
+    "mood": "calm, trustworthy, light"
+  }
+}

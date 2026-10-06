@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 
 interface Props {
   ready: boolean;
+  // what still has to be done before export
+  blockers: string[];
   busy: boolean;
   progress: number;
   fileName: string;
@@ -13,7 +15,7 @@ interface Props {
 
 const EMAIL_STORE = 'promoreel:email';
 
-export function ExportPanel({ ready, busy, progress, fileName, onExport }: Props) {
+export function ExportPanel({ ready, blockers, busy, progress, fileName, onExport }: Props) {
   // (the studio runs only in the browser, so these can be read up front)
   const [email, setEmail] = useState(() => {
     try {
@@ -55,6 +57,16 @@ export function ExportPanel({ ready, busy, progress, fileName, onExport }: Props
   return (
     <form className="panel-body export" onSubmit={submit}>
       {phone && <p className="hint">Exporting works on phones, but it’s quicker on a desktop.</p>}
+      {blockers.length > 0 && (
+        <div className="notice warn" role="status">
+          <p>Before you download:</p>
+          <ul>
+            {blockers.map(b => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <label className="field-block">
         <span>Email for your download</span>
         <input
@@ -67,7 +79,7 @@ export function ExportPanel({ ready, busy, progress, fileName, onExport }: Props
         />
       </label>
       <p className="hint">We’ll send the occasional update when new styles ship. One click unsubscribes.</p>
-      <button type="submit" className="btn btn-primary" disabled={!ready || busy}>
+      <button type="submit" className="btn btn-primary" disabled={!ready || busy || blockers.length > 0}>
         {busy ? `Rendering… ${Math.round(progress * 100)}%` : 'Download MP4'}
       </button>
       {busy && <progress max={1} value={progress} aria-label="Export progress" />}

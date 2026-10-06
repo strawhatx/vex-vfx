@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Breadcrumbs } from '@/components/site/Breadcrumbs';
 import { CtaLink } from '@/components/site/CtaLink';
-import { GUIDES, guideBySlug } from '@/domain/promo/content/guides';
-import { findUseCase } from '@/domain/promo/content/useCases';
-import { recipeBySlug } from '@/domain/promo/recipes';
+import { GUIDES, guideBySlug } from '@/domain/video/content/guides';
+import { findUseCase } from '@/domain/video/content/useCases';
+import { recipeBySlug } from '@/domain/video/recipes';
 import { JsonLd } from '@/lib/seo/JsonLd';
 import { pageMetadata } from '@/lib/seo/metadata';
 import { SITE, absolute } from '@/lib/seo/site';
@@ -71,7 +71,7 @@ export default async function GuidePage({ params }: PageProps<'/guides/[slug]'>)
       </aside>
       <div className="cta-band">
         <h2>Make yours now</h2>
-        <p className="muted">Two minutes, free, and your screenshots never leave your browser.</p>
+        <p className="muted">A few minutes, free, and made in your browser.</p>
         <CtaLink href="/create" className="btn btn-primary">
           Make my video
         </CtaLink>

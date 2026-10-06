@@ -1,0 +1,70 @@
+{
+  "v": 2,
+  "format": "9:16",
+  "aesthetic": "clean-soft",
+  "brandColor": null,
+  "length": 15,
+  "product": {
+    "name": "Your product",
+    "url": "yourproduct.com"
+  },
+  "captions": true,
+  "scenes": [
+    {
+      "type": "logo-reveal",
+      "sec": 2.5,
+      "caption": "Hi, I'm the founder of *Your product*.",
+      "transition": null,
+      "name": "Your product",
+      "tagline": "What it does, in a few words"
+    },
+    {
+      "type": "stat-counter",
+      "sec": 3,
+      "caption": "We've helped *thousands* of teams.",
+      "transition": null,
+      "value": {
+        "value": null,
+        "confirmed": false
+      },
+      "prefix": "",
+      "suffix": "",
+      "label": "customers served"
+    },
+    {
+      "type": "card-stack",
+      "sec": 4,
+      "caption": "Getting started takes *minutes*.",
+      "transition": null,
+      "cards": [
+        {
+          "title": "Sign up",
+          "subtitle": "No card needed"
+        },
+        {
+          "title": "Connect your tools",
+          "subtitle": "Takes a minute"
+        },
+        {
+          "title": "See results",
+          "subtitle": "From day one"
+        }
+      ],
+      "stat": {
+        "value": null,
+        "confirmed": false
+      },
+      "statPrefix": "",
+      "statSuffix": "",
+      "statLabel": ""
+    },
+    {
+      "type": "kinetic-type",
+      "sec": 2.5,
+      "caption": "Start today.",
+      "transition": null,
+      "text": "Start today. *Free.*",
+      "move": "word-pop"
+    }
+  ]
+}

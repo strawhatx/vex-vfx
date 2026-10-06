@@ -1,0 +1,55 @@
+{
+  "v": 2,
+  "format": "1:1",
+  "aesthetic": "clean-soft",
+  "brandColor": "#1F6FEB",
+  "length": 15,
+  "product": {
+    "name": "Orbit",
+    "url": "orbit.dev"
+  },
+  "captions": true,
+  "scenes": [
+    {
+      "type": "kinetic-type",
+      "sec": 2,
+      "caption": "Here's what changed for teams on Orbit.",
+      "transition": null,
+      "text": "Numbers, not *noise*.",
+      "move": "letter-stagger"
+    },
+    {
+      "type": "stat-counter",
+      "sec": 3,
+      "caption": "Releases go out *on time*.",
+      "transition": null,
+      "value": {
+        "value": 98,
+        "confirmed": true
+      },
+      "prefix": "",
+      "suffix": "%",
+      "label": "of releases ship on schedule"
+    },
+    {
+      "type": "stat-ring",
+      "sec": 4,
+      "caption": "Fewer *“what changed?”* tickets.",
+      "transition": null,
+      "percent": {
+        "value": 64,
+        "confirmed": true
+      },
+      "label": "fewer support tickets",
+      "badge": "Month one"
+    },
+    {
+      "type": "kinetic-type",
+      "sec": 2.5,
+      "caption": "orbit.dev",
+      "transition": null,
+      "text": "Try *Orbit* free.",
+      "move": "word-pop"
+    }
+  ]
+}
